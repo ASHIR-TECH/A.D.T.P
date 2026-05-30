@@ -136,13 +136,7 @@ default = true
 ```
 
 ## Engineering Rules
-
-- Build phase-by-phase; do not implement future phases inside current-phase crates without a clear boundary.
-- Keep protocol logic in `adtp-core` and daemon orchestration in client/server crates.
-- Never bypass BLAKE3 verification before writing received files.
 - Never treat Phase 1 zero-key test mode as production cryptography; Phase 2/3 must replace it with real handshake-derived keys.
 - Preserve audit-log chain semantics when changing audit code.
 
 ## Security Note
-
-Phase 1 is a development-grade transfer engine. Payload encryption and integrity checks work, but the daemon still uses development self-signed TLS and zero session keys in daemon flow until the handshake layer is completed. See `docs/spec/security-model.md` for details.
