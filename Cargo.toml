@@ -35,6 +35,15 @@ toml = "0.8"
 async-trait = "0.1"
 hex = "0.4"
 rcgen = "0.13"
+notify = { version = "6", features = ["macos_fsevent"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+dashmap = "5"
+flume = "0.11"
+dirs = "5"
+walkdir = "2"
+infer = "0.15"
+notify-rust = "4"
 
 [profile.release]
 opt-level = 3
