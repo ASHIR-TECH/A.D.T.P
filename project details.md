@@ -1,43 +1,49 @@
-Day 1:
-- i did alll the push and commits to github
-- removed ci.yml, release.yml and security.yml from .github/workflows
-to avoid actions issues 
+# Project Details
 
-steps: first i had to install rust :
+This file records local project setup notes and current implementation state.
+
+## Completed Work
+
+- Phase 0: `adtp-core` foundation implemented and tested.
+- Phase 1: `adtp-client` and `adtp-server` daemon layer implemented and tested.
+- Documentation placeholders expanded with architecture, diagrams, and workflow details.
+
+## Local Tooling Notes
+
+Rust installation:
+
+```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 rustc --version
+```
 
-then uv python Package manager :
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source "$HOME/.cargo/env"
-uv --version
+Cargo audit:
 
-then node: 
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-node --version
+```bash
+cargo install cargo-audit
+cargo audit
+```
 
-then tauri CLI:
-cargo install tauri-cli
+## Validation Baseline
 
-to test cargo and crates for phase 1:
-- cargo test --package adtp-core 
-then 
-- cargo check --workspace && cargo clippy --package adtp-core -- -D warnings
+```bash
+cargo fmt --all
+cargo test --package adtp-core
+cargo test --package adtp-client
+cargo test --package adtp-server
+cargo check --workspace
+cargo clippy --workspace -- -D warnings
+cargo audit
+```
 
-Built Phase 0 backend core as scoped from the doc.
+## Current Architecture
 
-Implemented
-
-Workspace deps and release profile in Cargo.toml:1
-Core crate manifest in crates/adtp-core/Cargo.toml:1
-Protocol foundation modules: types.rs:1, errors.rs:1, protocol.rs:1, integrity.rs:1, encryption.rs:1, session.rs:1, transfer.rs:1
-Public exports in crates/adtp-core/src/lib.rs:1
-Minimal crate scaffolds so the documented workspace loads cleanly.
-Verified
-
-cargo test --package adtp-core — 14 passed, doctest passed
-cargo check --workspace — passed
-cargo clippy --package adtp-core -- -D warnings — passed
-cargo audit — not available in this toolchain (cargo-audit not installed)
+```mermaid
+flowchart LR
+    Core[adtp-core] --> Client[adtp-client]
+    Core --> Server[adtp-server]
+    Client <-->|QUIC| Server
+    Client --> ClientAudit[(Client Audit DB)]
+    Server --> ServerAudit[(Server Audit DB)]
+```
