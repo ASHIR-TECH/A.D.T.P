@@ -2,8 +2,35 @@
 name = "adtp-server"
 version = "0.1.0"
 edition = "2021"
+description = "ADTP server daemon — runs on Linux AI server"
+license = "MIT"
+
+[[bin]]
+name = "adtp-server"
+path = "src/main.rs"
 
 [dependencies]
 adtp-core = { path = "../adtp-core" }
 tokio = { workspace = true }
+quinn = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+bytes = { workspace = true }
+bincode = { workspace = true }
+toml = { workspace = true }
+rusqlite = { workspace = true }
+dashmap = { workspace = true }
+flume = { workspace = true }
+dirs = { workspace = true }
+hex = { workspace = true }
+infer = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
