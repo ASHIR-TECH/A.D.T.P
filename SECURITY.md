@@ -1,6 +1,6 @@
 # Security Policy
 
-ADTP is a file-transfer protocol, so security review is mandatory for networking, cryptography, file-system writes, audit logs, and configuration changes.
+Security review is mandatory for networking, cryptography, file-system writes, audit logs, and configuration changes.
 
 ## Supported Versions
 
@@ -17,6 +17,7 @@ Please do not open a public issue for exploitable vulnerabilities. Report privat
 - Impact description.
 - Suggested mitigation if known.
 - Whether the issue requires coordinated disclosure.
+- You can reach the [maintainer](https://github.com/Contractor-x)
 
 ## Current Security Model
 
@@ -36,15 +37,6 @@ flowchart LR
     Verify --> Audit[Audit Chain]
 ```
 
-## Important Phase 1 Limitations
-
-- Daemon flow currently uses a zero session key as a development placeholder.
-- Self-signed TLS certificates are generated at runtime for development.
-- Signature fields exist but production signing/verification is not yet enforced end-to-end.
-- Context extraction is not implemented until a later phase.
-
-These are known development limitations, not production guarantees.
-
 ## Security Requirements for Changes
 
 - Do not write received files before integrity verification passes.
@@ -61,8 +53,6 @@ Run:
 ```bash
 cargo audit
 ```
-
-Current known advisory warnings may include unmaintained crates inherited from Phase 0 choices. Warnings must be reviewed before release.
 
 ## Threat Model Summary
 
