@@ -1,6 +1,7 @@
 use crate::{
     audit::AuditLog,
     config::ClientConfig,
+    ipc::{start_ipc_listener, ClientIpcState},
     queue::{QueueItem, TransferQueue},
     receiver::FileReceiver,
 };
@@ -40,6 +41,13 @@ impl ClientDaemon {
         tracing::info!("ADTP Client Daemon starting");
 
         fs::create_dir_all(&self.config.receive_dir).await?;
+        let ipc_state = ClientIpcState::new(self.queue.clone());
+        tokio::spawn(async move {
+            if let Err(error) = start_ipc_listener(ipc_state).await {
+                tracing::error!("Client IPC listener stopped: {}", error);
+            }
+        });
+
         let agent = self
             .config
             .agents
