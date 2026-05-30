@@ -47,3 +47,9 @@ flowchart LR
     Client --> ClientAudit[(Client Audit DB)]
     Server --> ServerAudit[(Server Audit DB)]
 ```
+## Phase 2
+- Phse 2 was a success this phase focuses moslty on python files and engine 
+- added some files and protocol.
+- less code than i expected tho.
+- but more protocols for transfer and status reports. 
+Well unto the next.
