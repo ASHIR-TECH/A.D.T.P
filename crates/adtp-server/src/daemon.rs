@@ -1,4 +1,10 @@
-use crate::{audit::AuditLog, config::ServerConfig, dispatcher::Dispatcher, intake::FileIntake};
+use crate::{
+    audit::AuditLog,
+    config::ServerConfig,
+    dispatcher::Dispatcher,
+    intake::FileIntake,
+    ipc::{start_ipc_listener, ServerIpcState},
+};
 use adtp_core::{
     errors::{AdtpError, AdtpResult},
     session::new_session,
@@ -30,6 +36,11 @@ impl ServerDaemon {
         let audit = Arc::new(AuditLog::open(&self.config.audit_db)?);
         let intake = Arc::new(FileIntake::new(self.config.intake_dir.clone()));
         let dispatcher = Arc::new(Dispatcher::new(self.config.output_dir.clone()));
+        tokio::spawn(async move {
+            if let Err(error) = start_ipc_listener(ServerIpcState::new()).await {
+                tracing::error!("Server IPC listener stopped: {}", error);
+            }
+        });
 
         tracing::info!("Listening on {}", addr);
 
