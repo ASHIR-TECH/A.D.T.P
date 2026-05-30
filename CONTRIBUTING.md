@@ -1,6 +1,6 @@
-# Contributing to ADTP
+# Contributing to A.D.T.P
 
-Thank you for helping build ADTP. This repository is backend-first and phase-driven, so contributions should preserve the protocol boundary and keep the implementation auditable.
+Thank you for helping build A.D.T.P This repository is phase-driven, so contributions should preserve the protocol boundary and keep the implementation auditable.
 
 ## Development Principles
 
