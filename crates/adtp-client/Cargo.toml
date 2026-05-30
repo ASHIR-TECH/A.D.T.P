@@ -2,8 +2,36 @@
 name = "adtp-client"
 version = "0.1.0"
 edition = "2021"
+description = "ADTP client daemon — runs on user machine"
+license = "MIT"
+
+[[bin]]
+name = "adtp-client"
+path = "src/main.rs"
 
 [dependencies]
 adtp-core = { path = "../adtp-core" }
 tokio = { workspace = true }
+quinn = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+bytes = { workspace = true }
+bincode = { workspace = true }
+toml = { workspace = true }
+notify = { workspace = true }
+rusqlite = { workspace = true }
+dashmap = { workspace = true }
+flume = { workspace = true }
+dirs = { workspace = true }
+hex = { workspace = true }
+infer = { workspace = true }
+notify-rust = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
