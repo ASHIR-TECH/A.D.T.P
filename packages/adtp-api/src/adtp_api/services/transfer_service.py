@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import aiosqlite
+
+from adtp_api.errors import FileNotFoundError_, FileTooLargeError, TransferNotFoundError
+from adtp_api.models.transfer import TransferRecord, TransferList, TransferStatus
+from adtp_api.config import settings
+
+
+async def send_file(
+    file_path: str,
+    agent_name: str = "default",
+    priority: str = "normal",
+    message: str | None = None,
+) -> dict:
+    from adtp_mcp.bridge import client as bridge_client
+
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError_(file_path)
+    if path.stat().st_size > settings.max_file_size:
+        raise FileTooLargeError(settings.max_file_size)
+
+    return await bridge_client.enqueue_send(file_path, agent_name, priority)
+
+
+async def push_file(
+    file_path: str, destination: str | None = None, message: str | None = None
+) -> dict:
+    from adtp_mcp.bridge import server as bridge_server
+
+    return await bridge_server.push_file(file_path, destination)
+
+
+async def list_transfers(
+    db: aiosqlite.Connection,
+    status: str = "all",
+    limit: int = 20,
+    offset: int = 0,
+    session_id: str | None = None,
+) -> TransferList:
+    limit = min(max(1, limit), 100)
+    offset = max(0, offset)
+
+    where_clauses: list[str] = []
+    params: list = []
+
+    if status != "all":
+        where_clauses.append("status = ?")
+        params.append(status)
+    if session_id:
+        where_clauses.append("session_id = ?")
+        params.append(session_id)
+
+    where = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    count_row = await db.execute_fetchall(
+        f"SELECT COUNT(*) as cnt FROM transfer_audit {where}", params
+    )
+    total = count_row[0][0] if count_row else 0
+
+    rows = await db.execute_fetchall(
+        f"SELECT * FROM transfer_audit {where} ORDER BY initiated_at DESC LIMIT ? OFFSET ?",
+        params + [limit, offset],
+    )
+
+    transfers = [_row_to_transfer(r) for r in rows]
+    return TransferList(transfers=transfers, total=total, limit=limit, offset=offset)
+
+
+async def get_transfer(db: aiosqlite.Connection, transfer_id: str) -> TransferRecord:
+    rows = await db.execute_fetchall(
+        "SELECT * FROM transfer_audit WHERE id = ?", [transfer_id]
+    )
+    if not rows:
+        raise TransferNotFoundError(transfer_id)
+    return _row_to_transfer(rows[0])
+
+
+async def get_transfer_status(transfer_id: str) -> TransferStatus:
+    from adtp_mcp.bridge import client as bridge_client
+
+    return await bridge_client.get_status(transfer_id)
+
+
+async def get_transfer_context(
+    db: aiosqlite.Connection, transfer_id: str
+) -> dict | None:
+    rows = await db.execute_fetchall(
+        "SELECT context FROM transfer_audit WHERE id = ?", [transfer_id]
+    )
+    if not rows:
+        raise TransferNotFoundError(transfer_id)
+    raw = rows[0][0]
+    if raw:
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return None
+
+
+async def cancel_transfer(transfer_id: str) -> bool:
+    from adtp_mcp.bridge import client as bridge_client
+
+    return await bridge_client.cancel_transfer(transfer_id)
+
+
+def _row_to_transfer(row) -> TransferRecord:
+    context = None
+    try:
+        raw = row["context"] if "context" in row.keys() else None
+        if raw:
+            context = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, IndexError):
+        pass
+
+    return TransferRecord(
+        id=str(row["id"]) if "id" in row.keys() else "",
+        session_id=str(row["session_id"]) if "session_id" in row.keys() else "",
+        transfer_type=str(
+            row["transfer_type"] if "transfer_type" in row.keys() else "send"
+        ),
+        filename=str(row["filename"] if "filename" in row.keys() else ""),
+        mime_type=str(row["mime_type"] if "mime_type" in row.keys() else ""),
+        file_size=int(row["file_size"]) if "file_size" in row.keys() else 0,
+        status=str(row["status"] if "status" in row.keys() else "pending"),
+        integrity_verified=bool(row["integrity_verified"])
+        if "integrity_verified" in row.keys()
+        else False,
+        signature=str(row["signature"] if "signature" in row.keys() else ""),
+        chain_hash=str(row["chain_hash"] if "chain_hash" in row.keys() else ""),
+        initiated_at=str(row["initiated_at"] if "initiated_at" in row.keys() else ""),
+        completed_at=str(row["completed_at"])
+        if "completed_at" in row.keys() and row["completed_at"]
+        else None,
+        context=context,
+    )
