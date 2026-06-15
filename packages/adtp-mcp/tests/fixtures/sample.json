@@ -1,0 +1,43 @@
+[
+  {
+    "id": 1,
+    "name": "Alice",
+    "age": 30,
+    "email": "alice@test.com",
+    "address": {
+      "city": "NYC",
+      "zip": "10001"
+    },
+    "tags": [
+      "admin",
+      "user"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Bob",
+    "age": 25,
+    "email": "bob@test.com",
+    "address": {
+      "city": "LA",
+      "zip": "90001"
+    },
+    "tags": [
+      "user"
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Charlie",
+    "age": 35,
+    "email": "charlie@test.com",
+    "address": {
+      "city": "CHI",
+      "zip": "60601"
+    },
+    "tags": [
+      "admin",
+      "editor"
+    ]
+  }
+]
