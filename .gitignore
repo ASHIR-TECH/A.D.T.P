@@ -20,5 +20,5 @@ Thumbs.db
 # Logs
 *.log
 packages/adtp-api/tests/__pycache__/__init__.cpython-313.pyc
-tests 
+
 __pycache__ 
