@@ -13,7 +13,9 @@ class BridgeError(RuntimeError):
     pass
 
 
-async def call_socket(socket_path: Path, cmd: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+async def call_socket(
+    socket_path: Path, cmd: str, params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     payload = {"cmd": cmd, "params": params or {}}
     timeout = settings.bridge_timeout_ms / 1000
 
@@ -21,7 +23,9 @@ async def call_socket(socket_path: Path, cmd: str, params: dict[str, Any] | None
         raise BridgeError("Windows named-pipe bridge is not implemented in Phase 2")
 
     try:
-        reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(str(socket_path)), timeout)
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_unix_connection(str(socket_path)), timeout
+        )
     except (OSError, TimeoutError) as exc:
         raise BridgeError(f"Daemon unreachable at {socket_path}: {exc}") from exc
 

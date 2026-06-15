@@ -1,7 +1,7 @@
 [project]
 name = "adtp-mcp"
-version = "0.1.0"
-description = "ADTP MCP server bridge for Rust daemons"
+version = "0.2.0"
+description = "ADTP MCP server bridge for Rust daemons — Phase 3 Intelligence Layer"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "ASHIR Tech" }]
@@ -12,11 +12,23 @@ dependencies = [
     "pydantic>=2.0",
     "python-dotenv>=1.0",
     "structlog>=24.0",
+    "python-magic>=0.4.27",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "pymupdf>=1.24",
+    "python-docx>=1.1",
+    "chardet>=5.0",
+    "mutagen>=1.47",
+    "ffmpeg-python>=0.2",
+    "Pillow>=10.0",
+    "jsonschema>=4.21",
+    "aiofiles>=23.0",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.21",
 ]
 
 [project.scripts]
@@ -29,3 +41,4 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+asyncio_mode = "auto"

@@ -21,12 +21,18 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            client_socket=Path(os.getenv("ADTP_CLIENT_SOCKET", "/tmp/adtp-client.sock")),
-            server_socket=Path(os.getenv("ADTP_SERVER_SOCKET", "/tmp/adtp-server.sock")),
+            client_socket=Path(
+                os.getenv("ADTP_CLIENT_SOCKET", "/tmp/adtp-client.sock")
+            ),
+            server_socket=Path(
+                os.getenv("ADTP_SERVER_SOCKET", "/tmp/adtp-server.sock")
+            ),
             mcp_port=int(os.getenv("ADTP_MCP_PORT", "40002")),
             bridge_timeout_ms=int(os.getenv("ADTP_BRIDGE_TIMEOUT_MS", "5000")),
             log_level=os.getenv("ADTP_LOG_LEVEL", "INFO"),
-            max_file_size=int(os.getenv("ADTP_MAX_FILE_SIZE", str(DEFAULT_MAX_FILE_SIZE))),
+            max_file_size=int(
+                os.getenv("ADTP_MAX_FILE_SIZE", str(DEFAULT_MAX_FILE_SIZE))
+            ),
             auth_token=os.getenv("ADTP_AUTH_TOKEN"),
         )
 

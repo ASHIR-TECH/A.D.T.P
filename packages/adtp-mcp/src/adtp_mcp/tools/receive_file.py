@@ -13,6 +13,7 @@ class ReceiveFileInput(BaseModel):
     file_path: str
     destination_folder: str | None = None
     message: str | None = None
+    session_id: str = ""
 
 
 class ReceiveFileResult(BaseModel):
@@ -20,6 +21,7 @@ class ReceiveFileResult(BaseModel):
     status: str
     filename: str
     delivered_to: str | None = None
+    context: dict | None = None
 
 
 async def receive_file(input_data: ReceiveFileInput) -> dict:
@@ -31,12 +33,16 @@ async def receive_file(input_data: ReceiveFileInput) -> dict:
         )
     )
     file_path = validate_file_for_receive(input_data.file_path)
-    build_context(file_path)
-    bridge_response = await server_bridge.push_file(str(file_path), input_data.destination_folder)
+    context = await build_context(file_path, input_data.session_id)
+    bridge_response = await server_bridge.push_file(
+        str(file_path), input_data.destination_folder, context
+    )
     result = ReceiveFileResult(
         transfer_id=str(bridge_response.get("transfer_id", "")),
         status=str(bridge_response.get("status", "queued")),
         filename=Path(file_path).name,
-        delivered_to=bridge_response.get("delivered_to") or input_data.destination_folder,
+        delivered_to=bridge_response.get("delivered_to")
+        or input_data.destination_folder,
+        context=context,
     )
     return result.model_dump()
