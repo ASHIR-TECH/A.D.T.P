@@ -19,7 +19,12 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     max_file_size: int = 10 * 1024 * 1024 * 1024
 
-    model_config = {"env_prefix": "ADTP_"}
+    model_config = {
+        "env_prefix": "ADTP_",
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 settings = Settings()
