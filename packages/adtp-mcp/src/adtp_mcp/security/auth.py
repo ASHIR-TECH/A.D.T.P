@@ -7,7 +7,9 @@ class AuthError(PermissionError):
     pass
 
 
-def validate_token(expected_token: str | None, provided_header: str | None, *, stdio_mode: bool = False) -> bool:
+def validate_token(
+    expected_token: str | None, provided_header: str | None, *, stdio_mode: bool = False
+) -> bool:
     if stdio_mode or expected_token is None:
         return True
     if len(expected_token) < 32:
