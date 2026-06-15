@@ -28,7 +28,9 @@ async def watch_folder(input_data: WatchFolderInput) -> dict:
         )
     )
     folder = validate_folder(input_data.folder_path)
-    bridge_response = await client_bridge.register_watch(str(folder), input_data.file_pattern, input_data.trigger_action)
+    bridge_response = await client_bridge.register_watch(
+        str(folder), input_data.file_pattern, input_data.trigger_action
+    )
     return WatchFolderResult(
         watch_id=str(bridge_response.get("watch_id", "")),
         folder_path=str(folder),
