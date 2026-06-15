@@ -47,7 +47,9 @@ def validate_file_for_send(file_path: str) -> Path:
         raise ValidationError("resolved file_path is invalid")
     size = os.stat(real).st_size
     if size > settings.max_file_size:
-        raise ValidationError(f"file exceeds max size of {settings.max_file_size} bytes")
+        raise ValidationError(
+            f"file exceeds max size of {settings.max_file_size} bytes"
+        )
     return real
 
 
