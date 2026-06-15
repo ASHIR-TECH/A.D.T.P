@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -15,6 +14,7 @@ class SendFileInput(BaseModel):
     agent_name: str = "default"
     message: str | None = None
     priority: Literal["normal", "urgent"] = "normal"
+    session_id: str = ""
 
 
 class SendFileResult(BaseModel):
@@ -23,6 +23,7 @@ class SendFileResult(BaseModel):
     filename: str
     file_size: int
     estimated_ms: int = Field(default=0, ge=0)
+    context: dict | None = None
 
 
 async def send_file(input_data: SendFileInput) -> dict:
@@ -35,13 +36,16 @@ async def send_file(input_data: SendFileInput) -> dict:
         )
     )
     file_path = validate_file_for_send(input_data.file_path)
-    build_context(file_path)
-    bridge_response = await client_bridge.enqueue_send(str(file_path), input_data.agent_name, input_data.priority)
+    context = await build_context(file_path, input_data.session_id)
+    bridge_response = await client_bridge.enqueue_send(
+        str(file_path), input_data.agent_name, input_data.priority, context
+    )
     result = SendFileResult(
         transfer_id=str(bridge_response.get("transfer_id", "")),
         status=str(bridge_response.get("status", "queued")),
         filename=file_path.name,
         file_size=file_path.stat().st_size,
         estimated_ms=int(bridge_response.get("estimated_ms", 0)),
+        context=context,
     )
     return result.model_dump()
