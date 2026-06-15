@@ -4,9 +4,6 @@ import argparse
 import json
 from typing import Any, Callable
 
-import structlog
-from dotenv import load_dotenv
-
 from adtp_mcp.config import settings
 from adtp_mcp.resources import pending_files, session_status, transfer_log
 from adtp_mcp.tools import (
@@ -46,6 +43,11 @@ RESOURCES = {
 
 
 def configure_logging() -> None:
+    try:
+        import structlog
+    except ImportError:
+        return
+
     structlog.configure(
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),
@@ -158,7 +160,13 @@ def build_fastmcp():
 
 
 def main() -> None:
-    load_dotenv()
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        load_dotenv = None
+
+    if load_dotenv is not None:
+        load_dotenv()
     configure_logging()
     parser = argparse.ArgumentParser(description="ADTP MCP server")
     parser.add_argument(
