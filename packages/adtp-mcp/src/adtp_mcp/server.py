@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 from typing import Any, Callable
 
@@ -48,7 +47,10 @@ RESOURCES = {
 
 def configure_logging() -> None:
     structlog.configure(
-        processors=[structlog.processors.TimeStamper(fmt="iso"), structlog.processors.JSONRenderer()],
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ],
     )
 
 
@@ -70,25 +72,63 @@ def build_fastmcp():
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
-        raise RuntimeError("The official MCP SDK is required. Install with: uv sync") from exc
+        raise RuntimeError(
+            "The official MCP SDK is required. Install with: uv sync"
+        ) from exc
 
     mcp = FastMCP("adtp")
 
     @mcp.tool()
-    async def send_file_tool(file_path: str, agent_name: str = "default", message: str | None = None, priority: str = "normal") -> dict:
-        return await send_file(SendFileInput(file_path=file_path, agent_name=agent_name, message=message, priority=priority))
+    async def send_file_tool(
+        file_path: str,
+        agent_name: str = "default",
+        message: str | None = None,
+        priority: str = "normal",
+    ) -> dict:
+        return await send_file(
+            SendFileInput(
+                file_path=file_path,
+                agent_name=agent_name,
+                message=message,
+                priority=priority,
+            )
+        )
 
     @mcp.tool()
-    async def receive_file_tool(file_path: str, destination_folder: str | None = None, message: str | None = None) -> dict:
-        return await receive_file(ReceiveFileInput(file_path=file_path, destination_folder=destination_folder, message=message))
+    async def receive_file_tool(
+        file_path: str,
+        destination_folder: str | None = None,
+        message: str | None = None,
+    ) -> dict:
+        return await receive_file(
+            ReceiveFileInput(
+                file_path=file_path,
+                destination_folder=destination_folder,
+                message=message,
+            )
+        )
 
     @mcp.tool()
-    async def watch_folder_tool(folder_path: str, file_pattern: str | None = None, trigger_action: str | None = None) -> dict:
-        return await watch_folder(WatchFolderInput(folder_path=folder_path, file_pattern=file_pattern, trigger_action=trigger_action))
+    async def watch_folder_tool(
+        folder_path: str,
+        file_pattern: str | None = None,
+        trigger_action: str | None = None,
+    ) -> dict:
+        return await watch_folder(
+            WatchFolderInput(
+                folder_path=folder_path,
+                file_pattern=file_pattern,
+                trigger_action=trigger_action,
+            )
+        )
 
     @mcp.tool()
-    async def unwatch_folder_tool(watch_id: str | None = None, folder_path: str | None = None) -> dict:
-        return await unwatch_folder(UnwatchFolderInput(watch_id=watch_id, folder_path=folder_path))
+    async def unwatch_folder_tool(
+        watch_id: str | None = None, folder_path: str | None = None
+    ) -> dict:
+        return await unwatch_folder(
+            UnwatchFolderInput(watch_id=watch_id, folder_path=folder_path)
+        )
 
     @mcp.tool()
     async def list_transfers_tool(status: str = "all", limit: int = 10) -> list[dict]:
@@ -121,7 +161,9 @@ def main() -> None:
     load_dotenv()
     configure_logging()
     parser = argparse.ArgumentParser(description="ADTP MCP server")
-    parser.add_argument("--http", action="store_true", help="Run Streamable HTTP transport")
+    parser.add_argument(
+        "--http", action="store_true", help="Run Streamable HTTP transport"
+    )
     parser.add_argument("--port", type=int, default=settings.mcp_port)
     parser.add_argument("--dev", action="store_true", help="Development mode")
     args = parser.parse_args()
