@@ -4,4 +4,25 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-adtp-core = { path = "../adtp-core" }
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+comfy-table = "7"
+indicatif = "0.17"
+colored = "2"
+toml = { workspace = true }
+dirs = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+wiremock = "0.6"
+
+[[bin]]
+name = "adtp"
+path = "src/main.rs"
