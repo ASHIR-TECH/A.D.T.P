@@ -1,0 +1,107 @@
+mod commands;
+mod poller;
+mod settings;
+mod tray;
+
+use poller::SharedState;
+use std::sync::Arc;
+use tauri::{Emitter, Listener, Manager};
+use tokio::sync::Mutex;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_shell::init())
+        .manage::<SharedState>(Arc::new(Mutex::new(poller::AppState::default())))
+        .setup(|app| {
+            tray::build_tray(app.handle())?;
+
+            let state: SharedState = app.state::<SharedState>().inner().clone();
+            let handle = app.handle().clone();
+
+            let handle_clone = handle.clone();
+            let _ = handle.listen("notify", move |event| {
+                use tauri_plugin_notification::NotificationExt;
+                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("ADTP");
+                    let body = payload.get("body").and_then(|v| v.as_str()).unwrap_or("");
+                    if let Some(window) = handle_clone.get_webview_window("main") {
+                        if window.is_visible().unwrap_or(true) {
+                            return;
+                        }
+                    }
+                    let _ = handle_clone.notification()
+                        .builder()
+                        .title(title)
+                        .body(body)
+                        .show();
+                }
+            });
+
+            let handle_clone2 = handle.clone();
+            let _ = handle.listen("health-update", move |event| {
+                if let Ok(snapshot) = serde_json::from_str::<poller::HealthSnapshot>(event.payload()) {
+                    let (state, text) = if snapshot.daemon_connected {
+                        if snapshot.queue_pending > 0 || snapshot.queue_in_progress > 0 {
+                            ("syncing", "Syncing")
+                        } else {
+                            ("idle", "Connected")
+                        }
+                    } else {
+                        ("error", "Disconnected")
+                    };
+                    tray::update_tray_icon(&handle_clone2, state, text);
+                }
+            });
+
+            let handle_clone3 = handle.clone();
+            let _ = handle.listen("tray-send", move |_| {
+                let h = handle_clone3.clone();
+                tauri::async_runtime::spawn(async move {
+                    use tauri_plugin_dialog::DialogExt;
+                    if let Some(file) = h.dialog()
+                        .file()
+                        .add_filter("All Files", &["*"])
+                        .blocking_pick_file()
+                    {
+                        if let Some(path) = file.as_path() {
+                            let path_str = path.to_string_lossy().to_string();
+                            let _ = h.emit("tray-send-path", path_str);
+                        }
+                    }
+                });
+            });
+
+            poller::start_polling(handle.clone(), state);
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::send_file,
+            commands::list_transfers,
+            commands::get_transfer_status,
+            commands::get_transfer_context,
+            commands::cancel_transfer,
+            commands::register_watch,
+            commands::remove_watch,
+            commands::list_watchers,
+            commands::list_sessions,
+            commands::get_audit_log,
+            commands::verify_chain,
+            commands::export_audit,
+            commands::pick_file,
+            commands::pick_save_folder,
+            commands::save_settings,
+            commands::load_settings,
+            commands::save_api_token,
+            commands::load_api_token,
+            commands::write_file,
+            commands::get_app_health,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running ADTP Desktop");
+}
