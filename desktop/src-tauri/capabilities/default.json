@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Default capability granting all core and plugin permissions",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:default",
+    "dialog:default",
+    "notification:default",
+    "store:default"
+  ]
+}

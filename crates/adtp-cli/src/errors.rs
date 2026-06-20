@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub enum CliError {
     Config { message: String },
     Api { status: u16, message: String },

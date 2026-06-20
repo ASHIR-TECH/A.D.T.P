@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ADTP Desktop — Ashir Tech</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <nav id="sidebar">
+      <div class="sidebar-header">
+        <h1>ADTP</h1>
+        <span class="sidebar-subtitle">Ashir Tech</span>
+      </div>
+      <ul class="nav-list">
+        <li data-tab="dashboard" class="active">Dashboard</li>
+        <li data-tab="history">History</li>
+        <li data-tab="settings">Settings</li>
+      </ul>
+    </nav>
+    <main id="content">
+      <div id="toast-container"></div>
+      <div id="page-container"></div>
+    </main>
+  </div>
+  <script>
+  window.onerror = function(msg, url, line) {
+    const el = document.getElementById('page-container');
+    if (el) el.innerHTML = `<p style="color:red;padding:24px;white-space:pre">JS Error: ${msg}\n${url}:${line}</p>`;
+  };
+  window.addEventListener('unhandledrejection', function(e) {
+    const el = document.getElementById('page-container');
+    if (el) el.innerHTML = `<p style="color:red;padding:24px;white-space:pre">Promise Error: ${e.reason?.message || e.reason}</p>`;
+  });
+  document.addEventListener('DOMContentLoaded', function() {
+    const hasTauri = typeof window.__TAURI__ !== 'undefined';
+    const hasCore = hasTauri && typeof window.__TAURI__.core !== 'undefined';
+    const hasEvent = hasTauri && typeof window.__TAURI__.event !== 'undefined';
+    console.log('__TAURI__:', hasTauri, 'core:', hasCore, 'event:', hasEvent);
+    const el = document.getElementById('page-container');
+    if (el) el.innerHTML += `<p style="padding:8px;font-size:12px;color:#888">__TAURI__:${hasTauri} core:${hasCore} event:${hasEvent}</p>`;
+  });
+  </script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
