@@ -59,7 +59,7 @@ async fn poll_transfers(app: AppHandle, state: SharedState) {
     loop {
         ticker.tick().await;
         let settings = super::settings::read_settings(&app);
-        let Some(token) = super::settings::load_api_token() else { continue };
+        let Some(token) = super::settings::load_api_token(&app) else { continue };
         let Ok(client) = make_client(&settings, &token) else { continue };
 
         let entries: Vec<TransferRecord> = match client
@@ -104,7 +104,7 @@ async fn poll_health(app: AppHandle, state: SharedState) {
     loop {
         ticker.tick().await;
         let settings = super::settings::read_settings(&app);
-        let Some(token) = super::settings::load_api_token() else { continue };
+        let Some(token) = super::settings::load_api_token(&app) else { continue };
         let Ok(client) = make_client(&settings, &token) else { continue };
 
         let readiness = client
@@ -147,7 +147,7 @@ async fn poll_sessions(app: AppHandle, state: SharedState) {
     loop {
         ticker.tick().await;
         let settings = super::settings::read_settings(&app);
-        let Some(token) = super::settings::load_api_token() else { continue };
+        let Some(token) = super::settings::load_api_token(&app) else { continue };
         let Ok(client) = make_client(&settings, &token) else { continue };
 
         let sessions = match client
