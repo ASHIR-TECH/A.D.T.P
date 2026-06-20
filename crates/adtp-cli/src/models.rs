@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
     pub uptime_seconds: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadinessResponse {
     pub ready: bool,
     pub daemon_connected: bool,
@@ -15,7 +15,7 @@ pub struct ReadinessResponse {
     pub bridge_ok: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueResponse {
     pub pending: i64,
     pub in_progress: i64,
@@ -23,7 +23,7 @@ pub struct QueueResponse {
     pub avg_delivery_ms: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferSendResponse {
     pub transfer_id: String,
     pub status: String,
@@ -32,7 +32,7 @@ pub struct TransferSendResponse {
     pub estimated_ms: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferStatus {
     pub status: String,
     pub bytes_sent: i64,
@@ -41,7 +41,7 @@ pub struct TransferStatus {
     pub elapsed_ms: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferRecord {
     pub id: String,
     pub session_id: String,
@@ -58,7 +58,7 @@ pub struct TransferRecord {
     pub context: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferList {
     pub transfers: Vec<TransferRecord>,
     pub total: i64,
@@ -66,7 +66,7 @@ pub struct TransferList {
     pub offset: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
     pub id: String,
     pub session_id: String,
@@ -82,13 +82,13 @@ pub struct AuditEntry {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLogList {
     pub entries: Vec<AuditEntry>,
     pub total: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainVerifyResult {
     pub valid: bool,
     pub entries_checked: i64,
@@ -96,7 +96,7 @@ pub struct ChainVerifyResult {
     pub verified_at: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub id: String,
     pub peer_addr: String,
@@ -106,13 +106,13 @@ pub struct SessionInfo {
     pub bytes_transferred: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionList {
     pub sessions: Vec<SessionInfo>,
     pub total: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchResponse {
     pub watch_id: String,
     pub folder_path: String,
@@ -122,13 +122,13 @@ pub struct WatchResponse {
     pub agent_name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchList {
     pub watchers: Vec<WatchResponse>,
     pub total: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextBlock {
     #[serde(rename = "schema")]
     pub schema_: Option<serde_json::Value>,
@@ -138,7 +138,7 @@ pub struct ContextBlock {
     pub extraction_ms: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextHistoryEntry {
     pub timestamp: String,
     pub mime_type: String,
