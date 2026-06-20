@@ -8,7 +8,7 @@ let advancedOpen = false;
 
 async function save(settings) {
   try {
-    await invoke('save_settings', { settings });
+    await invoke('save_settings', { new_settings: settings });
     show('Settings saved', 'success');
   } catch (err) {
     show(`Failed to save: ${err}`, 'error');
@@ -32,10 +32,10 @@ function renderAgents(container) {
 
 function getSettings(container) {
   return {
-    apiUrl: container.querySelector('#api-url').value,
-    pollTransfersMs: parseInt(container.querySelector('#poll-transfers').value) || 2000,
-    pollHealthMs: parseInt(container.querySelector('#poll-health').value) || 5000,
-    minimizeToTray: container.querySelector('#minimize-tray').checked,
+    api_url: container.querySelector('#api-url').value,
+    poll_transfers_ms: parseInt(container.querySelector('#poll-transfers').value) || 2000,
+    poll_health_ms: parseInt(container.querySelector('#poll-health').value) || 5000,
+    minimize_to_tray: container.querySelector('#minimize-tray').checked,
     theme: 'dark',
     agents,
   };
