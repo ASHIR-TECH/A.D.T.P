@@ -24,24 +24,6 @@
       <div id="page-container"></div>
     </main>
   </div>
-  <script>
-  window.onerror = function(msg, url, line) {
-    const el = document.getElementById('page-container');
-    if (el) el.innerHTML = `<p style="color:red;padding:24px;white-space:pre">JS Error: ${msg}\n${url}:${line}</p>`;
-  };
-  window.addEventListener('unhandledrejection', function(e) {
-    const el = document.getElementById('page-container');
-    if (el) el.innerHTML = `<p style="color:red;padding:24px;white-space:pre">Promise Error: ${e.reason?.message || e.reason}</p>`;
-  });
-  document.addEventListener('DOMContentLoaded', function() {
-    const hasTauri = typeof window.__TAURI__ !== 'undefined';
-    const hasCore = hasTauri && typeof window.__TAURI__.core !== 'undefined';
-    const hasEvent = hasTauri && typeof window.__TAURI__.event !== 'undefined';
-    console.log('__TAURI__:', hasTauri, 'core:', hasCore, 'event:', hasEvent);
-    const el = document.getElementById('page-container');
-    if (el) el.innerHTML += `<p style="padding:8px;font-size:12px;color:#888">__TAURI__:${hasTauri} core:${hasCore} event:${hasEvent}</p>`;
-  });
-  </script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
