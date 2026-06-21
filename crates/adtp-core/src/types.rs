@@ -12,21 +12,23 @@ pub const AES_NONCE_SIZE: usize = 12;
 pub const AES_TAG_SIZE: usize = 16;
 pub const ED25519_SIG_SIZE: usize = 64;
 pub const BLAKE3_HASH_SIZE: usize = 32;
+pub const PEER_ID_SIZE: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TransferType {
-    Send = 0x01,
-    Push = 0x02,
+    Transfer = 0x01,
     Ack = 0x03,
     Error = 0x04,
     Watch = 0x05,
     Unwatch = 0x06,
     Status = 0x07,
     History = 0x08,
-    Handshake = 0x09,
+    Hello = 0x09,
     Ping = 0x0A,
     Pong = 0x0B,
+    Subscribe = 0x0C,
+    Notify = 0x0D,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,9 +86,38 @@ pub struct Session {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerIdentity {
+    pub peer_id: [u8; PEER_ID_SIZE],
+    pub public_key: [u8; 32],
+    pub adtp_version: u8,
+    pub max_file_size: u64,
+    pub supported_mime_types: Vec<String>,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrustLevel {
+    Trusted,
+    Unverified,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerEntry {
+    pub peer_id: String,
+    pub public_key: String,
+    pub nickname: Option<String>,
+    pub host: String,
+    pub port: u16,
+    pub trust_level: TrustLevel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferRecord {
     pub id: Uuid,
     pub session_id: Uuid,
+    pub sender_peer_id: [u8; PEER_ID_SIZE],
+    pub receiver_peer_id: [u8; PEER_ID_SIZE],
     pub transfer_type: TransferType,
     pub file_meta: FileMeta,
     pub status: TransferStatus,
