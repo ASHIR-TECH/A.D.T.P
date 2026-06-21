@@ -1,9 +1,11 @@
 const { invoke } = window.__TAURI__.core;
 
 import { show } from '../components/Toast.js';
-import { renderCard } from '../components/AgentCard.js';
+import { renderCard as renderAgentCard } from '../components/AgentCard.js';
+import { renderCard as renderPeerCard } from '../components/PeerCard.js';
 
 let agents = [];
+let peers = [];
 let advancedOpen = false;
 
 async function save(settings) {
@@ -19,12 +21,27 @@ function renderAgents(container) {
   const list = container.querySelector('#agent-list');
   list.innerHTML = '';
   agents.forEach((agent, i) => {
-    renderCard(list, agent, i, (idx, updated) => {
+    renderAgentCard(list, agent, i, (idx, updated) => {
       agents[idx] = updated;
       save(getSettings(container));
     }, (idx) => {
       agents.splice(idx, 1);
       renderAgents(container);
+      save(getSettings(container));
+    });
+  });
+}
+
+function renderPeers(container) {
+  const list = container.querySelector('#peer-list');
+  list.innerHTML = '';
+  peers.forEach((peer, i) => {
+    renderPeerCard(list, peer, i, (idx, updated) => {
+      peers[idx] = updated;
+      save(getSettings(container));
+    }, (idx) => {
+      peers.splice(idx, 1);
+      renderPeers(container);
       save(getSettings(container));
     });
   });
@@ -38,6 +55,7 @@ function getSettings(container) {
     minimize_to_tray: container.querySelector('#minimize-tray').checked,
     theme: 'dark',
     agents,
+    peers,
   };
 }
 
@@ -46,10 +64,11 @@ export async function render(container) {
   try {
     settings = await invoke('load_settings');
   } catch {
-    settings = { api_url: 'http://127.0.0.1:40003', poll_transfers_ms: 2000, poll_health_ms: 5000, minimize_to_tray: true, theme: 'dark', agents: [] };
+    settings = { api_url: 'http://127.0.0.1:40003', poll_transfers_ms: 2000, poll_health_ms: 5000, minimize_to_tray: true, theme: 'dark', agents: [], peers: [] };
   }
 
   agents = (settings.agents || []).map(a => ({ ...a }));
+  peers = (settings.peers || []).map(p => ({ ...p }));
 
   container.innerHTML = `
     <h2 class="page-title">Settings</h2>
@@ -72,6 +91,12 @@ export async function render(container) {
     </div>
 
     <div class="settings-section">
+      <h3>Peers</h3>
+      <div id="peer-list"></div>
+      <button class="btn btn-secondary" id="add-peer">+ Add Peer</button>
+    </div>
+
+    <div class="settings-section">
       <button class="advanced-toggle" id="advanced-toggle">⚙ Advanced Settings</button>
       <div class="advanced-content ${advancedOpen ? 'open' : ''}" id="advanced-content">
         <div class="settings-field">
@@ -91,6 +116,7 @@ export async function render(container) {
   `;
 
   renderAgents(container);
+  renderPeers(container);
 
   const tokenInput = container.querySelector('#api-token');
   tokenInput.addEventListener('change', async () => {
@@ -114,6 +140,11 @@ export async function render(container) {
   container.querySelector('#add-agent').addEventListener('click', () => {
     agents.push({ name: '', host: '', port: 0, default: false });
     renderAgents(container);
+  });
+
+  container.querySelector('#add-peer').addEventListener('click', () => {
+    peers.push({ peer_id: '', nickname: '', host: '', port: 0, trust_level: 'Unverified' });
+    renderPeers(container);
   });
 
   container.querySelector('#advanced-toggle').addEventListener('click', () => {
