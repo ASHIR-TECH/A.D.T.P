@@ -152,7 +152,7 @@ fn handle_send(params: Value, state: &ClientIpcState) -> IpcResponse {
     };
     let mut item = QueueItem::new_send(file_path, agent_name);
     item.priority = priority;
-    item.transfer_type = TransferType::Send;
+    item.transfer_type = TransferType::Transfer;
     let transfer_id = item.id;
 
     match state.queue.enqueue(item) {
