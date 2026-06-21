@@ -14,6 +14,7 @@ class ReceiveFileInput(BaseModel):
     destination_folder: str | None = None
     message: str | None = None
     session_id: str = ""
+    peer_id: str | None = None
 
 
 class ReceiveFileResult(BaseModel):
@@ -22,6 +23,7 @@ class ReceiveFileResult(BaseModel):
     filename: str
     delivered_to: str | None = None
     context: dict | None = None
+    peer_id: str | None = None
 
 
 async def receive_file(input_data: ReceiveFileInput) -> dict:
@@ -32,6 +34,8 @@ async def receive_file(input_data: ReceiveFileInput) -> dict:
             ("message", input_data.message),
         )
     )
+    if input_data.peer_id and not _is_valid_peer_id(input_data.peer_id):
+        raise ValueError(f"Invalid peer_id: {input_data.peer_id}")
     file_path = validate_file_for_receive(input_data.file_path)
     context = await build_context(file_path, input_data.session_id)
     bridge_response = await server_bridge.push_file(
@@ -44,5 +48,16 @@ async def receive_file(input_data: ReceiveFileInput) -> dict:
         delivered_to=bridge_response.get("delivered_to")
         or input_data.destination_folder,
         context=context,
+        peer_id=input_data.peer_id,
     )
     return result.model_dump()
+
+
+def _is_valid_peer_id(peer_id: str) -> bool:
+    if len(peer_id) != 32:
+        return False
+    try:
+        int(peer_id, 16)
+        return True
+    except ValueError:
+        return False
