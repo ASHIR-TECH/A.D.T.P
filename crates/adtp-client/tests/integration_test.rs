@@ -21,7 +21,7 @@ async fn test_full_send_receive_cycle() {
             let packet = conn.recv_packet().await.unwrap();
             assert_eq!(packet.header.magic, ADTP_MAGIC);
             assert_eq!(packet.header.version, ADTP_VERSION);
-            assert!(matches!(packet.header.transfer_type, TransferType::Send));
+            assert!(matches!(packet.header.transfer_type, TransferType::Transfer));
             packet
         } else {
             panic!("No connection");
@@ -51,9 +51,11 @@ async fn test_full_send_receive_cycle() {
     let ctx_bytes = serde_json::to_vec(&ctx).unwrap();
     let packet = AdtpPacket {
         header: PacketHeader::new(
-            TransferType::Send,
+            TransferType::Transfer,
             Uuid::new_v4(),
             Uuid::new_v4(),
+            [0u8; PEER_ID_SIZE],
+            [0u8; PEER_ID_SIZE],
             nonce,
             content_hash,
             ctx_bytes.len() as u32,
@@ -92,7 +94,9 @@ fn sample_record(session_id: Uuid, filename: &str) -> TransferRecord {
     TransferRecord {
         id: Uuid::new_v4(),
         session_id,
-        transfer_type: TransferType::Send,
+        sender_peer_id: [0u8; PEER_ID_SIZE],
+        receiver_peer_id: [0u8; PEER_ID_SIZE],
+        transfer_type: TransferType::Transfer,
         file_meta: FileMeta {
             filename: filename.to_string(),
             mime_type: "text/plain".to_string(),
