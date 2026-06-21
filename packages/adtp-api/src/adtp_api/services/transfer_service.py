@@ -41,6 +41,7 @@ async def list_transfers(
     limit: int = 20,
     offset: int = 0,
     session_id: str | None = None,
+    peer_id: str | None = None,
 ) -> TransferList:
     limit = min(max(1, limit), 100)
     offset = max(0, offset)
@@ -54,6 +55,9 @@ async def list_transfers(
     if session_id:
         where_clauses.append("session_id = ?")
         params.append(session_id)
+    if peer_id:
+        where_clauses.append("(sender_peer_id = ? OR receiver_peer_id = ?)")
+        params.extend([peer_id, peer_id])
 
     where = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
