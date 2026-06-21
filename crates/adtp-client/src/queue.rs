@@ -21,7 +21,7 @@ impl QueueItem {
             agent_name,
             message: None,
             priority: Priority::Normal,
-            transfer_type: TransferType::Send,
+            transfer_type: TransferType::Transfer,
             destination: None,
         }
     }

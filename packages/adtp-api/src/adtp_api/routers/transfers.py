@@ -36,9 +36,10 @@ async def list_transfers(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     session_id: str | None = Query(None),
+    peer_id: str | None = Query(None),
     db: aiosqlite.Connection = Depends(get_db),
 ) -> TransferList:
-    return await transfer_service.list_transfers(db, status, limit, offset, session_id)
+    return await transfer_service.list_transfers(db, status, limit, offset, session_id, peer_id)
 
 
 @router.get("/{transfer_id}")

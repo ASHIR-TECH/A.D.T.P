@@ -5,6 +5,8 @@ members = [
     "crates/adtp-server",
     "crates/adtp-cli",
     "crates/adtp-proto",
+    "crates/adtp-peer-core",
+    "crates/adtp-peer",
     "desktop/src-tauri",
 ]
 resolver = "2"

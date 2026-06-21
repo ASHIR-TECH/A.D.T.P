@@ -29,6 +29,7 @@ enum Commands {
     Context(commands::context::ContextArgs),
     Export(commands::export::ExportArgs),
     Session(commands::session::SessionArgs),
+    Peer(commands::peer::PeerArgs),
 }
 
 #[tokio::main]
@@ -63,6 +64,7 @@ async fn main() {
         Commands::Context(args) => commands::context::execute(&cfg, args).await,
         Commands::Export(args) => commands::export::execute(&cfg, args).await,
         Commands::Session(args) => commands::session::execute(&cfg, args).await,
+        Commands::Peer(args) => commands::peer::execute(&cfg, args).await,
     };
 
     match result {

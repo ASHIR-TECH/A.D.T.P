@@ -62,9 +62,11 @@ impl PushHandler {
         let context_bytes = serde_json::to_vec(&context_env)?;
         let (ciphertext, nonce) = encrypt_file_bytes(&self.session_key, &file_bytes)?;
         let header = PacketHeader::new(
-            TransferType::Push,
+            TransferType::Transfer,
             self.session_id,
             transfer_id,
+            [0u8; PEER_ID_SIZE],
+            [0u8; PEER_ID_SIZE],
             nonce,
             content_hash,
             context_bytes.len() as u32,

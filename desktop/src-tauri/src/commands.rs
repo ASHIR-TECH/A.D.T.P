@@ -11,7 +11,7 @@ use crate::settings;
 
 fn make_client(app: &AppHandle) -> Result<ApiClient, String> {
     let s = settings::read_settings(app);
-    let token = settings::load_api_token().ok_or("API token not set")?;
+    let token = settings::load_api_token(app).ok_or("API token not set")?;
     let cfg = CliConfig {
         api_url: s.api_url,
         api_token: token,
@@ -184,14 +184,14 @@ pub async fn load_settings(app: AppHandle) -> Result<settings::AppSettings, Stri
 }
 
 #[tauri::command]
-pub async fn save_api_token(token: String) -> Result<bool, String> {
-    settings::save_api_token(&token)?;
+pub async fn save_api_token(app: AppHandle, token: String) -> Result<bool, String> {
+    settings::save_api_token(&app, &token)?;
     Ok(true)
 }
 
 #[tauri::command]
-pub async fn load_api_token() -> Result<Option<String>, String> {
-    Ok(settings::load_api_token())
+pub async fn load_api_token(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(settings::load_api_token(&app))
 }
 
 #[tauri::command]

@@ -34,9 +34,11 @@ async fn test_intake_and_dispatch_manifest() {
     let context_bytes = serde_json::to_vec(&envelope).unwrap();
     let packet = AdtpPacket {
         header: PacketHeader::new(
-            TransferType::Send,
+            TransferType::Transfer,
             Uuid::new_v4(),
             Uuid::new_v4(),
+            [0u8; PEER_ID_SIZE],
+            [0u8; PEER_ID_SIZE],
             nonce,
             content_hash,
             context_bytes.len() as u32,
@@ -76,7 +78,9 @@ fn sample_record(session_id: Uuid) -> TransferRecord {
     TransferRecord {
         id: Uuid::new_v4(),
         session_id,
-        transfer_type: TransferType::Send,
+        sender_peer_id: [0u8; PEER_ID_SIZE],
+        receiver_peer_id: [0u8; PEER_ID_SIZE],
+        transfer_type: TransferType::Transfer,
         file_meta: FileMeta {
             filename: "payload.txt".to_string(),
             mime_type: "text/plain".to_string(),

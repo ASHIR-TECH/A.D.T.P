@@ -5,6 +5,8 @@ use tauri_plugin_store::StoreExt;
 
 const STORE_FILE: &str = "settings.json";
 
+const TOKEN_KEY: &str = "api_token";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub api_url: String,
@@ -46,17 +48,15 @@ pub fn write_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), Str
     store.save().map_err(|e| e.to_string())
 }
 
-const KEYRING_SERVICE: &str = "adtp-desktop";
-const KEYRING_USER: &str = "api-token";
-
-pub fn save_api_token(token: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())?;
-    entry.set_password(token).map_err(|e| e.to_string())
+pub fn save_api_token(app: &AppHandle, token: &str) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(TOKEN_KEY, serde_json::Value::String(token.to_string()));
+    store.save().map_err(|e| e.to_string())
 }
 
-pub fn load_api_token() -> Option<String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?;
-    entry.get_password().ok()
+pub fn load_api_token(app: &AppHandle) -> Option<String> {
+    let store = app.store(STORE_FILE).ok()?;
+    store.get(TOKEN_KEY).and_then(|v| v.as_str().map(String::from))
 }
 
 #[cfg(test)]
@@ -90,10 +90,13 @@ mod tests {
             }],
         };
         let json = serde_json::to_value(&s).unwrap();
+        assert_eq!(json["api_url"], "http://localhost:9999");
         let deserialized: AppSettings = serde_json::from_value(json).unwrap();
         assert_eq!(deserialized.api_url, s.api_url);
         assert_eq!(deserialized.poll_transfers_ms, s.poll_transfers_ms);
         assert_eq!(deserialized.agents.len(), 1);
         assert_eq!(deserialized.agents[0].name, "test-agent");
     }
+
+
 }
