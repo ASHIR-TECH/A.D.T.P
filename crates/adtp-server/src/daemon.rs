@@ -77,7 +77,7 @@ async fn handle_client(
     loop {
         match connection.recv_packet().await {
             Ok(packet) => match packet.header.transfer_type {
-                TransferType::Send => match intake.process(&packet, &session_key).await {
+                TransferType::Transfer => match intake.process(&packet, &session_key).await {
                     Ok(result) => {
                         transfer_count += 1;
                         if result.file_meta.file_size > config.max_file_size {
@@ -89,7 +89,9 @@ async fn handle_client(
                         let record = adtp_core::types::TransferRecord {
                             id: packet.header.transfer_id,
                             session_id: session.id,
-                            transfer_type: TransferType::Send,
+                            sender_peer_id: packet.header.sender_peer_id,
+                            receiver_peer_id: packet.header.receiver_peer_id,
+                            transfer_type: TransferType::Transfer,
                             file_meta: result.file_meta.clone(),
                             status: TransferStatus::Delivered,
                             initiated_at: Utc::now(),
