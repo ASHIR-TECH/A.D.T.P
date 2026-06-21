@@ -15,6 +15,8 @@ pub struct PacketHeader {
     pub flags: u8,
     pub session_id: Uuid,
     pub transfer_id: Uuid,
+    pub sender_peer_id: [u8; PEER_ID_SIZE],
+    pub receiver_peer_id: [u8; PEER_ID_SIZE],
     pub timestamp_ns: u64,
     pub context_len: u32,
     pub payload_len: u64,
@@ -27,6 +29,8 @@ impl PacketHeader {
         transfer_type: TransferType,
         session_id: Uuid,
         transfer_id: Uuid,
+        sender_peer_id: [u8; PEER_ID_SIZE],
+        receiver_peer_id: [u8; PEER_ID_SIZE],
         nonce: [u8; AES_NONCE_SIZE],
         content_hash: [u8; BLAKE3_HASH_SIZE],
         context_len: u32,
@@ -40,6 +44,8 @@ impl PacketHeader {
             flags: 0x00,
             session_id,
             transfer_id,
+            sender_peer_id,
+            receiver_peer_id,
             timestamp_ns: Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64,
             context_len,
             payload_len,
@@ -179,10 +185,14 @@ mod tests {
         let content_hash = [0u8; BLAKE3_HASH_SIZE];
         let context = Bytes::from(b"{}".to_vec());
         let payload = Bytes::from(b"encrypted bytes here".to_vec());
+        let sender_peer_id = [1u8; PEER_ID_SIZE];
+        let receiver_peer_id = [2u8; PEER_ID_SIZE];
         let header = PacketHeader::new(
-            TransferType::Send,
+            TransferType::Transfer,
             session_id,
             transfer_id,
+            sender_peer_id,
+            receiver_peer_id,
             nonce,
             content_hash,
             context.len() as u32,
