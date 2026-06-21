@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+adtp-core = { path = "../adtp-core" }
+adtp-peer-core = { path = "../adtp-peer-core" }
 clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 tokio = { workspace = true, features = ["full"] }
