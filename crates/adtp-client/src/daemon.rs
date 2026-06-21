@@ -155,9 +155,11 @@ async fn send_file(
     let context_bytes = serde_json::to_vec(&context_env).map_err(AdtpError::Json)?;
     let (ciphertext, nonce) = encrypt_file_bytes(session_key, &file_bytes)?;
     let header = PacketHeader::new(
-        TransferType::Send,
+        TransferType::Transfer,
         session_id,
         transfer_id,
+        [0u8; PEER_ID_SIZE],
+        [0u8; PEER_ID_SIZE],
         nonce,
         content_hash,
         context_bytes.len() as u32,
@@ -175,7 +177,9 @@ async fn send_file(
     let record = TransferRecord {
         id: transfer_id,
         session_id,
-        transfer_type: TransferType::Send,
+        sender_peer_id: [0u8; PEER_ID_SIZE],
+        receiver_peer_id: [0u8; PEER_ID_SIZE],
+        transfer_type: TransferType::Transfer,
         file_meta,
         status: TransferStatus::Delivered,
         initiated_at: Utc::now(),
