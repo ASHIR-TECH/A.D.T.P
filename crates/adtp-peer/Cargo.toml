@@ -1,0 +1,24 @@
+[package]
+name = "adtp-peer"
+version = "0.1.0"
+edition = "2021"
+description = "ADTP peer binary — symmetric peer daemon"
+license = "MIT"
+
+[dependencies]
+adtp-core = { path = "../adtp-core" }
+adtp-peer-core = { path = "../adtp-peer-core" }
+tokio = { workspace = true }
+quinn = { workspace = true }
+rustls = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+hex = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+dirs = { workspace = true }
