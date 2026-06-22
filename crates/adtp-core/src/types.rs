@@ -29,6 +29,9 @@ pub enum TransferType {
     Pong = 0x0B,
     Subscribe = 0x0C,
     Notify = 0x0D,
+    TaskRequest = 0x0E,
+    TaskUpdate = 0x0F,
+    ArtifactReady = 0x10,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
