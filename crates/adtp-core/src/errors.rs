@@ -76,6 +76,17 @@ pub enum AdtpError {
     WatchNotFound { watch_id: String },
     #[error("Internal error: {reason}")]
     Internal { reason: String },
+    #[error("Task not found: {task_id}")]
+    TaskNotFound { task_id: String },
+    #[error("Illegal task state transition: {from} → {to} — {reason}")]
+    IllegalTaskTransition { from: String, to: String, reason: String },
+    #[error("Task is in terminal state: {state}")]
+    TaskTerminal { state: String },
+    #[error("Artifact not found for task {task_id}: {artifact_name}")]
+    ArtifactNotFound {
+        task_id: String,
+        artifact_name: String,
+    },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

@@ -1,6 +1,8 @@
 use adtp_core::types::{PeerEntry, TransferRecord, TransferStatus, TransferType, TrustLevel, PEER_ID_SIZE};
+use adtp_peer_core::artifact::Artifact;
 use adtp_peer_core::audit::AuditLog;
 use adtp_peer_core::identity::PeerIdentityKey;
+use adtp_peer_core::task::{Task, TaskState, TaskStore};
 use adtp_peer_core::trust::TrustStore;
 use chrono::Utc;
 use std::path::PathBuf;
@@ -207,4 +209,100 @@ async fn test_audit_chain_tamper_detection() {
     assert!(!audit.verify_chain().unwrap());
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn test_full_task_lifecycle_integration() {
+    let mut store = TaskStore::new();
+    let sender = [1u8; PEER_ID_SIZE];
+    let receiver = [2u8; PEER_ID_SIZE];
+    let session_id = Uuid::new_v4();
+
+    let task = Task::new(
+        Uuid::new_v4(),
+        session_id,
+        sender,
+        receiver,
+        "Convert CSV to JSON".into(),
+        vec!["output.json".into()],
+    );
+    let task_id = task.task_id;
+
+    assert_eq!(task.state, TaskState::Received);
+    store.add(task);
+
+    let task = store.get_mut(&task_id.to_string()).unwrap();
+    task.transition(TaskState::Accepted, None).unwrap();
+    assert_eq!(task.state, TaskState::Accepted);
+
+    let task = store.get_mut(&task_id.to_string()).unwrap();
+    task.transition(TaskState::Processing, None).unwrap();
+    assert_eq!(task.state, TaskState::Processing);
+
+    let task = store.get_mut(&task_id.to_string()).unwrap();
+    task.add_artifact(
+        "output.json".into(),
+        Uuid::new_v4(),
+        "application/json".into(),
+        4096,
+    )
+    .unwrap();
+    assert_eq!(task.state, TaskState::ArtifactReady);
+
+    let task = store.get_mut(&task_id.to_string()).unwrap();
+    task.transition(TaskState::Completed, None).unwrap();
+    assert!(task.state.is_terminal());
+
+    let task = store.get(&task_id.to_string()).unwrap();
+    assert_eq!(task.artifacts.len(), 1);
+    assert_eq!(task.artifacts[0].artifact_name, "output.json");
+}
+
+#[tokio::test]
+async fn test_task_rejection_flow() {
+    let mut store = TaskStore::new();
+    let task = Task::new(
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        [1u8; PEER_ID_SIZE],
+        [2u8; PEER_ID_SIZE],
+        "Unwanted task".into(),
+        vec![],
+    );
+    let task_id = task.task_id;
+    store.add(task);
+
+    let task = store.get_mut(&task_id.to_string()).unwrap();
+    task.transition(TaskState::Rejected, Some("Not interested".into()))
+        .unwrap();
+    assert_eq!(task.state, TaskState::Rejected);
+    assert_eq!(task.reason.as_deref(), Some("Not interested"));
+    assert!(task.state.is_terminal());
+
+    let result = store
+        .get_mut(&task_id.to_string())
+        .unwrap()
+        .transition(TaskState::Accepted, None);
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_artifact_links_to_transfer() {
+    let task_id = Uuid::new_v4();
+    let transfer_id = Uuid::new_v4();
+
+    let artifact = Artifact::new(
+        task_id,
+        transfer_id,
+        "result.csv".into(),
+        "text/csv".into(),
+        "/tmp/result.csv".into(),
+        8192,
+        [42u8; 32],
+    );
+
+    assert_eq!(artifact.task_id, task_id);
+    assert_eq!(artifact.transfer_id, transfer_id);
+    assert_eq!(artifact.file_size, 8192);
+    assert_eq!(artifact.mime_type, "text/csv");
 }
