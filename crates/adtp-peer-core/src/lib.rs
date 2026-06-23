@@ -1,19 +1,27 @@
+pub mod agent_card;
+pub mod agent_card_server;
 pub mod artifact;
 pub mod audit;
 pub mod dual_endpoint;
 pub mod identity;
 pub mod intake;
 pub mod push;
+pub mod relay;
 pub mod subscribe;
 pub mod task;
+pub mod trace;
 pub mod trust;
 
+pub use agent_card::{build_unsigned_card, sign_card, verify_card, AgentCard, UnsignedCard};
+pub use agent_card_server::AgentCardServer;
 pub use artifact::Artifact;
 pub use audit::AuditLog;
 pub use dual_endpoint::DualEndpoint;
 pub use identity::PeerIdentityKey;
 pub use intake::{FileIntake, IntakeResult};
 pub use push::PushHandler;
+pub use relay::{build_relay_path, check_hop_limit, check_loop, parse_adtp_uri, RelayConfig, RelayRequest, UriParts};
 pub use subscribe::SubscribeManager;
 pub use task::{Task, TaskRecord, TaskState, TaskStore};
+pub use trace::{Span, Tracer};
 pub use trust::TrustStore;
