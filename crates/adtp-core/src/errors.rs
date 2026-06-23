@@ -87,6 +87,16 @@ pub enum AdtpError {
         task_id: String,
         artifact_name: String,
     },
+    #[error("Relay loop detected: peer {peer_id} already in relay_path")]
+    RelayLoopDetected { peer_id: String },
+    #[error("Relay hop limit exceeded: max {max} hops")]
+    RelayHopLimitExceeded { max: u8 },
+    #[error("Relay forwarding failed: {reason}")]
+    RelayForwardFailed { reason: String },
+    #[error("No route to peer {peer_id} via any relay")]
+    NoRelayRoute { peer_id: String },
+    #[error("Agent card verification failed: {reason}")]
+    AgentCardVerificationFailed { reason: String },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
