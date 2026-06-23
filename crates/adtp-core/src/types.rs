@@ -168,3 +168,50 @@ impl Default for AdtpAddr {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraceId(pub [u8; BLAKE3_HASH_SIZE]);
+
+impl TraceId {
+    pub fn new() -> Self {
+        let mut bytes = [0u8; BLAKE3_HASH_SIZE];
+        use blake3;
+        let hash = blake3::hash(uuid::Uuid::new_v4().as_bytes());
+        bytes.copy_from_slice(hash.as_bytes());
+        Self(bytes)
+    }
+
+    pub fn from_bytes(bytes: [u8; BLAKE3_HASH_SIZE]) -> Self {
+        Self(bytes)
+    }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(self.0)
+    }
+}
+
+impl Default for TraceId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for TraceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelayHop {
+    pub peer_id: [u8; PEER_ID_SIZE],
+    pub host: String,
+    pub port: u16,
+    pub timestamp_ns: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelayPath {
+    pub hops: Vec<RelayHop>,
+    pub hop_limit: u8,
+}

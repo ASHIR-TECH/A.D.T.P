@@ -5,6 +5,8 @@ use adtp_core::{
     types::{TransferRecord, TransferStatus, TransferType, AES_KEY_SIZE},
 };
 use adtp_peer_core::{
+    agent_card::{build_unsigned_card, sign_card},
+    agent_card_server::AgentCardServer,
     audit::AuditLog, dual_endpoint::DualEndpoint, identity::PeerIdentityKey,
     intake::FileIntake, trust::TrustStore,
 };
@@ -42,6 +44,25 @@ async fn main() {
     };
 
     println!("peer_id: {}", hex::encode(identity.peer_id));
+
+    let unsigned_card = build_unsigned_card(
+        &identity.peer_id,
+        &identity.verifying_key.to_bytes(),
+        None,
+        &args.listen_host,
+        args.listen_port,
+        adtp_core::types::ADTP_MAX_FILE_SIZE,
+        vec![],
+        true,
+        true,
+        vec![],
+    );
+    let agent_card = sign_card(&unsigned_card, &identity.signing_key);
+    let card_server = AgentCardServer::new(args.agent_card_port, agent_card);
+    tokio::spawn(async move {
+        card_server.serve().await;
+    });
+    tracing::info!("Agent Card server starting on port {}", args.agent_card_port);
 
     let peers_path = config_dir.join("peers.toml");
     let trust_store = TrustStore::load(&peers_path);
