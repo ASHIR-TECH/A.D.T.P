@@ -15,4 +15,7 @@ pub struct CliArgs {
 
     #[arg(long)]
     pub headless: bool,
+
+    #[arg(long, default_value_t = 40002)]
+    pub agent_card_port: u16,
 }
