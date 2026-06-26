@@ -97,6 +97,24 @@ pub enum AdtpError {
     NoRelayRoute { peer_id: String },
     #[error("Agent card verification failed: {reason}")]
     AgentCardVerificationFailed { reason: String },
+    #[error("NAT detection failed: {reason}")]
+    NatDetectionFailed { reason: String },
+    #[error("Rendezvous error: {reason}")]
+    RendezvousError { reason: String },
+    #[error("Rendezvous token expired")]
+    RendezvousTokenExpired,
+    #[error("Rendezvous token replay rejected")]
+    RendezvousTokenReplay,
+    #[error("Hole punch failed: {reason}")]
+    HolePunchFailed { reason: String },
+    #[error("mDNS discovery failed: {reason}")]
+    MdnsDiscoveryFailed { reason: String },
+    #[error("QoWT connection failed: {reason}")]
+    QowtConnectionFailed { reason: String },
+    #[error("Keepalive timeout — peer {peer_id} unreachable")]
+    KeepaliveTimeout { peer_id: String },
+    #[error("All connection paths exhausted for peer {peer_id}")]
+    AllPathsExhausted { peer_id: String },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

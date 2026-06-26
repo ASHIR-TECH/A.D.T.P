@@ -1,0 +1,34 @@
+# ADTP Peer Configuration — Phase 9.5
+# Copy to ~/.config/adtp/peer.toml
+
+# Rendezvous server for NAT traversal and hole punch coordination
+# Required for STUN and hole punch paths
+rendezvous_server = "udp://rendezvous.ashir.world:40004"
+rendezvous_port = 40004
+
+# LAN discovery using mDNS
+lan_discovery = true
+
+# Keepalive interval in milliseconds (default: 25000)
+# Must be shorter than the shortest NAT mapping timeout on your router
+keepalive_interval_ms = 25000
+
+# Optional manual NAT type override (skips auto-detection)
+# One of: open, full_cone, port_restricted, symmetric, cgnat
+# nat_type_override = "port_restricted"
+
+# Public STUN servers for NAT type detection (fallback)
+stun_servers = [
+    "stun1.l.google.com:19302",
+    "stun2.l.google.com:19302",
+]
+
+# QoWT (QUIC-over-WebSocket-over-TLS) fallback
+qowt_enabled = true
+qowt_gateway = "wss://relay.ashir.world:443/adtp"
+
+# Connection timeout per path in milliseconds
+connection_timeout_ms = 3000
+
+# Allow relay fallback via trusted public peers
+relay_enabled = true
