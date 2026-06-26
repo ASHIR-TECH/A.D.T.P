@@ -32,6 +32,10 @@ pub enum TransferType {
     TaskRequest = 0x0E,
     TaskUpdate = 0x0F,
     ArtifactReady = 0x10,
+    PeerRegister = 0x20,
+    RendezvousRequest = 0x21,
+    RendezvousResponse = 0x22,
+    PunchReady = 0x23,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -215,3 +219,87 @@ pub struct RelayPath {
     pub hops: Vec<RelayHop>,
     pub hop_limit: u8,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NatType {
+    Open,
+    FullCone,
+    PortRestricted,
+    Symmetric,
+    Cgnat,
+    IPv6,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerRegisterPayload {
+    pub peer_id: [u8; PEER_ID_SIZE],
+    pub external_addr: String,
+    pub nat_type: NatType,
+    pub supports_ipv6: bool,
+    pub can_relay: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RendezvousRequestPayload {
+    pub requester_peer_id: [u8; PEER_ID_SIZE],
+    pub target_peer_id: [u8; PEER_ID_SIZE],
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RendezvousResponsePayload {
+    pub token: String,
+    pub target_external_addr: String,
+    pub target_peer_id: [u8; PEER_ID_SIZE],
+    pub expires_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PunchReadyPayload {
+    pub token: String,
+    pub sender_peer_id: [u8; PEER_ID_SIZE],
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerConfig {
+    pub rendezvous_server: Option<String>,
+    pub rendezvous_port: u16,
+    pub lan_discovery: bool,
+    pub keepalive_interval_ms: u64,
+    pub nat_type_override: Option<NatType>,
+    pub stun_servers: Vec<String>,
+    pub qowt_enabled: bool,
+    pub qowt_gateway: Option<String>,
+    pub connection_timeout_ms: u64,
+    pub relay_enabled: bool,
+}
+
+impl Default for PeerConfig {
+    fn default() -> Self {
+        Self {
+            rendezvous_server: None,
+            rendezvous_port: 40004,
+            lan_discovery: true,
+            keepalive_interval_ms: 25000,
+            nat_type_override: None,
+            stun_servers: vec![
+                "stun1.l.google.com:19302".into(),
+                "stun2.l.google.com:19302".into(),
+            ],
+            qowt_enabled: true,
+            qowt_gateway: None,
+            connection_timeout_ms: 3000,
+            relay_enabled: true,
+        }
+    }
+}
+
+pub const RENDEZVOUS_DEFAULT_PORT: u16 = 40004;
+pub const KEEPALIVE_DEFAULT_MS: u64 = 25000;
+pub const CONNECTION_TIMEOUT_DEFAULT_MS: u64 = 3000;
+pub const ADTP_MDNS_SERVICE: &str = "_adtp._udp.local";
+pub const TOKEN_VALIDITY_SECS: u64 = 30;
+pub const PEER_TABLE_PURGE_SECS: u64 = 60;
+pub const DEAD_DETECTION_PINGS: u8 = 3;
+pub const RECONNECT_BACKOFF_MAX_SECS: u64 = 60;
