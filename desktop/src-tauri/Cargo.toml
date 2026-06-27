@@ -22,7 +22,10 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 anyhow = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
 adtp-cli = { path = "../../crates/adtp-cli" }
+adtp-peer-core = { path = "../../crates/adtp-peer-core" }
 png = "0.17"
 
 [dev-dependencies]
