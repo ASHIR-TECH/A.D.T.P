@@ -37,6 +37,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  listen('agent-response', (event) => {
+    const container = document.getElementById('chat-panel-container');
+    if (container) {
+      import('./components/ChatPanel.js').then(({ render }) => render(container));
+    }
+  });
+
   listen('tray-send-path', (event) => {
     const path = event.payload;
     if (currentTab !== 'dashboard') {
