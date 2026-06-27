@@ -4,10 +4,15 @@ use adtp_cli::models::{
     AuditLogList, ChainVerifyResult, ContextBlock, SessionList, TransferList,
     TransferSendResponse, TransferStatus, WatchList, WatchResponse,
 };
+use adtp_peer_core::agent::permissions::PermissionConfig;
 use tauri::AppHandle;
+use tauri::State;
 
+use crate::agent_manager::AgentManager;
 use crate::poller::{HealthSnapshot, SharedState};
 use crate::settings;
+
+type AgentState<'a> = State<'a, std::sync::Arc<tokio::sync::Mutex<AgentManager>>>;
 
 fn make_client(app: &AppHandle) -> Result<ApiClient, String> {
     let s = settings::read_settings(app);
@@ -204,6 +209,87 @@ pub async fn write_file(path: String, content: String) -> Result<bool, String> {
 pub async fn get_app_health(state: tauri::State<'_, SharedState>) -> Result<Option<HealthSnapshot>, String> {
     let s = state.lock().await;
     Ok(s.last_health.clone())
+}
+
+#[tauri::command]
+pub async fn agent_get_status(
+    agent: AgentState<'_>,
+) -> Result<serde_json::Value, String> {
+    let mgr = agent.lock().await;
+    Ok(mgr.status().await)
+}
+
+#[tauri::command]
+pub async fn agent_activate(
+    agent: AgentState<'_>,
+    provider: String,
+    model: String,
+    api_key: String,
+    ollama_host: Option<String>,
+    max_tokens: u32,
+    permissions: PermissionConfig,
+) -> Result<bool, String> {
+    let mgr = agent.lock().await;
+    mgr.activate(provider, model, api_key, ollama_host, max_tokens, permissions).await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn agent_deactivate(
+    agent: AgentState<'_>,
+) -> Result<bool, String> {
+    let mgr = agent.lock().await;
+    mgr.deactivate().await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn agent_send_message(
+    agent: AgentState<'_>,
+    message: String,
+) -> Result<String, String> {
+    let mgr = agent.lock().await;
+    mgr.send_message(message).await
+}
+
+#[tauri::command]
+pub async fn agent_get_permissions(
+    agent: AgentState<'_>,
+) -> Result<PermissionConfig, String> {
+    let mgr = agent.lock().await;
+    Ok(mgr.permissions().await)
+}
+
+#[tauri::command]
+pub async fn agent_update_permissions(
+    agent: AgentState<'_>,
+    config: PermissionConfig,
+) -> Result<bool, String> {
+    let mgr = agent.lock().await;
+    mgr.update_permissions(config).await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn agent_get_conversation(
+    agent: AgentState<'_>,
+) -> Result<Vec<adtp_peer_core::agent::runtime::ConversationEntry>, String> {
+    let mgr = agent.lock().await;
+    Ok(mgr.conversation().await)
+}
+
+#[tauri::command]
+pub fn get_home_dir() -> Result<String, String> {
+    dirs::home_dir().map(|p| p.to_string_lossy().to_string()).ok_or("Cannot determine home directory".into())
+}
+
+#[tauri::command]
+pub async fn agent_clear_conversation(
+    agent: AgentState<'_>,
+) -> Result<bool, String> {
+    let mgr = agent.lock().await;
+    mgr.clear_conversation().await;
+    Ok(true)
 }
 
 #[cfg(test)]

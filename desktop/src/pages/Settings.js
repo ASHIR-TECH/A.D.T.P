@@ -3,6 +3,7 @@ const { invoke } = window.__TAURI__.core;
 import { show } from '../components/Toast.js';
 import { renderCard as renderAgentCard } from '../components/AgentCard.js';
 import { renderCard as renderPeerCard } from '../components/PeerCard.js';
+import { render as renderAgentStatus } from '../components/AgentStatusCard.js';
 
 let agents = [];
 let peers = [];
@@ -85,9 +86,14 @@ export async function render(container) {
     </div>
 
     <div class="settings-section">
-      <h3>Agents</h3>
+      <h3>Network Agents</h3>
       <div id="agent-list"></div>
       <button class="btn btn-secondary" id="add-agent">+ Add Agent</button>
+    </div>
+
+    <div class="settings-section" id="embedded-agent-section">
+      <h3>Embedded Agent</h3>
+      <div id="embedded-agent-card"></div>
     </div>
 
     <div class="settings-section">
@@ -117,6 +123,7 @@ export async function render(container) {
 
   renderAgents(container);
   renderPeers(container);
+  renderAgentStatus(container.querySelector('#embedded-agent-card'));
 
   const tokenInput = container.querySelector('#api-token');
   tokenInput.addEventListener('change', async () => {

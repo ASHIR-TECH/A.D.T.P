@@ -1,8 +1,10 @@
+mod agent_manager;
 mod commands;
 mod poller;
 mod settings;
 mod tray;
 
+use agent_manager::AgentManager;
 use poller::SharedState;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
@@ -17,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .manage::<SharedState>(Arc::new(Mutex::new(poller::AppState::default())))
+        .manage::<Arc<Mutex<AgentManager>>>(Arc::new(Mutex::new(AgentManager::new())))
         .setup(|app| {
             tray::build_tray(app.handle())?;
 
@@ -101,6 +104,15 @@ pub fn run() {
             commands::load_api_token,
             commands::write_file,
             commands::get_app_health,
+            commands::agent_get_status,
+            commands::agent_activate,
+            commands::agent_deactivate,
+            commands::agent_send_message,
+            commands::agent_get_permissions,
+            commands::agent_update_permissions,
+            commands::agent_get_conversation,
+            commands::agent_clear_conversation,
+            commands::get_home_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ADTP Desktop");

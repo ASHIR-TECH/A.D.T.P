@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod agent_card;
 pub mod agent_card_server;
 pub mod artifact;
@@ -17,6 +18,9 @@ pub mod task;
 pub mod trace;
 pub mod trust;
 
+pub use agent::{
+    AgentConfig, AgentRuntime, ArtifactWriter, PendingTaskQueue, PermissionStore, TaskRouter,
+};
 pub use agent_card::{build_unsigned_card, sign_card, verify_card, AgentCard, UnsignedCard};
 pub use agent_card_server::AgentCardServer;
 pub use artifact::Artifact;
