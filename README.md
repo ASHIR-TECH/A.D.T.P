@@ -7,7 +7,7 @@
 -->
 # ADTP — Agent Direct Transfer Protocol
 
-ADTP is a backend-first file transfer protocol for moving files directly between a user machine and an AI agent server. The project currently implements the Phase 0 foundation layer and the Phase 1 transfer engine/daemon layer in Rust
+ADTP is a backend-first file transfer protocol for moving files directly between a user machine and an AI agent server. The project currently implements the Phase 0 foundation layer and the Phase 1 transfer engine/daemon layer in Rust.
 
 ## Current Status
 
