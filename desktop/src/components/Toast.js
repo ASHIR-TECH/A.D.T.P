@@ -1,16 +1,41 @@
-const container = document.getElementById('toast-container');
+let visibleToasts = [];
 
-export function show(message, type = 'info', duration = 4000) {
+export function show(message, variant) {
+  const container = document.getElementById('toast-container');
   if (!container) return;
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.textContent = message;
-  container.appendChild(el);
+
+  if (visibleToasts.length >= 3) {
+    const oldest = visibleToasts.shift();
+    if (oldest && oldest.parentNode) oldest.parentNode.removeChild(oldest);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${variant || 'info'}`;
+  toast.innerHTML = `
+    <span></span>
+    <span>${message}</span>
+    <button class="toast-close"></button>
+  `;
+
+  toast.querySelector('.toast-close').addEventListener('click', () => {
+    removeToast(toast);
+  });
+
+  container.appendChild(toast);
+  visibleToasts.push(toast);
+
   setTimeout(() => {
-    el.style.opacity = '0';
-    el.style.transition = 'opacity 0.3s';
-    setTimeout(() => el.remove(), 300);
-  }, duration);
+    removeToast(toast);
+  }, 4000);
 }
 
-export function render() {}
+function removeToast(toast) {
+  if (!toast || !toast.parentNode) return;
+  toast.style.transition = 'opacity 200ms ease-in, transform 200ms ease-in';
+  toast.style.opacity = '0';
+  toast.style.transform = 'translateY(12px)';
+  setTimeout(() => {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+    visibleToasts = visibleToasts.filter(t => t !== toast);
+  }, 200);
+}
