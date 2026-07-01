@@ -3,27 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ADTP Desktop — Ashir Tech</title>
+  <title>ADTP — Ashir Tech</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
-    <nav id="sidebar">
-      <div class="sidebar-header">
-        <h1>ADTP</h1>
-        <span class="sidebar-subtitle">Ashir Tech</span>
-      </div>
-      <ul class="nav-list">
-        <li data-tab="dashboard" class="active">Dashboard</li>
-        <li data-tab="history">History</li>
-        <li data-tab="settings">Settings</li>
-      </ul>
-    </nav>
-    <main id="content">
-      <div id="toast-container"></div>
+    <nav id="sidebar"></nav>
+    <div id="content">
+      <div id="banner-container"></div>
       <div id="page-container"></div>
-    </main>
+    </div>
   </div>
+  <div id="toast-container"></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>
