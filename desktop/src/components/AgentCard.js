@@ -7,7 +7,7 @@ export function renderCard(container, agent, index, onUpdate, onRemove) {
   card.innerHTML = `
     <div class="agent-card-header">
       <h4>${name}</h4>
-      <button class="btn-icon remove-agent" title="Remove agent">✕</button>
+      <button class="btn-icon remove-agent" title="Remove agent"></button>
     </div>
     <div class="agent-fields">
       <div class="settings-field">
