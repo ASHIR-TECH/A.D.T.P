@@ -1,98 +1,83 @@
-const { invoke, listen } = window.__TAURI__.core;
-const { listen: eventListen } = window.__TAURI__.event;
+const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
 
 let messages = [];
 let agentState = 'inactive';
 
 export async function render(container) {
+  const status = await invoke('agent_get_status').catch(() => ({ active: false }));
+  if (status?.active) agentState = 'active';
+
   container.innerHTML = `
-    <div id="chat-panel" class="chat-panel">
+    <div class="chat-panel">
       <div class="chat-header">
         <span class="chat-title">Agent</span>
-        <span class="chat-status" id="chat-status">
-          <span class="chat-dot ${agentState}" id="chat-dot"></span>
-          <span id="chat-status-text">${agentState === 'active' ? 'Ready' : agentState === 'processing' ? 'Thinking...' : 'Not configured'}</span>
+        <span class="chat-status">
+          <span class="agent-dot ${agentState === 'active' ? 'active' : agentState === 'processing' ? 'processing motion-pulse' : 'inactive'}"></span>
+          <span id="chat-status-text">${agentState === 'active' ? 'Ready' : agentState === 'processing' ? 'Thinking...' : 'Offline'}</span>
         </span>
       </div>
       <div class="chat-messages" id="chat-messages">
-        <div class="chat-empty">Configure an agent in Settings to start chatting.</div>
+        ${messages.length === 0 ? '<div class="chat-empty">Ask the agent something</div>' : ''}
+        ${messages.map(m => `
+          <div class="chat-msg ${m.role === 'user' ? 'chat-msg-right' : 'chat-msg-left'}">
+            <div class="chat-msg-label">${m.role === 'user' ? 'You' : 'Agent'}</div>
+            <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
+            <div class="chat-msg-time">${new Date(m.timestamp).toLocaleTimeString()}</div>
+          </div>
+        `).join('')}
       </div>
       <div class="chat-input-area">
-        <textarea class="chat-input" id="chat-input" placeholder="Ask the agent..." rows="1" maxlength="4000"></textarea>
-        <button class="btn btn-primary btn-chat-send" id="chat-send" disabled>Send</button>
+        <textarea class="chat-input" id="chat-input" placeholder="Ask the agent..." rows="1" maxlength="4000" ${agentState !== 'active' ? 'disabled' : ''}></textarea>
+        <button class="btn btn-sm btn-primary btn-chat-send" id="chat-send" ${agentState !== 'active' ? 'disabled' : ''}>Send</button>
       </div>
     </div>
   `;
 
-  const status = await invoke('agent_get_status').catch(() => null);
-  if (status && status.active) {
-    agentState = 'active';
-    updateStatus(container);
-  }
+  setupChat(container);
+  listenToEvents(container);
+}
 
-  setupInputAutoResize(container);
-  setupSendHandler(container);
-  setupKeyHandler(container);
-
-  eventListen('agent-message', (event) => {
+function listenToEvents(container) {
+  listen('agent-message', (event) => {
     messages.push(event.payload);
     renderMessages(container);
   });
 
-  eventListen('agent-status', (event) => {
-    agentState = event.payload.state || 'inactive';
-    updateStatus(container);
+  listen('agent-status', (event) => {
+    agentState = event.payload?.state || 'inactive';
+    updateChatUI(container);
   });
 }
 
-function updateStatus(container) {
-  const dot = container.querySelector('#chat-dot');
-  const text = container.querySelector('#chat-status-text');
+function updateChatUI(container) {
   const input = container.querySelector('#chat-input');
-  const sendBtn = container.querySelector('#chat-send');
-  if (!dot) return;
+  const send = container.querySelector('#chat-send');
+  const statusText = container.querySelector('#chat-status-text');
+  const dots = container.querySelectorAll('.agent-dot');
+  if (!input) return;
 
-  dot.className = `chat-dot ${agentState}`;
-  switch (agentState) {
-    case 'active':
-      text.textContent = 'Ready';
-      input.disabled = false;
-      sendBtn.disabled = false;
-      break;
-    case 'processing':
-      text.textContent = 'Thinking...';
-      input.disabled = true;
-      sendBtn.disabled = true;
-      break;
-    case 'error':
-      text.textContent = 'Error';
-      input.disabled = true;
-      sendBtn.disabled = true;
-      break;
-    default:
-      text.textContent = 'Not configured';
-      input.disabled = true;
-      sendBtn.disabled = true;
-  }
+  const enabled = agentState === 'active';
+  input.disabled = !enabled;
+  send.disabled = !enabled;
+  statusText.textContent = enabled ? 'Ready' : agentState === 'processing' ? 'Thinking...' : 'Offline';
+  dots.forEach(d => {
+    d.className = `agent-dot ${enabled ? 'active' : agentState === 'processing' ? 'processing motion-pulse' : 'inactive'}`;
+  });
 }
 
-function setupInputAutoResize(container) {
+function setupChat(container) {
   const input = container.querySelector('#chat-input');
+  const send = container.querySelector('#chat-send');
+  if (!input || !send) return;
+
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
   });
-}
 
-function setupSendHandler(container) {
-  const input = container.querySelector('#chat-input');
-  const sendBtn = container.querySelector('#chat-send');
+  send.addEventListener('click', () => sendMessage(container));
 
-  sendBtn.addEventListener('click', () => sendMessage(container));
-}
-
-function setupKeyHandler(container) {
-  const input = container.querySelector('#chat-input');
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -112,7 +97,7 @@ async function sendMessage(container) {
   input.style.height = 'auto';
 
   agentState = 'processing';
-  updateStatus(container);
+  updateChatUI(container);
 
   try {
     const response = await invoke('agent_send_message', { message: text });
@@ -123,35 +108,28 @@ async function sendMessage(container) {
     agentState = 'error';
   }
   renderMessages(container);
-  updateStatus(container);
+  updateChatUI(container);
 }
 
 function renderMessages(container) {
   const el = container.querySelector('#chat-messages');
   if (!el) return;
-
   if (messages.length === 0) {
-    el.innerHTML = '<div class="chat-empty">No messages yet. Ask the agent something!</div>';
+    el.innerHTML = '<div class="chat-empty">Ask the agent something</div>';
     return;
   }
-
-  el.innerHTML = messages.map(m => {
-    const align = m.role === 'user' ? 'chat-msg-right' : 'chat-msg-left';
-    const label = m.role === 'user' ? 'You' : 'Agent';
-    return `
-      <div class="chat-msg ${align}">
-        <div class="chat-msg-label">${label}</div>
-        <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
-        <div class="chat-msg-time">${new Date(m.timestamp).toLocaleTimeString()}</div>
-      </div>
-    `;
-  }).join('');
-
+  el.innerHTML = messages.map(m => `
+    <div class="chat-msg ${m.role === 'user' ? 'chat-msg-right' : 'chat-msg-left'}">
+      <div class="chat-msg-label">${m.role === 'user' ? 'You' : 'Agent'}</div>
+      <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
+      <div class="chat-msg-time">${new Date(m.timestamp).toLocaleTimeString()}</div>
+    </div>
+  `).join('');
   el.scrollTop = el.scrollHeight;
 }
 
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
 }
