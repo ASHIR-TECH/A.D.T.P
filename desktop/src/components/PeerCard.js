@@ -7,7 +7,7 @@ export function renderCard(container, peer, index, onUpdate, onRemove) {
   card.innerHTML = `
     <div class="peer-card-header">
       <h4>${name}</h4>
-      <button class="btn-icon remove-peer" title="Remove peer">✕</button>
+      <button class="btn-icon remove-peer" title="Remove peer"></button>
     </div>
     <div class="peer-fields">
       <div class="settings-field">
