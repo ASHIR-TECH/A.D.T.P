@@ -3,7 +3,7 @@ const { invoke } = window.__TAURI__.core;
 export function render(container) {
   container.innerHTML = `
     <div class="drop-zone" id="drop-zone">
-      <div class="drop-zone-icon">📁</div>
+      <div class="drop-zone-icon"></div>
       <div class="drop-zone-text">Drop files here or click to browse</div>
       <div class="drop-zone-hint">Files are sent to your configured agent</div>
     </div>
