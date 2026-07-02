@@ -1,7 +1,7 @@
 const NAV_ITEMS = [
-  { tab: 'dashboard', icon: '', label: 'Dashboard' },
-  { tab: 'history', icon: '', label: 'History' },
-  { tab: 'settings', icon: '', label: 'Settings' },
+  { tab: 'dashboard', icon: 'icons/Dashboard.png', label: 'Dashboard' },
+  { tab: 'history', icon: 'icons/History.png', label: 'History' },
+  { tab: 'settings', icon: 'icons/setting.png', label: 'Settings' },
 ];
 
 export function render(container, activeTab, onNavigate) {
@@ -12,8 +12,8 @@ export function render(container, activeTab, onNavigate) {
     <ul class="nav-list">
       ${NAV_ITEMS.map(item => `
         <li class="${item.tab === activeTab ? 'active' : ''}" data-tab="${item.tab}">
-          <span class="nav-icon">${item.icon}</span>
-          ${item.label}
+          <span class="nav-icon-wrap"><img class="nav-icon" src="${item.icon}" alt="" /></span>
+          <span class="nav-label">${item.label}</span>
         </li>
       `).join('')}
     </ul>
