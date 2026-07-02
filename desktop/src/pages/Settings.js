@@ -128,9 +128,9 @@ function setupEventHandlers(container, settings) {
   container.querySelector('#advanced-toggle')?.addEventListener('click', () => {
     advancedOpen = !advancedOpen;
     const content = container.querySelector('#advanced-content');
-    const toggle = container.querySelector('#advanced-toggle span:last-child');
+    const toggle = container.querySelector('#advanced-toggle');
     content.style.display = advancedOpen ? 'block' : 'none';
-    toggle.textContent = '';
+    toggle.style.animation = advancedOpen ? 'none' : '';
     if (advancedOpen) saveSettings(container);
   });
 
