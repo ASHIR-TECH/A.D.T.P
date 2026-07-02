@@ -36,7 +36,7 @@ export async function render(container) {
         </div>
       ` : `
         <p class="agent-status-empty">No agent configured. Add an API key to enable the local AI agent.</p>
-        <button class="btn btn-primary" id="agent-setup">Add Agent</button>
+        <div class="agent-status-action-row"><button class="btn btn-primary" id="agent-setup">Add Agent</button></div>
       `}
     </div>
   `;
