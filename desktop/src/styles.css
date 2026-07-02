@@ -173,7 +173,7 @@ body {
 
 #page-container {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
   padding: var(--space-6);
 }
 
@@ -238,6 +238,17 @@ body {
 }
 .btn-danger:hover { opacity: 0.85; }
 
+.btn-brown {
+  background: #6B3A2A;
+  color: var(--white);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.btn-brown:hover {
+  background: #8B5E3C;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(107, 58, 42, 0.5);
+}
+
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-icon {
   padding: 4px 8px;
@@ -294,7 +305,7 @@ body {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--interactive-muted);
+  color: var(--white);
   font-weight: 700;
 }
 
@@ -531,7 +542,7 @@ body {
 .donut-svg { width: 100px; height: 100px; }
 
 .donut-center-label {
-  font-family: var(--font-display);
+  font-family: 'Megrim';
   font-size: 20px;
   font-weight: 400;
 }
@@ -773,6 +784,11 @@ body {
 .settings-empty-title { font-size: 16px; font-weight: 700; color: var(--white); }
 .settings-empty-text { font-size: 13px; }
 
+@keyframes white-thump {
+  0%, 100% { background: rgba(255, 255, 255, 0.95); border-color: rgba(255, 255, 255, 0.95); color: #000000; }
+  50% { background: #000000; border-color: #000000; color: #ffffff; }
+}
+
 .advanced-link {
   display: flex;
   align-items: center;
@@ -782,11 +798,20 @@ body {
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
-  border-top: 1px solid var(--border-light);
-  transition: color var(--dur-nav) var(--ease-out);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  margin-top: var(--space-2);
+  animation: white-thump 1.5s ease-in-out infinite;
 }
 
-.advanced-link:hover { color: var(--white); }
+.advanced-link:hover {
+  animation: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a2e;
+  border-color: rgba(255, 255, 255, 0.9);
+  transform: scale(1.02);
+}
 
 /* Agent Card */
 .agent-status-card {
@@ -822,6 +847,18 @@ body {
 }
 
 .agent-status-actions { display: flex; gap: var(--space-2); }
+
+.agent-status-empty {
+  font-size: 14px;
+  color: var(--interactive-muted);
+  line-height: 1.6;
+  margin-bottom: var(--space-4);
+}
+
+.agent-status-action-row {
+  display: flex;
+  justify-content: flex-end;
+}
 
 /* Chat Panel */
 .chat-panel {
