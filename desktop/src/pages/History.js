@@ -13,9 +13,9 @@ export async function render(container) {
       <span class="date-range-pill" id="history-date-range">Last 24 Hours</span>
       <input class="search-input" id="history-search" placeholder="Search Session ID, Actor, or Hash..." />
       <div class="toolbar-actions">
-        <button class="btn btn-sm btn-secondary" id="export-csv">Export CSV</button>
-        <button class="btn btn-sm btn-outline-gold" id="verify-chain">Verify Chain</button>
-        <button class="btn btn-sm btn-primary" id="refresh-history">Refresh</button>
+        <button class="btn btn-sm btn-brown" id="export-csv">Export CSV</button>
+        <button class="btn btn-sm btn-brown" id="verify-chain">Verify Chain</button>
+        <button class="btn btn-sm btn-brown" id="refresh-history">Refresh</button>
       </div>
     </div>
     <div id="verify-result"></div>
