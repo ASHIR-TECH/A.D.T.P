@@ -32,6 +32,7 @@ export async function render(container) {
           </div>
         </div>
         <div id="event-table"></div>
+        <div id="dashboard-banner"></div>
       </div>
       <div id="chat-panel-container" class="dashboard-sidebar"></div>
     </div>
@@ -46,6 +47,8 @@ export async function render(container) {
   container.querySelector('#table-search')?.addEventListener('input', (e) => {
     filterEvents(container, e.target.value);
   });
+
+  renderAgentBanner(container);
 
   listen('health-update', (event) => {
     health = event.payload;
@@ -160,5 +163,30 @@ function filterEvents(container, query) {
   rows.forEach(row => {
     const text = row.textContent.toLowerCase();
     row.style.display = text.includes(query.toLowerCase()) ? '' : 'none';
+  });
+}
+
+async function renderAgentBanner(container) {
+  let settings;
+  try {
+    settings = await invoke('load_settings');
+  } catch { return; }
+  if (settings.agents?.length) return;
+  const el = container.querySelector('#dashboard-banner');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="banner gold" style="margin-top:var(--space-4)">
+      <span>Set up your AI agent to unlock natural language file commands</span>
+      <button class="btn btn-sm btn-ember" id="dash-banner-setup">Set Up Agent</button>
+      <button class="banner-close" id="dash-banner-close"></button>
+    </div>
+  `;
+  el.querySelector('#dash-banner-setup')?.addEventListener('click', () => import('./AgentSetup.js').then(mod => mod.showSetup()));
+  el.querySelector('#dash-banner-close')?.addEventListener('click', () => {
+    const banner = el.querySelector('.banner');
+    banner.style.maxHeight = '0';
+    banner.style.padding = '0';
+    banner.style.opacity = '0';
+    banner.style.overflow = 'hidden';
   });
 }
