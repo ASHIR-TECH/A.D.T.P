@@ -424,6 +424,15 @@ body {
 
 .banner.ember { border-left-color: var(--ember); }
 
+.banner.gold {
+  animation: white-thump 1.5s ease-in-out infinite;
+}
+.banner.gold:hover {
+  animation: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a2e;
+}
+
 .banner-close {
   margin-left: auto;
   background: none;
