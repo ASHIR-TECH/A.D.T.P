@@ -1,6 +1,6 @@
 const NAV_ITEMS = [
   { tab: 'dashboard', icon: 'icons/Dashboard.png', label: 'Dashboard' },
-  { tab: 'history', icon: 'icons/History.png', label: 'History' },
+  { tab: 'history', icon: 'icons/History1.png', label: 'History' },
   { tab: 'settings', icon: 'icons/setting.png', label: 'Settings' },
 ];
 
