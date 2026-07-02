@@ -14,7 +14,7 @@ export function renderDonutWidget(container, title, segments, centreValue) {
   const r = 40;
   const circumference = 2 * Math.PI * r;
 
-  let svgPaths = '';
+  let svgPaths = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#000000" stroke-width="8" opacity="70" />`;
   paths.forEach((seg, i) => {
     const offset = (seg.startAngle / 360) * circumference;
     const length = ((seg.endAngle - seg.startAngle) / 360) * circumference;
@@ -38,7 +38,7 @@ export function renderDonutWidget(container, title, segments, centreValue) {
       <svg class="donut-svg" viewBox="0 0 ${svgSize} ${svgSize}">
         ${svgPaths}
       </svg>
-      <div class="donut-center-label gold-text">${centreValue !== undefined ? centreValue : total}</div>
+      <div class="donut-center-label">${centreValue !== undefined ? centreValue : total}</div>
       <div class="donut-legend">${legendHtml}</div>
     </div>
   `;
