@@ -58,9 +58,6 @@ export async function render(container) {
 
       <!-- Embedded Agent Card -->
       <div class="settings-card" id="embedded-agent-section">
-        <div class="settings-card-header">
-          <h3>Embedded Agent</h3>
-        </div>
         <div id="embedded-agent-card"></div>
       </div>
 
@@ -141,12 +138,6 @@ function setupEventHandlers(container, settings) {
     container.querySelector(`#${id}`)?.addEventListener('change', () => saveSettings(container));
   });
 
-  if (!settings.agents?.length) {
-    showBanner("Set up your AI agent to unlock natural language file commands", "gold", {
-      label: "Set Up Agent",
-      onClick: () => import('./AgentSetup.js').then(mod => mod.showSetup())
-    });
-  }
 }
 
 function saveSettings(container) {
