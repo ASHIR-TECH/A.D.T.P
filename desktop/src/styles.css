@@ -238,6 +238,17 @@ body {
 }
 .btn-danger:hover { opacity: 0.85; }
 
+.btn-ember {
+  background: var(--ember);
+  color: var(--white);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.btn-ember:hover {
+  background: #d94a1a;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(200,67,10,0.4);
+}
+
 .btn-brown {
   background: #6B3A2A;
   color: var(--white);
