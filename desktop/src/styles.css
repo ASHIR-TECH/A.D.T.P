@@ -55,9 +55,10 @@ body {
 }
 
 .nav-list li {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: flex-start;
   padding: 10px var(--space-4);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -69,18 +70,45 @@ body {
 }
 
 .nav-list li:hover {
-  background: var(--surface-accent-light);
-  color: var(--white);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .nav-list li.active {
-  background: rgba(193,95,60,0.2);
-  color: var(--white);
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a2e;
   border-left: 3px solid var(--surface-card);
   font-weight: 700;
 }
 
-.nav-list li .nav-icon { width: 20px; text-align: center; font-size: 16px; }
+.nav-label {
+  transition: opacity var(--dur-nav) var(--ease-out);
+}
+
+.nav-list li:hover .nav-label,
+.nav-list li.active .nav-label {
+  opacity: 0;
+}
+
+.nav-icon-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--dur-nav) var(--ease-out);
+}
+
+.nav-list li:hover .nav-icon-wrap,
+.nav-list li.active .nav-icon-wrap {
+  opacity: 1;
+}
+
+.nav-list li .nav-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
 
 .nav-footer {
   padding: var(--space-3) var(--space-2);
@@ -108,7 +136,7 @@ body {
 }
 
 #topbar .page-title {
-  font-family: var(--font-display);
+  font-family: 'Offside';
   font-size: 22px;
   font-weight: 400;
   margin: 0;
