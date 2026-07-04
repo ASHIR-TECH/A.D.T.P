@@ -1195,14 +1195,23 @@ body {
   box-shadow: 0 0 0 1px var(--surface-card);
 }
 
-.provider-tile-icon {
+.provider-tile-icon-wrap {
   width: 64px;
   height: 64px;
-  object-fit: cover;
-  transform: scale(1.6);
-  display: block;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #fff;
-  transition: opacity var(--dur-nav) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.provider-tile-icon {
+  min-width: 80px;
+  min-height: 80px;
+  max-width: 90px;
+  max-height: 90px;
+  object-fit: cover;
 }
 
 .provider-tile:hover .provider-tile-icon {
