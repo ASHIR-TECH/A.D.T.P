@@ -1191,6 +1191,11 @@ body {
   box-shadow: 0 0 0 2px var(--surface-card), 0 2px 12px rgba(193,95,60,0.25);
 }
 
+.provider-tiles:has(.provider-tile.selected) .provider-tile:not(.selected) {
+  opacity: 0.35;
+  filter: grayscale(0.7);
+}
+
 .provider-tile-icon {
   width: 80px;
   height: 80px;
