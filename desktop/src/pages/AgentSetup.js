@@ -127,19 +127,25 @@ function renderProviderStep() {
     <p class="setup-desc">Choose an AI provider for your local agent.</p>
     <div class="provider-tiles">
       <div class="provider-tile ${setupState.provider === 'openai' ? 'selected' : ''}" data-provider="openai">
-        <div class="provider-tile-icon">GPT</div>
-        <div class="provider-tile-name">OpenAI (GPT)</div>
-        <div class="provider-tile-desc">Uses gpt-4o. Internet required.</div>
+        <img class="provider-tile-icon" src="icons/chatgpt.jpg" alt="OpenAI" />
+        <div class="provider-tile-info">
+          <div class="provider-tile-name">OpenAI (GPT)</div>
+          <div class="provider-tile-desc">Uses gpt-4o. Internet required.</div>
+        </div>
       </div>
       <div class="provider-tile ${setupState.provider === 'anthropic' ? 'selected' : ''}" data-provider="anthropic">
-        <div class="provider-tile-icon">CL</div>
-        <div class="provider-tile-name">Anthropic (Claude)</div>
-        <div class="provider-tile-desc">Uses claude-sonnet-4. Internet required.</div>
+        <img class="provider-tile-icon" src="icons/claude-color.svg" alt="Claude" />
+        <div class="provider-tile-info">
+          <div class="provider-tile-name">Anthropic (Claude)</div>
+          <div class="provider-tile-desc">Uses claude-sonnet-4. Internet required.</div>
+        </div>
       </div>
       <div class="provider-tile ${setupState.provider === 'ollama' ? 'selected' : ''}" data-provider="ollama">
-        <div class="provider-tile-icon">OL</div>
-        <div class="provider-tile-name">Run Locally (Ollama)</div>
-        <div class="provider-tile-desc">No internet required.</div>
+        <img class="provider-tile-icon" src="icons/ollama.svg" alt="Ollama" />
+        <div class="provider-tile-info">
+          <div class="provider-tile-name">Run Locally (Ollama)</div>
+          <div class="provider-tile-desc">No internet required.</div>
+        </div>
       </div>
     </div>
     <div class="setup-nav">
