@@ -1180,6 +1180,7 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  overflow: hidden;
   transition: all var(--dur-nav) var(--ease-out);
 }
 
@@ -1197,11 +1198,10 @@ body {
 .provider-tile-icon {
   width: 64px;
   height: 64px;
-  object-fit: contain;
-  padding: 10px;
+  object-fit: cover;
+  transform: scale(1.35);
   display: block;
   background: #fff;
-  border-radius: var(--radius-md);
   transition: opacity var(--dur-nav) var(--ease-out);
 }
 
