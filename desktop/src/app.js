@@ -204,12 +204,14 @@ document.addEventListener('DOMContentLoaded', () => {
   activateTab('dashboard');
 
   let lastT = null;
+  let frameCount = 0;
   function tick(t){
     if (lastT === null) lastT = t;
     const dt = (t - lastT)/1000;
     lastT = t;
     rendered.forEach(({loop}) => { loop.phaseOffset += loop.speed*dt; });
-    update();
+    frameCount = (frameCount + 1) % 4;
+    if (frameCount === 0) update();
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
