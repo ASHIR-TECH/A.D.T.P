@@ -15,6 +15,9 @@ let setupState = {
 
 export function showSetup() {
   currentStep = 1;
+  setupState.provider = '';
+  setupState.apiKey = '';
+  setupState.model = '';
   const modal = showModal(document.body, 'Set Up Agent', renderStepContent());
   renderStepEvents(modal);
 }
