@@ -4,12 +4,27 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
+  margin: 0;
+  background: linear-gradient(45deg, #ffbe6f 13%, #000000 64%, #000000 100%);
+  background-size: 200% 200%;
+  animation: gradient-wave-v 8s ease alternate infinite;
   font-family: var(--font-body);
-  font-weight: 400;
-  background: var(--bg-deepest);
   color: var(--white);
-  overflow: hidden;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes gradient-wave-v {
+  0% { background-position: 50% 0%; }
+  50% { background-position: 50% 100%; }
+  100% { background-position: 50% 0%; }
+}
+
+#app {
+  display: flex;
   height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 #app {
@@ -20,7 +35,7 @@ body {
 /* Sidebar */
 #sidebar {
   width: var(--sidebar-width);
-  background: var(--surface-primary);
+  background: transparent;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
