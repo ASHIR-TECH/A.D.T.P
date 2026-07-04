@@ -1171,47 +1171,35 @@ body {
 
 .provider-tile {
   position: relative;
-  background: var(--bg-deepest);
-  border: 1px solid rgba(255,255,255,0.12);
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
   border-radius: var(--radius-lg);
-  padding: var(--space-5) var(--space-4);
-  min-height: 120px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: var(--space-4);
   cursor: pointer;
-  overflow: hidden;
   transition: all var(--dur-nav) var(--ease-out);
 }
 
 .provider-tile:hover {
-  border-color: rgba(255,255,255,0.9);
-  background: rgba(255,255,255,0.9);
+  border-color: var(--surface-card);
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(193,95,60,0.3);
 }
 
 .provider-tile.selected {
   border-color: var(--surface-card);
-  background: rgba(193,95,60,0.2);
-  box-shadow: 0 0 0 1px var(--surface-card);
-}
-
-.provider-tile-icon-wrap {
-  width: 64px;
-  height: 64px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: #fff;
-  flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--surface-card), 0 2px 12px rgba(193,95,60,0.25);
 }
 
 .provider-tile-icon {
-  min-width: 80px;
-  min-height: 80px;
-  max-width: 90px;
-  max-height: 90px;
-  object-fit: cover;
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  display: block;
+  margin: var(--space-3) auto;
+  background: #fff;
+  border-radius: var(--radius-sm);
+  transition: opacity var(--dur-nav) var(--ease-out);
 }
 
 .provider-tile:hover .provider-tile-icon {
@@ -1228,6 +1216,7 @@ body {
   opacity: 0;
   transition: opacity var(--dur-nav) var(--ease-out);
   padding: var(--space-4);
+  pointer-events: none;
 }
 
 .provider-tile:hover .provider-tile-info {
