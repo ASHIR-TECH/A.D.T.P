@@ -428,6 +428,8 @@ body {
   border-color: var(--surface-card);
 }
 
+#setup-model { color: #000; }
+
 /* Tables */
 .data-table {
   background: var(--surface-card);
