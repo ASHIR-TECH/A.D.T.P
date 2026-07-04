@@ -1,6 +1,6 @@
 const { invoke } = window.__TAURI__.core;
 import { show } from '../components/Toast.js';
-import { showModal } from '../components/Modal.js';
+import { showModalContent } from '../components/Modal.js';
 import { render as renderSettings } from './Settings.js';
 
 let currentStep = 1;
@@ -18,7 +18,7 @@ export function showSetup() {
   setupState.provider = '';
   setupState.apiKey = '';
   setupState.model = '';
-  const modal = showModal(document.body, 'Set Up Agent', renderStepContent());
+  const modal = showModalContent(document.body, 'Set Up Agent', renderStepContent());
   renderStepEvents(modal);
 }
 
