@@ -35,7 +35,7 @@
 
 :root {
   --bg-deepest: #000000;
-  --surface-primary: #000000;
+  --surface-primary: transparent;
   --surface-card: #c15f3c;
   --surface-accent: rgba(255,255,255,0.08);
   --interactive-muted: rgba(255,255,255,0.5);
