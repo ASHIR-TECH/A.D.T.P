@@ -1199,7 +1199,7 @@ body {
   width: 64px;
   height: 64px;
   object-fit: cover;
-  transform: scale(1.35);
+  transform: scale(1.6);
   display: block;
   background: #fff;
   transition: opacity var(--dur-nav) var(--ease-out);
