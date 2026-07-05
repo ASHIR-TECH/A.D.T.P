@@ -26,6 +26,7 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 adtp-cli = { path = "../../crates/adtp-cli" }
 adtp-peer-core = { path = "../../crates/adtp-peer-core" }
+uuid = { workspace = true }
 png = "0.17"
 
 [dev-dependencies]
