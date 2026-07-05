@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub struct AgentManager {
-    runtime: Arc<AgentRuntime>,
+    runtime: Mutex<AgentRuntime>,
     active: Arc<Mutex<bool>>,
     last_active: Arc<Mutex<Option<i64>>>,
 }
@@ -20,7 +20,7 @@ impl AgentManager {
             .unwrap_or_default();
 
         Self {
-            runtime: Arc::new(AgentRuntime::new(agent_config, perm_config)),
+            runtime: Mutex::new(AgentRuntime::new(agent_config, perm_config)),
             active: Arc::new(Mutex::new(false)),
             last_active: Arc::new(Mutex::new(None)),
         }
@@ -47,9 +47,10 @@ impl AgentManager {
         adtp_peer_core::agent::permissions::save_permissions(&permissions)?;
         adtp_peer_core::agent::config::save_config(&config)?;
 
-        self.runtime.deactivate().await;
+        self.runtime.lock().await.deactivate().await;
         let new_runtime = AgentRuntime::new(config, permissions);
         new_runtime.activate().await?;
+        *self.runtime.lock().await = new_runtime;
 
         let mut active = self.active.lock().await;
         *active = true;
@@ -60,7 +61,7 @@ impl AgentManager {
     }
 
     pub async fn deactivate(&self) -> Result<(), String> {
-        self.runtime.deactivate().await;
+        self.runtime.lock().await.deactivate().await;
         let mut active = self.active.lock().await;
         *active = false;
         Ok(())
@@ -69,7 +70,7 @@ impl AgentManager {
     pub async fn status(&self) -> serde_json::Value {
         let active = *self.active.lock().await;
         let last = *self.last_active.lock().await;
-        let config = &self.runtime.config();
+        let config = self.runtime.lock().await.config().clone();
         serde_json::json!({
             "active": active,
             "provider": config.provider,
@@ -84,11 +85,11 @@ impl AgentManager {
         if !*self.active.lock().await {
             return Err("Agent is not active".into());
         }
-        self.runtime.send_message(&message).await
+        self.runtime.lock().await.send_message(&message).await
     }
 
     pub async fn permissions(&self) -> PermissionConfig {
-        self.runtime.permission_store().config().clone()
+        self.runtime.lock().await.permission_store().config().clone()
     }
 
     pub async fn update_permissions(&self, config: PermissionConfig) -> Result<(), String> {
@@ -97,10 +98,10 @@ impl AgentManager {
     }
 
     pub async fn conversation(&self) -> Vec<adtp_peer_core::agent::runtime::ConversationEntry> {
-        self.runtime.conversation().await
+        self.runtime.lock().await.conversation().await
     }
 
     pub async fn clear_conversation(&self) {
-        self.runtime.clear_conversation().await
+        self.runtime.lock().await.clear_conversation().await
     }
 }
