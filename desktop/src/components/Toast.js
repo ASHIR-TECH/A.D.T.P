@@ -1,7 +1,7 @@
 let visibleToasts = [];
 
-export function show(message, variant) {
-  const container = document.getElementById('toast-container');
+export function show(message, variant, position) {
+  const container = document.getElementById(position === 'top-right' ? 'toast-container-top' : 'toast-container');
   if (!container) return;
 
   if (visibleToasts.length >= 3) {
@@ -10,7 +10,7 @@ export function show(message, variant) {
   }
 
   const toast = document.createElement('div');
-  toast.className = `toast ${variant || 'info'}`;
+  toast.className = `toast ${variant || 'info'}${position === 'top-right' ? ' toast-top' : ''}`;
   toast.innerHTML = `
     <span></span>
     <span>${message}</span>
