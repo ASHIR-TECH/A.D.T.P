@@ -5,8 +5,10 @@ let messages = [];
 let agentState = 'inactive';
 
 export async function render(container) {
-  const status = await invoke('agent_get_status').catch(() => ({ active: false }));
-  if (status?.active) agentState = 'active';
+  try {
+    const agents = await invoke('agent_list');
+    agentState = agents.some(a => a.enabled) ? 'active' : 'inactive';
+  } catch { agentState = 'inactive'; }
 
   container.innerHTML = `
     <div class="chat-panel">
