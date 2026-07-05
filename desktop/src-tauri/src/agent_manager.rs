@@ -74,6 +74,8 @@ impl AgentManager {
             "active": active,
             "provider": config.provider,
             "model": config.model,
+            "ollama_host": config.ollama_host,
+            "max_tokens": config.max_tokens,
             "last_active": last,
         })
     }
