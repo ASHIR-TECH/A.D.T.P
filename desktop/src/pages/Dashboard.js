@@ -167,11 +167,10 @@ function filterEvents(container, query) {
 }
 
 async function renderAgentBanner(container) {
-  let settings;
   try {
-    settings = await invoke('load_settings');
-  } catch { return; }
-  if (settings.agents?.length) return;
+    const agents = await invoke('agent_list');
+    if (agents.length > 0) return;
+  } catch {}
   const el = container.querySelector('#dashboard-banner');
   if (!el) return;
   el.innerHTML = `
