@@ -97,7 +97,7 @@ function renderStepEvents(modal) {
         if (checked.desktop && homedir) allowed.push(homedir + '/Desktop');
 
         try {
-          await invoke('agent_activate', {
+          const agent = await invoke('agent_add', {
             provider: setupState.provider,
             model: setupState.model || (setupState.provider === 'openai' ? 'gpt-4o' : setupState.provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'llama3'),
             apiKey: setupState.apiKey || '',
@@ -112,10 +112,12 @@ function renderStepEvents(modal) {
               allow_hidden_files: checked.hidden || false,
               allow_remote_tasks: checked.remote !== false,
             },
+            enabled: true,
           });
-          show('Agent activated!', 'success');
+          show(`Agent "${agent.name}" added and enabled!`, 'success', 'top-right');
           modal.close();
-          renderSettings(document.getElementById('page-container'));
+          const pc = document.getElementById('page-container');
+          if (pc) renderSettings(pc);
         } catch (err) {
           show(`Failed: ${err}`, 'error');
         }
