@@ -1304,18 +1304,18 @@ body {
 .permission-toggle input { opacity: 0; width: 0; height: 0; }
 .toggle-slider {
   position: absolute; cursor: pointer; inset: 0;
-  background: var(--bg-deepest); border-radius: var(--radius-full);
+  background: #000; border-radius: var(--radius-full);
   transition: 0.2s;
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 2px solid rgba(255,255,255,0.25);
 }
 .toggle-slider::before {
   content: ''; position: absolute;
   height: 16px; width: 16px; left: 2px; bottom: 2px;
-  background: var(--interactive-muted); border-radius: 50%;
+  background: #fff; border-radius: 50%;
   transition: 0.2s;
 }
-.permission-toggle input:checked + .toggle-slider { background: var(--surface-card); border-color: var(--surface-card); }
-.permission-toggle input:checked + .toggle-slider::before { transform: translateX(18px); background: var(--bg-deepest); }
+.permission-toggle input:checked + .toggle-slider { background: #fff; border-color: #fff; }
+.permission-toggle input:checked + .toggle-slider::before { transform: translateX(18px); background: #000; }
 
 
 /* Status badges reused in tables */
