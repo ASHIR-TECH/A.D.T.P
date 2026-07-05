@@ -1,32 +1,42 @@
-use adtp_peer_core::agent::{
-    AgentConfig, AgentRuntime,
-};
+use adtp_peer_core::agent::AgentRuntime;
+use adtp_peer_core::agent::multi_config::{AgentEntry, AgentsConfig};
 use adtp_peer_core::agent::permissions::PermissionConfig;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub struct AgentManager {
-    runtime: Mutex<AgentRuntime>,
-    active: Arc<Mutex<bool>>,
-    last_active: Arc<Mutex<Option<i64>>>,
+    runtimes: Arc<Mutex<HashMap<String, AgentRuntime>>>,
+    entries: Arc<Mutex<Vec<AgentEntry>>>,
 }
 
 impl AgentManager {
     pub fn new() -> Self {
-        let perm_config = adtp_peer_core::agent::permissions::load_permissions()
-            .unwrap_or_default();
-        let agent_config = adtp_peer_core::agent::config::load_config()
-            .unwrap_or_else(|_| None)
-            .unwrap_or_default();
+        let config = AgentsConfig::migrate_from_old().unwrap_or_default();
+        let entries = config.agents.clone();
+
+        let mut runtimes = HashMap::new();
+        for entry in &entries {
+            if entry.enabled {
+                let perm_config = adtp_peer_core::agent::permissions::load_permissions()
+                    .unwrap_or_default();
+                let agent_config = entry.to_agent_config();
+                let runtime = AgentRuntime::new(agent_config, perm_config);
+                runtimes.insert(entry.id.clone(), runtime);
+            }
+        }
 
         Self {
-            runtime: Mutex::new(AgentRuntime::new(agent_config, perm_config)),
-            active: Arc::new(Mutex::new(false)),
-            last_active: Arc::new(Mutex::new(None)),
+            runtimes: Arc::new(Mutex::new(runtimes)),
+            entries: Arc::new(Mutex::new(entries)),
         }
     }
 
-    pub async fn activate(
+    pub async fn list_agents(&self) -> Vec<AgentEntry> {
+        self.entries.lock().await.clone()
+    }
+
+    pub async fn add_agent(
         &self,
         provider: String,
         model: String,
@@ -34,74 +44,129 @@ impl AgentManager {
         ollama_host: Option<String>,
         max_tokens: u32,
         permissions: PermissionConfig,
-    ) -> Result<(), String> {
-        let mut config = AgentConfig::default();
-        config.provider = provider;
-        config.model = model;
-        if !api_key.is_empty() {
-            config.api_key = Some(api_key.clone());
-        }
-        config.ollama_host = ollama_host;
-        config.max_tokens = max_tokens;
+        enabled: bool,
+    ) -> Result<AgentEntry, String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let name = format!("{} ({})", &provider, &model);
+
+        let entry = AgentEntry {
+            id: id.clone(),
+            name,
+            provider,
+            model,
+            api_key: if api_key.is_empty() { None } else { Some(api_key) },
+            ollama_host,
+            max_tokens,
+            temperature: 0.7,
+            enabled,
+        };
 
         adtp_peer_core::agent::permissions::save_permissions(&permissions)?;
-        adtp_peer_core::agent::config::save_config(&config)?;
 
-        self.runtime.lock().await.deactivate().await;
-        let new_runtime = AgentRuntime::new(config, permissions);
-        new_runtime.activate().await?;
-        *self.runtime.lock().await = new_runtime;
-
-        let mut active = self.active.lock().await;
-        *active = true;
-        let mut last = self.last_active.lock().await;
-        *last = Some(chrono::Utc::now().timestamp());
-
-        Ok(())
-    }
-
-    pub async fn deactivate(&self) -> Result<(), String> {
-        self.runtime.lock().await.deactivate().await;
-        let mut active = self.active.lock().await;
-        *active = false;
-        Ok(())
-    }
-
-    pub async fn status(&self) -> serde_json::Value {
-        let active = *self.active.lock().await;
-        let last = *self.last_active.lock().await;
-        let config = self.runtime.lock().await.config().clone();
-        serde_json::json!({
-            "active": active,
-            "provider": config.provider,
-            "model": config.model,
-            "ollama_host": config.ollama_host,
-            "max_tokens": config.max_tokens,
-            "last_active": last,
-        })
-    }
-
-    pub async fn send_message(&self, message: String) -> Result<String, String> {
-        if !*self.active.lock().await {
-            return Err("Agent is not active".into());
+        if enabled {
+            let agent_config = entry.to_agent_config();
+            let runtime = AgentRuntime::new(agent_config, permissions);
+            runtime.activate().await?;
+            let mut runtimes = self.runtimes.lock().await;
+            runtimes.insert(id.clone(), runtime);
         }
-        self.runtime.lock().await.send_message(&message).await
+
+        let mut entries = self.entries.lock().await;
+        entries.push(entry.clone());
+        let config = AgentsConfig { agents: entries.clone() };
+        config.save()?;
+
+        Ok(entry)
     }
 
-    pub async fn permissions(&self) -> PermissionConfig {
-        self.runtime.lock().await.permission_store().config().clone()
-    }
-
-    pub async fn update_permissions(&self, config: PermissionConfig) -> Result<(), String> {
-        adtp_peer_core::agent::permissions::save_permissions(&config)?;
+    pub async fn remove_agent(&self, id: String) -> Result<(), String> {
+        {
+            let mut runtimes = self.runtimes.lock().await;
+            if let Some(runtime) = runtimes.remove(&id) {
+                runtime.deactivate().await;
+            }
+        }
+        let mut entries = self.entries.lock().await;
+        entries.retain(|e| e.id != id);
+        let config = AgentsConfig { agents: entries.clone() };
+        config.save()?;
         Ok(())
     }
 
-    pub async fn conversation(&self) -> Vec<adtp_peer_core::agent::runtime::ConversationEntry> {
-        self.runtime.lock().await.conversation().await
+    pub async fn toggle_agent(&self, id: String, enabled: bool) -> Result<(), String> {
+        let entry;
+        {
+            let mut entries = self.entries.lock().await;
+            let e = entries.iter_mut().find(|e| e.id == id)
+                .ok_or_else(|| "Agent not found".to_string())?;
+            e.enabled = enabled;
+            entry = e.clone();
+        }
+
+        if enabled {
+            let mut runtimes = self.runtimes.lock().await;
+            if !runtimes.contains_key(&id) {
+                let perm_config = adtp_peer_core::agent::permissions::load_permissions()
+                    .unwrap_or_default();
+                let agent_config = entry.to_agent_config();
+                let runtime = AgentRuntime::new(agent_config, perm_config);
+                runtime.activate().await?;
+                runtimes.insert(id.clone(), runtime);
+            }
+        } else {
+            let mut runtimes = self.runtimes.lock().await;
+            if let Some(runtime) = runtimes.remove(&id) {
+                runtime.deactivate().await;
+            }
+        }
+
+        let entries = self.entries.lock().await;
+        let config = AgentsConfig { agents: entries.clone() };
+        config.save()?;
+        Ok(())
     }
 
-    pub async fn clear_conversation(&self) {
-        self.runtime.lock().await.clear_conversation().await
+    pub async fn send_message(&self, agent_id: Option<String>, message: String) -> Result<String, String> {
+        let runtimes = self.runtimes.lock().await;
+        match agent_id {
+            Some(id) => {
+                let runtime = runtimes.get(&id)
+                    .ok_or_else(|| "Agent not found or not enabled".to_string())?;
+                runtime.send_message(&message).await
+            }
+            None => {
+                let runtime = runtimes.values().next()
+                    .ok_or_else(|| "No active agents".to_string())?;
+                runtime.send_message(&message).await
+            }
+        }
+    }
+
+    pub async fn get_conversation(&self, agent_id: Option<String>) -> Vec<adtp_peer_core::agent::runtime::ConversationEntry> {
+        let runtimes = self.runtimes.lock().await;
+        let runtime = match agent_id {
+            Some(id) => runtimes.get(&id),
+            None => runtimes.values().next(),
+        };
+        match runtime {
+            Some(r) => r.conversation().await,
+            None => vec![],
+        }
+    }
+
+    pub async fn clear_conversation(&self, agent_id: Option<String>) {
+        let runtimes = self.runtimes.lock().await;
+        match agent_id {
+            Some(id) => {
+                if let Some(r) = runtimes.get(&id) {
+                    r.clear_conversation().await;
+                }
+            }
+            None => {
+                if let Some(r) = runtimes.values().next() {
+                    r.clear_conversation().await;
+                }
+            }
+        }
     }
 }
