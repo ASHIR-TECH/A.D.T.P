@@ -513,6 +513,17 @@ body {
   pointer-events: none;
 }
 
+#toast-container-top {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  pointer-events: none;
+}
+
 .toast {
   pointer-events: auto;
   display: flex;
@@ -1333,3 +1344,40 @@ body {
 .status-badge.in_progress { background: rgba(255,255,255,0.15); color: var(--white); }
 .status-badge.delivered { background: rgba(63,166,107,0.15); color: var(--success); }
 .status-badge.failed { background: rgba(200,67,10,0.15); color: var(--ember); }
+
+/* Agent list in settings */
+.agent-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.agent-item:last-child { border-bottom: none; }
+.agent-item-icon { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; border-radius: 4px; }
+.agent-item-info { flex: 1; min-width: 0; }
+.agent-item-name { font-size: 14px; font-weight: 700; }
+.agent-item-detail { font-size: 12px; color: var(--interactive-muted); margin-top: 2px; }
+.agent-toggle { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; cursor: pointer; }
+.agent-toggle input { opacity: 0; width: 0; height: 0; }
+.agent-toggle .toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #000; border-radius: var(--radius-full);
+  transition: 0.2s;
+  border: 2px solid rgba(255,255,255,0.25);
+}
+.agent-toggle .toggle-slider::before {
+  content: ''; position: absolute;
+  height: 16px; width: 16px; left: 2px; bottom: 2px;
+  background: #fff; border-radius: 50%;
+  transition: 0.2s;
+}
+.agent-toggle input:checked + .toggle-slider { background: #fff; border-color: #fff; }
+.agent-toggle input:checked + .toggle-slider::before { transform: translateX(18px); background: #000; }
+.agent-remove-btn {
+  width: 26px; height: 26px; padding: 0;
+  font-size: 14px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); flex-shrink: 0;
+  background: transparent; color: var(--interactive-muted);
+  border: 1px solid rgba(255,255,255,0.15);
+  cursor: pointer; transition: 0.15s;
+}
+.agent-remove-btn:hover { background: rgba(200,67,10,0.2); color: var(--ember); border-color: var(--ember); }
