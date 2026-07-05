@@ -13,19 +13,10 @@ export async function render(container) {
     settings = { api_url: 'http://127.0.0.1:40003', poll_transfers_ms: 2000, poll_health_ms: 5000, minimize_to_tray: true, theme: 'dark', agents: [], peers: [] };
   }
 
-  let agentStatus = {};
+  let agents = [];
   try {
-    agentStatus = await invoke('agent_get_status');
+    agents = await invoke('agent_list');
   } catch {}
-
-  let agentPerms = {};
-  try {
-    agentPerms = await invoke('agent_get_permissions');
-  } catch {}
-
-  const hasActiveAgent = agentStatus.active;
-  const agentProvider = agentStatus.provider || '';
-  const agentModel = agentStatus.model || '';
 
   container.innerHTML = `
     <div class="settings-page">
@@ -55,21 +46,6 @@ export async function render(container) {
         <button class="btn btn-sm btn-primary" id="save-token">Save Token</button>
       </div>
 
-      ${hasActiveAgent ? `
-      <!-- Agent Key Card -->
-      <div class="settings-card">
-        <div class="settings-card-header">
-          <h3>Agent API Key</h3>
-        </div>
-        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:var(--space-3)">Update the API key for <strong>${agentProvider}</strong> (${agentModel}).</p>
-        <div class="field-group">
-          <label>New API Key</label>
-          <input type="password" id="agent-api-key" placeholder="Enter new API key..." />
-        </div>
-        <button class="btn btn-sm btn-primary" id="update-agent-key">Update Key</button>
-      </div>
-      ` : ''}
-
       <!-- Agents Card -->
       <div class="settings-card">
         <div class="settings-card-header">
@@ -77,11 +53,26 @@ export async function render(container) {
           <button class="btn btn-sm btn-primary" id="add-agent">+ Add Agent</button>
         </div>
         <div id="agent-list">
+          ${agents.length === 0 ? `
           <div class="settings-empty">
             <div class="settings-empty-icon"></div>
             <div class="settings-empty-title">No agents configured</div>
-            <div class="settings-empty-text">Click 'Add Agent' to register a new node</div>
+            <div class="settings-empty-text">Click 'Add Agent' to add your first one</div>
           </div>
+          ` : agents.map(a => `
+          <div class="agent-item" data-id="${a.id}">
+            <img class="agent-item-icon" src="${providerIcon(a.provider)}" alt="${escHtml(a.provider)}" />
+            <div class="agent-item-info">
+              <div class="agent-item-name">${escHtml(a.name)}</div>
+              <div class="agent-item-detail">${escHtml(a.provider)} · ${escHtml(a.model)}${a.ollama_host ? ' · ' + escHtml(a.ollama_host) : ''}</div>
+            </div>
+            <label class="agent-toggle">
+              <input type="checkbox" class="agent-toggle-input" ${a.enabled ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
+            <button class="agent-remove-btn" title="Remove agent">&times;</button>
+          </div>
+          `).join('')}
         </div>
       </div>
 
@@ -116,10 +107,24 @@ export async function render(container) {
 
   renderAgentStatus(container.querySelector('#embedded-agent-card'));
 
-  setupEventHandlers(container, settings, agentStatus, agentPerms);
+  setupEventHandlers(container, settings);
 }
 
-function setupEventHandlers(container, settings, agentStatus, agentPerms) {
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function providerIcon(provider) {
+  const p = provider.toLowerCase();
+  if (p.includes('openai') || p.includes('gpt')) return 'icons/chatgpt.jpg';
+  if (p.includes('anthropic') || p.includes('claude')) return 'icons/claude-color.svg';
+  if (p.includes('ollama')) return 'icons/ollama.svg';
+  return 'icons/openai-color.svg';
+}
+
+function setupEventHandlers(container, settings) {
   const urlInput = container.querySelector('#api-url');
   urlInput?.addEventListener('change', () => saveSettings(container));
 
@@ -141,24 +146,6 @@ function setupEventHandlers(container, settings, agentStatus, agentPerms) {
     tokenInput?.dispatchEvent(new Event('change'));
   });
 
-  container.querySelector('#update-agent-key')?.addEventListener('click', async () => {
-    const keyInput = container.querySelector('#agent-api-key');
-    const key = keyInput?.value.trim();
-    if (!key) { show('Enter a new API key', 'warning'); return; }
-    try {
-      await invoke('agent_activate', {
-        provider: agentStatus.provider,
-        model: agentStatus.model,
-        apiKey: key,
-        ollamaHost: agentStatus.ollama_host,
-        maxTokens: agentStatus.max_tokens || 4096,
-        permissions: agentPerms,
-      });
-      show('API key updated and agent re-activated', 'success');
-      keyInput.value = '';
-    } catch (err) { show(`Failed: ${err}`, 'error'); }
-  });
-
   container.querySelector('#test-connection')?.addEventListener('click', async () => {
     try {
       const health = await invoke('get_app_health');
@@ -170,6 +157,37 @@ function setupEventHandlers(container, settings, agentStatus, agentPerms) {
 
   container.querySelector('#add-agent')?.addEventListener('click', () => {
     import('./AgentSetup.js').then(mod => mod.showSetup());
+  });
+
+  container.querySelectorAll('.agent-toggle-input').forEach(toggle => {
+    toggle.addEventListener('change', async () => {
+      const item = toggle.closest('.agent-item');
+      const id = item.dataset.id;
+      try {
+        await invoke('agent_toggle', { id, enabled: toggle.checked });
+        show(toggle.checked ? 'Agent enabled' : 'Agent disabled', 'success', 'top-right');
+        window.__TAURI__.event.emit('agent-status', { state: toggle.checked ? 'active' : 'inactive' }).catch(() => {});
+      } catch (err) {
+        show(`Failed: ${err}`, 'error', 'top-right');
+        toggle.checked = !toggle.checked;
+      }
+    });
+  });
+
+  container.querySelectorAll('.agent-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.agent-item');
+      const id = item.dataset.id;
+      const name = item.querySelector('.agent-item-name')?.textContent || id;
+      if (!confirm(`Remove agent "${name}"?`)) return;
+      try {
+        await invoke('agent_remove', { id });
+        show(`Agent "${name}" removed`, 'success', 'top-right');
+        item.remove();
+      } catch (err) {
+        show(`Failed: ${err}`, 'error', 'top-right');
+      }
+    });
   });
 
   container.querySelector('#advanced-toggle')?.addEventListener('click', () => {
