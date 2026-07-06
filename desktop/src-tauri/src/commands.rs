@@ -296,6 +296,93 @@ pub fn get_home_dir() -> Result<String, String> {
     dirs::home_dir().map(|p| p.to_string_lossy().to_string()).ok_or("Cannot determine home directory".into())
 }
 
+type P2PState<'a> = State<'a, Option<std::sync::Arc<crate::p2p::P2PModule>>>;
+
+#[tauri::command]
+pub async fn get_own_peer_id(
+    p2p: P2PState<'_>,
+) -> Result<String, String> {
+    match p2p.as_ref() {
+        Some(m) => Ok(m.peer_id()),
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn list_peers(
+    p2p: P2PState<'_>,
+) -> Result<Vec<adtp_core::types::PeerEntry>, String> {
+    match p2p.as_ref() {
+        Some(_module) => {
+            let config_dir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("adtp");
+            let peers_path = config_dir.join("peers.toml");
+            let trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
+            let peers: Vec<adtp_core::types::PeerEntry> = trust_store.list_peers().into_iter().cloned().collect();
+            Ok(peers)
+        }
+        None => Ok(vec![]),
+    }
+}
+
+#[tauri::command]
+pub async fn send_file_to_peer(
+    p2p: P2PState<'_>,
+    file_path: String,
+    peer_id: String,
+) -> Result<String, String> {
+    match p2p.as_ref() {
+        Some(module) => module.send_file_to_peer(&file_path, &peer_id).await,
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn add_peer(
+    peer_id: String,
+    public_key: String,
+    host: String,
+    port: u16,
+    nickname: Option<String>,
+    trust_level: String,
+) -> Result<bool, String> {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("adtp");
+    let peers_path = config_dir.join("peers.toml");
+    let mut trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
+
+    let level = match trust_level.to_lowercase().as_str() {
+        "trusted" => adtp_core::types::TrustLevel::Trusted,
+        "blocked" => adtp_core::types::TrustLevel::Blocked,
+        _ => adtp_core::types::TrustLevel::Unverified,
+    };
+
+    trust_store.add_peer(adtp_core::types::PeerEntry {
+        peer_id,
+        public_key,
+        nickname,
+        host,
+        port,
+        trust_level: level,
+    });
+    trust_store.save().map_err(|e| format!("Failed to save peers: {}", e))?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn remove_peer(peer_id: String) -> Result<bool, String> {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("adtp");
+    let peers_path = config_dir.join("peers.toml");
+    let mut trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
+    trust_store.remove_peer(&peer_id);
+    trust_store.save().map_err(|e| format!("Failed to save peers: {}", e))?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use serde::Serialize;
