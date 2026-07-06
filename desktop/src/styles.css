@@ -430,6 +430,27 @@ body {
 
 #setup-model { color: #000; }
 
+.peer-select {
+  background: var(--bg-deepest);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 14px;
+  width: 100%;
+  cursor: pointer;
+  appearance: auto;
+}
+.peer-select:focus {
+  outline: none;
+  border-color: var(--surface-card);
+}
+.peer-select option {
+  background: var(--surface-card);
+  color: var(--white);
+}
+
 /* Tables */
 .data-table {
   background: var(--surface-card);
