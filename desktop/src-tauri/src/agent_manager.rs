@@ -1,4 +1,4 @@
-use adtp_peer_core::agent::AgentRuntime;
+use adtp_peer_core::agent::{AgentRuntime, ToolExecutor};
 use adtp_peer_core::agent::multi_config::{AgentEntry, AgentsConfig};
 use adtp_peer_core::agent::permissions::PermissionConfig;
 use std::collections::HashMap;
@@ -29,6 +29,13 @@ impl AgentManager {
         Self {
             runtimes: Arc::new(Mutex::new(runtimes)),
             entries: Arc::new(Mutex::new(entries)),
+        }
+    }
+
+    pub async fn set_tool_executor(&self, executor: Arc<dyn ToolExecutor>) {
+        let mut runtimes = self.runtimes.lock().await;
+        for runtime in runtimes.values_mut() {
+            runtime.set_tool_executor(executor.clone());
         }
     }
 
