@@ -1,10 +1,13 @@
 mod agent_manager;
 mod commands;
+mod p2p;
 mod poller;
 mod settings;
 mod tray;
 
+use adtp_peer_core::agent::ToolExecutor;
 use agent_manager::AgentManager;
+use p2p::P2PModule;
 use poller::SharedState;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
@@ -12,6 +15,8 @@ use tokio::sync::Mutex;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -22,6 +27,26 @@ pub fn run() {
         .manage::<Arc<Mutex<AgentManager>>>(Arc::new(Mutex::new(AgentManager::new())))
         .setup(|app| {
             tray::build_tray(app.handle())?;
+
+            let config_dir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("adtp");
+
+            let p2p_rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime for P2P init");
+            let p2p_option = p2p_rt.block_on(P2PModule::new(config_dir)).ok();
+            if let Some(ref p2p) = p2p_option {
+                tracing::info!("P2P module initialized — peer_id: {}", p2p.peer_id());
+                let agent_mgr: Arc<Mutex<AgentManager>> = app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
+                let exec = p2p.clone() as Arc<dyn ToolExecutor>;
+                p2p_rt.block_on(async {
+                    let mgr = agent_mgr.lock().await;
+                    mgr.set_tool_executor(exec).await;
+                });
+            } else {
+                tracing::warn!("P2P module failed to initialize — agent file transfers will be unavailable");
+            }
+            app.manage::<Option<Arc<P2PModule>>>(p2p_option);
+            std::mem::forget(p2p_rt); // keep runtime alive for background tasks (accept loop, etc.)
 
             let state: SharedState = app.state::<SharedState>().inner().clone();
             let handle = app.handle().clone();
@@ -113,6 +138,11 @@ pub fn run() {
             commands::agent_get_conversation,
             commands::agent_clear_conversation,
             commands::get_home_dir,
+            commands::get_own_peer_id,
+            commands::list_peers,
+            commands::send_file_to_peer,
+            commands::add_peer,
+            commands::remove_peer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ADTP Desktop");
