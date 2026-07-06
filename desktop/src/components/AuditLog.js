@@ -103,10 +103,10 @@ export async function render(container) {
       const banner = container.querySelector('#verify-banner');
       if (result.valid) {
         banner.className = 'verify-banner valid';
-        banner.textContent = `✅ Chain valid — ${result.entries_checked} entries checked at ${new Date(result.verified_at).toLocaleString()}`;
+        banner.textContent = `Chain valid — ${result.entries_checked} entries checked at ${new Date(result.verified_at).toLocaleString()}`;
       } else {
         banner.className = 'verify-banner invalid';
-        banner.textContent = `❌ Chain TAMPERED — first failure at entry ${result.first_failure_id}`;
+        banner.textContent = `Chain TAMPERED — first failure at entry ${result.first_failure_id}`;
       }
     } catch (err) {
       const { show } = await import('./Toast.js');

@@ -212,15 +212,15 @@ pub async fn get_app_health(state: tauri::State<'_, SharedState>) -> Result<Opti
 }
 
 #[tauri::command]
-pub async fn agent_get_status(
+pub async fn agent_list(
     agent: AgentState<'_>,
-) -> Result<serde_json::Value, String> {
+) -> Result<Vec<adtp_peer_core::agent::multi_config::AgentEntry>, String> {
     let mgr = agent.lock().await;
-    Ok(mgr.status().await)
+    Ok(mgr.list_agents().await)
 }
 
 #[tauri::command]
-pub async fn agent_activate(
+pub async fn agent_add(
     agent: AgentState<'_>,
     provider: String,
     model: String,
@@ -228,18 +228,30 @@ pub async fn agent_activate(
     ollama_host: Option<String>,
     max_tokens: u32,
     permissions: PermissionConfig,
+    enabled: bool,
+) -> Result<adtp_peer_core::agent::multi_config::AgentEntry, String> {
+    let mgr = agent.lock().await;
+    mgr.add_agent(provider, model, api_key, ollama_host, max_tokens, permissions, enabled).await
+}
+
+#[tauri::command]
+pub async fn agent_remove(
+    agent: AgentState<'_>,
+    id: String,
 ) -> Result<bool, String> {
     let mgr = agent.lock().await;
-    mgr.activate(provider, model, api_key, ollama_host, max_tokens, permissions).await?;
+    mgr.remove_agent(id).await?;
     Ok(true)
 }
 
 #[tauri::command]
-pub async fn agent_deactivate(
+pub async fn agent_toggle(
     agent: AgentState<'_>,
+    id: String,
+    enabled: bool,
 ) -> Result<bool, String> {
     let mgr = agent.lock().await;
-    mgr.deactivate().await?;
+    mgr.toggle_agent(id, enabled).await?;
     Ok(true)
 }
 
@@ -247,49 +259,41 @@ pub async fn agent_deactivate(
 pub async fn agent_send_message(
     agent: AgentState<'_>,
     message: String,
+    agent_id: Option<String>,
 ) -> Result<String, String> {
     let mgr = agent.lock().await;
-    mgr.send_message(message).await
+    mgr.send_message(agent_id, message).await
 }
 
 #[tauri::command]
 pub async fn agent_get_permissions(
-    agent: AgentState<'_>,
+    _agent: AgentState<'_>,
 ) -> Result<PermissionConfig, String> {
-    let mgr = agent.lock().await;
-    Ok(mgr.permissions().await)
-}
-
-#[tauri::command]
-pub async fn agent_update_permissions(
-    agent: AgentState<'_>,
-    config: PermissionConfig,
-) -> Result<bool, String> {
-    let mgr = agent.lock().await;
-    mgr.update_permissions(config).await?;
-    Ok(true)
+    Ok(adtp_peer_core::agent::permissions::load_permissions().unwrap_or_default())
 }
 
 #[tauri::command]
 pub async fn agent_get_conversation(
     agent: AgentState<'_>,
+    agent_id: Option<String>,
 ) -> Result<Vec<adtp_peer_core::agent::runtime::ConversationEntry>, String> {
     let mgr = agent.lock().await;
-    Ok(mgr.conversation().await)
-}
-
-#[tauri::command]
-pub fn get_home_dir() -> Result<String, String> {
-    dirs::home_dir().map(|p| p.to_string_lossy().to_string()).ok_or("Cannot determine home directory".into())
+    Ok(mgr.get_conversation(agent_id).await)
 }
 
 #[tauri::command]
 pub async fn agent_clear_conversation(
     agent: AgentState<'_>,
+    agent_id: Option<String>,
 ) -> Result<bool, String> {
     let mgr = agent.lock().await;
-    mgr.clear_conversation().await;
+    mgr.clear_conversation(agent_id).await;
     Ok(true)
+}
+
+#[tauri::command]
+pub fn get_home_dir() -> Result<String, String> {
+    dirs::home_dir().map(|p| p.to_string_lossy().to_string()).ok_or("Cannot determine home directory".into())
 }
 
 #[cfg(test)]

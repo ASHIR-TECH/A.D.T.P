@@ -1,64 +1,9 @@
 const { invoke } = window.__TAURI__.core;
-
 import { show } from '../components/Toast.js';
-import { renderCard as renderAgentCard } from '../components/AgentCard.js';
-import { renderCard as renderPeerCard } from '../components/PeerCard.js';
+import { showBanner } from '../components/Banner.js';
 import { render as renderAgentStatus } from '../components/AgentStatusCard.js';
 
-let agents = [];
-let peers = [];
 let advancedOpen = false;
-
-async function save(settings) {
-  try {
-    await invoke('save_settings', { new_settings: settings });
-    show('Settings saved', 'success');
-  } catch (err) {
-    show(`Failed to save: ${err}`, 'error');
-  }
-}
-
-function renderAgents(container) {
-  const list = container.querySelector('#agent-list');
-  list.innerHTML = '';
-  agents.forEach((agent, i) => {
-    renderAgentCard(list, agent, i, (idx, updated) => {
-      agents[idx] = updated;
-      save(getSettings(container));
-    }, (idx) => {
-      agents.splice(idx, 1);
-      renderAgents(container);
-      save(getSettings(container));
-    });
-  });
-}
-
-function renderPeers(container) {
-  const list = container.querySelector('#peer-list');
-  list.innerHTML = '';
-  peers.forEach((peer, i) => {
-    renderPeerCard(list, peer, i, (idx, updated) => {
-      peers[idx] = updated;
-      save(getSettings(container));
-    }, (idx) => {
-      peers.splice(idx, 1);
-      renderPeers(container);
-      save(getSettings(container));
-    });
-  });
-}
-
-function getSettings(container) {
-  return {
-    api_url: container.querySelector('#api-url').value,
-    poll_transfers_ms: parseInt(container.querySelector('#poll-transfers').value) || 2000,
-    poll_health_ms: parseInt(container.querySelector('#poll-health').value) || 5000,
-    minimize_to_tray: container.querySelector('#minimize-tray').checked,
-    theme: 'dark',
-    agents,
-    peers,
-  };
-}
 
 export async function render(container) {
   let settings;
@@ -68,100 +13,207 @@ export async function render(container) {
     settings = { api_url: 'http://127.0.0.1:40003', poll_transfers_ms: 2000, poll_health_ms: 5000, minimize_to_tray: true, theme: 'dark', agents: [], peers: [] };
   }
 
-  agents = (settings.agents || []).map(a => ({ ...a }));
-  peers = (settings.peers || []).map(p => ({ ...p }));
+  let agents = [];
+  try {
+    agents = await invoke('agent_list');
+  } catch {}
 
   container.innerHTML = `
-    <h2 class="page-title">Settings</h2>
-    <div class="settings-section">
-      <h3>Connection</h3>
-      <div class="settings-field">
-        <label>API URL</label>
-        <input type="text" id="api-url" value="${settings.api_url}" />
+    <div class="settings-page">
+      <!-- Connection Card -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h3>Connection</h3>
+        </div>
+        <div class="field-group">
+          <label>API URL</label>
+          <input type="text" id="api-url" value="${settings.api_url}" />
+        </div>
+        <div style="display:flex;gap:var(--space-2)">
+          <button class="btn btn-sm btn-secondary" id="test-connection">Test Connection</button>
+        </div>
       </div>
-      <div class="settings-field">
-        <label>API Token (write-only, saved to keychain)</label>
-        <input type="password" id="api-token" placeholder="Enter new token..." />
+
+      <!-- Authentication Card -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h3>Authentication</h3>
+        </div>
+        <div class="field-group">
+          <label>API Token (write-only)</label>
+          <input type="password" id="api-token" placeholder="Enter new token..." />
+        </div>
+        <button class="btn btn-sm btn-primary" id="save-token">Save Token</button>
       </div>
-    </div>
 
-    <div class="settings-section">
-      <h3>Network Agents</h3>
-      <div id="agent-list"></div>
-      <button class="btn btn-secondary" id="add-agent">+ Add Agent</button>
-    </div>
+      <!-- Agents Card -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h3>Agents</h3>
+          <button class="btn btn-sm btn-primary" id="add-agent">+ Add Agent</button>
+        </div>
+        <div id="agent-list">
+          ${agents.length === 0 ? `
+          <div class="settings-empty">
+            <div class="settings-empty-icon"></div>
+            <div class="settings-empty-title">No agents configured</div>
+            <div class="settings-empty-text">Click 'Add Agent' to add your first one</div>
+          </div>
+          ` : agents.map(a => `
+          <div class="agent-item" data-id="${a.id}">
+            <img class="agent-item-icon" src="${providerIcon(a.provider)}" alt="${escHtml(a.provider)}" />
+            <div class="agent-item-info">
+              <div class="agent-item-name">${escHtml(a.name)}</div>
+              <div class="agent-item-detail">${escHtml(a.provider)} · ${escHtml(a.model)}${a.ollama_host ? ' · ' + escHtml(a.ollama_host) : ''}</div>
+            </div>
+            <label class="agent-toggle">
+              <input type="checkbox" class="agent-toggle-input" ${a.enabled ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
+            <button class="agent-remove-btn" title="Remove agent">&times;</button>
+          </div>
+          `).join('')}
+        </div>
+      </div>
 
-    <div class="settings-section" id="embedded-agent-section">
-      <h3>Embedded Agent</h3>
-      <div id="embedded-agent-card"></div>
-    </div>
+      <!-- Embedded Agent Card -->
+      <div class="settings-card" id="embedded-agent-section">
+        <div id="embedded-agent-card"></div>
+      </div>
 
-    <div class="settings-section">
-      <h3>Peers</h3>
-      <div id="peer-list"></div>
-      <button class="btn btn-secondary" id="add-peer">+ Add Peer</button>
-    </div>
-
-    <div class="settings-section">
-      <button class="advanced-toggle" id="advanced-toggle">⚙ Advanced Settings</button>
-      <div class="advanced-content ${advancedOpen ? 'open' : ''}" id="advanced-content">
-        <div class="settings-field">
+      <!-- Advanced Settings -->
+      <div class="advanced-link" id="advanced-toggle">
+        <span>Advanced Settings</span>
+        <span></span>
+      </div>
+      <div id="advanced-content" style="display:${advancedOpen ? 'block' : 'none'};padding:var(--space-4);background:var(--surface-primary);border-radius:var(--radius-lg);margin-top:var(--space-2)">
+        <div class="field-group">
           <label>Transfer Poll Interval (ms)</label>
           <input type="number" id="poll-transfers" value="${settings.poll_transfers_ms || 2000}" />
         </div>
-        <div class="settings-field">
+        <div class="field-group">
           <label>Health Poll Interval (ms)</label>
           <input type="number" id="poll-health" value="${settings.poll_health_ms || 5000}" />
         </div>
-        <div class="settings-field">
-          <label>Minimize to Tray</label>
-          <input type="checkbox" id="minimize-tray" ${settings.minimize_to_tray !== false ? 'checked' : ''} />
+        <div class="field-group">
+          <label>
+            <input type="checkbox" id="minimize-tray" ${settings.minimize_to_tray !== false ? 'checked' : ''} />
+            Minimize to Tray
+          </label>
         </div>
       </div>
     </div>
   `;
 
-  renderAgents(container);
-  renderPeers(container);
   renderAgentStatus(container.querySelector('#embedded-agent-card'));
 
+  setupEventHandlers(container, settings);
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function providerIcon(provider) {
+  const p = provider.toLowerCase();
+  if (p.includes('openai') || p.includes('gpt')) return 'icons/chatgpt.jpg';
+  if (p.includes('anthropic') || p.includes('claude')) return 'icons/claude-color.svg';
+  if (p.includes('ollama')) return 'icons/ollama.svg';
+  return 'icons/openai-color.svg';
+}
+
+function setupEventHandlers(container, settings) {
+  const urlInput = container.querySelector('#api-url');
+  urlInput?.addEventListener('change', () => saveSettings(container));
+
   const tokenInput = container.querySelector('#api-token');
-  tokenInput.addEventListener('change', async () => {
+  tokenInput?.addEventListener('change', async () => {
     const token = tokenInput.value.trim();
     if (token.length >= 32) {
       try {
         await invoke('save_api_token', { token });
         show('Token saved to keychain', 'success');
         tokenInput.value = '';
-      } catch (err) {
-        show(`Failed to save token: ${err}`, 'error');
-      }
+      } catch (err) { show(`Failed: ${err}`, 'error'); }
     } else if (token.length > 0) {
       show('Token must be at least 32 characters', 'warning');
     }
   });
 
-  const urlInput = container.querySelector('#api-url');
-  urlInput.addEventListener('change', () => save(getSettings(container)));
-
-  container.querySelector('#add-agent').addEventListener('click', () => {
-    agents.push({ name: '', host: '', port: 0, default: false });
-    renderAgents(container);
+  container.querySelector('#save-token')?.addEventListener('click', () => {
+    tokenInput?.dispatchEvent(new Event('change'));
   });
 
-  container.querySelector('#add-peer').addEventListener('click', () => {
-    peers.push({ peer_id: '', nickname: '', host: '', port: 0, trust_level: 'Unverified' });
-    renderPeers(container);
+  container.querySelector('#test-connection')?.addEventListener('click', async () => {
+    try {
+      const health = await invoke('get_app_health');
+      show(`Connected — ${health?.daemon_connected ? 'online' : 'offline'}`, health?.daemon_connected ? 'success' : 'warning');
+    } catch (err) {
+      show(`Connection failed: ${err}`, 'error');
+    }
   });
 
-  container.querySelector('#advanced-toggle').addEventListener('click', () => {
+  container.querySelector('#add-agent')?.addEventListener('click', () => {
+    import('./AgentSetup.js').then(mod => mod.showSetup());
+  });
+
+  container.querySelectorAll('.agent-toggle-input').forEach(toggle => {
+    toggle.addEventListener('change', async () => {
+      const item = toggle.closest('.agent-item');
+      const id = item.dataset.id;
+      try {
+        await invoke('agent_toggle', { id, enabled: toggle.checked });
+        show(toggle.checked ? 'Agent enabled' : 'Agent disabled', 'success', 'top-right');
+        window.__TAURI__.event.emit('agent-status', { state: toggle.checked ? 'active' : 'inactive' }).catch(() => {});
+      } catch (err) {
+        show(`Failed: ${err}`, 'error', 'top-right');
+        toggle.checked = !toggle.checked;
+      }
+    });
+  });
+
+  container.querySelectorAll('.agent-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.agent-item');
+      const id = item.dataset.id;
+      const name = item.querySelector('.agent-item-name')?.textContent || id;
+      if (!confirm(`Remove agent "${name}"?`)) return;
+      try {
+        await invoke('agent_remove', { id });
+        show(`Agent "${name}" removed`, 'success', 'top-right');
+        item.remove();
+      } catch (err) {
+        show(`Failed: ${err}`, 'error', 'top-right');
+      }
+    });
+  });
+
+  container.querySelector('#advanced-toggle')?.addEventListener('click', () => {
     advancedOpen = !advancedOpen;
     const content = container.querySelector('#advanced-content');
-    content.classList.toggle('open');
+    const toggle = container.querySelector('#advanced-toggle');
+    content.style.display = advancedOpen ? 'block' : 'none';
+    toggle.style.animation = advancedOpen ? 'none' : '';
+    if (advancedOpen) saveSettings(container);
   });
 
   ['poll-transfers', 'poll-health', 'minimize-tray'].forEach(id => {
-    const el = container.querySelector(`#${id}`);
-    if (el) el.addEventListener('change', () => save(getSettings(container)));
+    container.querySelector(`#${id}`)?.addEventListener('change', () => saveSettings(container));
   });
+
+}
+
+function saveSettings(container) {
+  const s = {
+    api_url: container.querySelector('#api-url')?.value || 'http://127.0.0.1:40003',
+    poll_transfers_ms: parseInt(container.querySelector('#poll-transfers')?.value) || 2000,
+    poll_health_ms: parseInt(container.querySelector('#poll-health')?.value) || 5000,
+    minimize_to_tray: container.querySelector('#minimize-tray')?.checked !== false,
+    theme: 'dark',
+    agents: [],
+    peers: [],
+  };
+  invoke('save_settings', { new_settings: s }).then(() => {}).catch(() => {});
 }

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Orb · Linear</title>
+<style>
+  :root{
+    --sun:        #1a0800;   /* the globe itself */
+    --glow-in:    #7c2d12;   /* inner corona */
+    --glow-out:   #c2410c;   /* outer corona */
+    --ring:       #d97706;   /* base ring colour */
+    --ring-light: #fde8c8;   /* bright highlight streaks (inner rings) */
+    --ring-dusk:  #c2856a;   /* muted dusty streaks (outer rings) */
+    --ring-soft:  #f0c084;   /* ring-light + ring blended -- pale but not stark white */
+
+    --globe-size: 52vmin;
+    --tilt-x: 74deg;   /* how "flat" the ring plane looks */
+    --tilt-z: 18deg;   /* diagonal angle of the ring lane */
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    height:100%;
+    margin:0;
+    background:#000;
+    overflow:hidden;
+  }
+
+  body{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .stage{
+    position:relative;
+    width:100vw;
+    height:100vh;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 48%, rgba(124,45,18,.28), transparent 60%),
+      radial-gradient(ellipse 120% 120% at 50% 50%, #0d0400 0%, #050201 55%, #000000 100%);
+  }
+
+  /* ============ shared centring helper ============ */
+  .center{
+    position:absolute;
+    top:50%;
+    left:50%;
+  }
+
+  /* ============ ambient halo behind everything ============ */
+  .ambient{
+    width:95vmin;
+    height:95vmin;
+    transform:translate(-50%,-50%);
+    border-radius:50%;
+    background:radial-gradient(circle, var(--glow-in) 0%, rgba(124,45,18,.28) 30%, transparent 62%);
+    filter:blur(50px);
+    opacity:.42;
+    pointer-events:none;
+  }
+
+  /* ============ ring bundle (SVG, tilted with real perspective) ============ */
+  .rings-svg{
+    position:absolute;
+    top:50%;
+    left:50%;
+    width:240vmin;
+    height:240vmin;
+    transform:translate(-50%,-50%);
+    overflow:visible;
+    pointer-events:none;
+  }
+  #ringsBack{ z-index:1; }
+  #ringsFront{ z-index:3; }
+
+  /* ============ the globe itself ============ */
+  .globe{
+    width:var(--globe-size);
+    height:var(--globe-size);
+    transform:translate(-50%,-50%);
+    border-radius:50%;
+    background:radial-gradient(circle, #000 0%, #000 60%, #170800 76%, #3a1204 89%, #000 100%);
+    z-index:2;
+  }
+
+  .corona{
+    position:absolute;
+    inset:-16%;
+    border-radius:50%;
+    background:radial-gradient(circle,
+      transparent 0%,
+      transparent 74%,
+      rgba(194,65,12,.5) 80%,
+      rgba(124,45,18,.35) 92%,
+      transparent 100%);
+    filter:blur(14px);
+    animation:heartbeat 2.6s ease-in-out infinite;
+    pointer-events:none;
+  }
+
+  @keyframes heartbeat{
+    0%,100% { transform:scale(1);     opacity:.55; }
+    8%      { transform:scale(1.055); opacity:.72; }
+    17%     { transform:scale(.985);  opacity:.52; }
+    26%     { transform:scale(1.035); opacity:.66; }
+    38%     { transform:scale(1);     opacity:.55; }
+  }
+
+  /* a slow, subtle brown highlight confined to just inside the rim,
+     rotating around -- reads as the globe "cycling" rather than the
+     whole face spinning. */
+  .globe-spin{
+    position:absolute;
+    inset:0;
+    border-radius:50%;
+    background:conic-gradient(from 0deg,
+      transparent 0deg,
+      transparent 60deg,
+      rgba(217,119,6,.22) 105deg,
+      rgba(124,45,18,.15) 140deg,
+      transparent 190deg,
+      transparent 360deg);
+    -webkit-mask:radial-gradient(circle closest-side, transparent 82%, #000 88%, #000 95%, transparent 100%);
+            mask:radial-gradient(circle closest-side, transparent 82%, #000 88%, #000 95%, transparent 100%);
+    filter:blur(5px);
+    animation:slow-spin 46s linear infinite;
+  }
+
+  @keyframes slow-spin{ to { transform:rotate(360deg); } }
+
+  .limb{
+    position:absolute;
+    inset:0;
+    border-radius:50%;
+    box-shadow:
+      inset 0 0 40px 6px rgba(0,0,0,.6),
+      0 0 20px 3px rgba(217,119,6,.15);
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="ambient center"></div>
+
+  <!-- rings passing BEHIND the globe -->
+  <svg id="ringsBack" class="rings-svg" viewBox="-120 -120 240 240"></svg>
+
+  <!-- the globe -->
+  <div class="globe center">
+    <div class="globe-spin"></div>
+    <div class="limb"></div>
+    <div class="corona"></div>
+  </div>
+
+  <!-- rings passing IN FRONT of the globe -->
+  <svg id="ringsFront" class="rings-svg" viewBox="-120 -120 240 240"></svg>
+</div>
+
+<script>
+  // ============================================================
+  // Ring bundle: many thin, slightly organic loops (not perfect
+  // ellipses) rendered in SVG with a real perspective projection --
+  // that's what makes the near side fan open wider than the far side,
+  // same as the reference photo. Movement comes from slowly travelling
+  // the wobble's phase around each loop, so the lines stay fully
+  // continuous (no dashes) while still visibly animating.
+  // ============================================================
+
+  const GLOBE_R   = 26;              // vmin, half of --globe-size (52vmin)
+  const TILT_X    = 74 * Math.PI/180;
+  const TILT_Z    = 18 * Math.PI/180;
+  const PERSP_D   = 210;             // perspective distance (vmin) -- bigger = flatter/less fan
+  const cosX = Math.cos(TILT_X), sinX = Math.sin(TILT_X);
+  const cosZ = Math.cos(TILT_Z), sinZ = Math.sin(TILT_Z);
+
+  const RING_LIGHT = [253,232,200];
+  const RING_SOFT  = [240,192,132];
+  const RING       = [217,119,6];
+  const RING_DUSK  = [194,133,106];
+
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function lerpColor(c1,c2,t){
+    return `rgb(${Math.round(lerp(c1[0],c2[0],t))},${Math.round(lerp(c1[1],c2[1],t))},${Math.round(lerp(c1[2],c2[2],t))})`;
+  }
+  function seededRandom(seed){ const x = Math.sin(seed*999.999)*10000; return x - Math.floor(x); }
+
+  // project a local (radius, theta) point on the flat loop through the
+  // tilt + perspective, returning screen-space x/y and whether this
+  // point is on the near (front) or far (back) side of the globe.
+  function project(r, theta){
+    const x  = r*Math.cos(theta);
+    const y  = r*Math.sin(theta);
+    const y1 = y*cosX;
+    const z1 = y*sinX;              // >0 on the near/front side
+    const x2 = x*cosZ - y1*sinZ;
+    const y2 = x*sinZ + y1*cosZ;
+    const scale = 1/(1 - z1/PERSP_D);
+    return { x:x2*scale, y:y2*scale, front:z1 > 0 };
+  }
+
+  const STEPS = 130;
+  const thetas = [];
+  for (let i=0;i<=STEPS;i++) thetas.push((i/STEPS)*Math.PI*2);
+
+  function buildLoop(baseR, seed){
+    const freqA  = 2 + Math.floor(seededRandom(seed*3+1)*2);
+    const freqB  = 5 + Math.floor(seededRandom(seed*7+2)*3);
+    const phaseA = seededRandom(seed*11+3)*Math.PI*2;
+    const phaseB = seededRandom(seed*13+4)*Math.PI*2;
+    const ampA   = 0.55 + seededRandom(seed*5+5)*0.45;
+    const ampB   = 0.2  + seededRandom(seed*9+6)*0.3;
+    const speed  = (seed % 2 === 0 ? 1 : -1) * (0.12 + seededRandom(seed*17+8)*0.1);
+    return { baseR, freqA, freqB, phaseA, phaseB, ampA, ampB, speed, phaseOffset:0 };
+  }
+
+  function pointsFor(loop){
+    const pts = new Array(thetas.length);
+    for (let i=0;i<thetas.length;i++){
+      const th = thetas[i];
+      const n = loop.ampA*Math.sin(loop.freqA*th + loop.phaseA + loop.phaseOffset)
+              + loop.ampB*Math.sin(loop.freqB*th + loop.phaseB + loop.phaseOffset*1.7);
+      pts[i] = project(loop.baseR + n, th);
+    }
+    return pts;
+  }
+
+  // split a loop's sampled points into contiguous front/back runs so
+  // each run can be drawn as its own <path> (front runs go above the
+  // globe, back runs go below it).
+  function splitRuns(pts){
+    const runs = [];
+    let cur = [pts[0]], curFront = pts[0].front;
+    for (let i=1;i<pts.length;i++){
+      if (pts[i].front === curFront){
+        cur.push(pts[i]);
+      } else {
+        runs.push({front:curFront, pts:cur});
+        cur = [pts[i]];
+        curFront = pts[i].front;
+      }
+    }
+    runs.push({front:curFront, pts:cur});
+    return runs;
+  }
+
+  function toPathD(pts){
+    return pts.map((p,i)=> `${i===0?'M':'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+  }
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const backSvg  = document.getElementById('ringsBack');
+  const frontSvg = document.getElementById('ringsFront');
+
+  // ---- define the loops: a dense inner bundle + a few separated
+  //      outer loops, same as the reference photo ----
+  const loopDefs = [];
+  const CORE_N = 16, CORE_START = GLOBE_R*1.06, CORE_STEP = 0.85;
+  for (let i=0;i<CORE_N;i++){
+    loopDefs.push({ r: CORE_START + i*CORE_STEP, t: i/(CORE_N-1), kind:'core', seed:i+1 });
+  }
+  const OUTER_RADII = [45, 51.5, 59, 67];
+  OUTER_RADII.forEach((r,i)=>{
+    loopDefs.push({ r, t: i/(OUTER_RADII.length-1), kind:'outer', seed: CORE_N + i + 1 });
+  });
+
+  const rendered = [];
+  loopDefs.forEach(def => {
+    const loop = buildLoop(def.r, def.seed);
+    let color, width, opacity;
+    if (def.kind === 'core'){
+      color   = lerpColor(RING_LIGHT, RING, def.t*0.75);
+      width   = lerp(0.22, 0.13, def.t);
+      opacity = lerp(0.85, 0.55, def.t);
+    } else {
+      color   = lerpColor(RING, RING_DUSK, def.t);
+      width   = lerp(0.16, 0.1, def.t);
+      opacity = lerp(0.5, 0.32, def.t);
+    }
+
+    const backPaths = [], frontPaths = [];
+    function makePath(){
+      const p = document.createElementNS(svgNS,'path');
+      p.setAttribute('fill','none');
+      p.setAttribute('stroke', color);
+      p.setAttribute('stroke-width', width.toFixed(3));
+      p.setAttribute('stroke-linecap','round');
+      p.style.opacity = opacity.toFixed(2);
+      return p;
+    }
+
+    // pre-create a reasonable number of path elements per loop (front/back
+    // runs are almost always exactly 2, occasionally 3 near the seam) --
+    // over-allocate slightly and hide unused ones.
+    for (let k=0;k<3;k++){
+      const bp = makePath(); backSvg.appendChild(bp);  backPaths.push(bp);
+      const fp = makePath(); frontSvg.appendChild(fp); frontPaths.push(fp);
+    }
+
+    rendered.push({ loop, backPaths, frontPaths });
+  });
+
+  function update(){
+    rendered.forEach(({loop, backPaths, frontPaths}) => {
+      const pts = pointsFor(loop);
+      const runs = splitRuns(pts);
+      let bi = 0, fi = 0;
+      runs.forEach(run => {
+        if (run.pts.length < 2) return;
+        const d = toPathD(run.pts);
+        if (run.front){
+          if (fi < frontPaths.length){ frontPaths[fi].setAttribute('d', d); frontPaths[fi].style.display=''; fi++; }
+        } else {
+          if (bi < backPaths.length){ backPaths[bi].setAttribute('d', d); backPaths[bi].style.display=''; bi++; }
+        }
+      });
+      for (;fi<frontPaths.length;fi++) frontPaths[fi].style.display='none';
+      for (;bi<backPaths.length;bi++)  backPaths[bi].style.display='none';
+    });
+  }
+
+  let lastT = null;
+  function tick(t){
+    if (lastT === null) lastT = t;
+    const dt = (t - lastT)/1000;
+    lastT = t;
+    rendered.forEach(({loop}) => { loop.phaseOffset += loop.speed*dt; });
+    update();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+</script>
+
+</body>
+</html>

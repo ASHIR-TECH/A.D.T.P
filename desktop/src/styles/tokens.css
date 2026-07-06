@@ -1,0 +1,80 @@
+@font-face {
+  font-family: 'Megrim';
+  src: url('../fonts/Megrim-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Quantico';
+  src: url('../fonts/Quantico-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Quantico';
+  src: url('../fonts/Quantico-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Quantico';
+  src: url('../fonts/Quantico-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Quantico';
+  src: url('../fonts/Quantico-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+}
+
+:root {
+  --bg-deepest: #000000;
+  --surface-primary: transparent;
+  --surface-card: rgba(193, 95, 60, 0.88);
+  --surface-accent: rgba(255,255,255,0.08);
+  --interactive-muted: rgba(255,255,255,0.5);
+  --white: #FFFFFF;
+  --gold: #C9A84C;
+  --ember: #C8430A;
+  --success: #3FA66B;
+  --warning: #D9A441;
+
+  --gold-light: #E8D38A;
+  --gold-dark: #A8893A;
+  --ember-light: rgba(200,67,10,0.15);
+  --success-light: rgba(63,166,107,0.15);
+  --warning-light: rgba(217,164,65,0.15);
+  --surface-accent-light: rgba(255,255,255,0.12);
+  --border-light: rgba(255,255,255,0.12);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --font-display: 'Audiowide', sans-serif;
+  --font-body: 'Quantico', sans-serif;
+
+  --sidebar-width: 280px;
+  --topbar-height: 56px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+}

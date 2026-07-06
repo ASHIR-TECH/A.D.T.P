@@ -1,4 +1,5 @@
 pub mod config;
+pub mod multi_config;
 pub mod permissions;
 pub mod provider;
 pub mod anthropic;
