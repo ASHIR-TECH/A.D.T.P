@@ -97,11 +97,15 @@ name = "adtp-desktop"
 version = "0.1.0"
 dependencies = [
  "adtp-cli",
+ "adtp-core",
  "adtp-peer-core",
  "anyhow",
+ "async-trait",
  "chrono",
  "dirs 5.0.1",
+ "hex",
  "png 0.17.16",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",
@@ -113,6 +117,7 @@ dependencies = [
  "tauri-plugin-store",
  "tempfile",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -175,6 +180,7 @@ dependencies = [
  "toml 0.8.2",
  "tracing",
  "uuid",
+ "walkdir",
  "x25519-dalek",
 ]
 
