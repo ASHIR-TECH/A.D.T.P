@@ -39,6 +39,7 @@ dashmap = { workspace = true }
 async-trait = { workspace = true }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 tokio-stream = "0.1"
+walkdir = "2"
 
 [dev-dependencies]
 tempfile = "3"
