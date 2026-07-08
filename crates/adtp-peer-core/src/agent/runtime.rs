@@ -199,7 +199,8 @@ impl AgentRuntime {
         drop(provider_guard);
         drop(history);
 
-        loop {
+        let max_iterations = 10;
+        for _iteration in 0..max_iterations {
             let hist = self.conversation.lock().await;
             let messages: Vec<LlmMessage> = hist.iter().map(|e| LlmMessage {
                 role: e.role.clone(),
@@ -239,6 +240,8 @@ impl AgentRuntime {
                 });
             }
         }
+
+        Err("Agent exceeded maximum tool call depth (10 iterations). The loop was terminated to prevent an infinite loop.".into())
     }
 
     async fn execute_tool(
