@@ -14,6 +14,15 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TransferRecord {
+    pub file_path: String,
+    pub peer_id: String,
+    pub status: String,
+    pub timestamp: i64,
+    pub details: String,
+}
+
 pub struct P2PModule {
     identity: PeerIdentityKey,
     endpoint: Arc<DualEndpoint>,
@@ -21,6 +30,8 @@ pub struct P2PModule {
     connections: Arc<Mutex<HashMap<String, Arc<adtp_core::transfer::AdtpConnection>>>>,
     config_dir: PathBuf,
     peer_id_hex: String,
+    transfer_history: Arc<Mutex<Vec<TransferRecord>>>,
+    nat_type: Arc<Mutex<NatType>>,
 }
 
 impl P2PModule {
@@ -49,6 +60,8 @@ impl P2PModule {
             connections: Arc::new(Mutex::new(HashMap::new())),
             config_dir,
             peer_id_hex,
+            transfer_history: Arc::new(Mutex::new(Vec::new())),
+            nat_type: Arc::new(Mutex::new(NatType::Unknown)),
         });
 
         module.register_with_rendezvous().await;
@@ -67,6 +80,7 @@ impl P2PModule {
             nat_type: NatType::Unknown,
             external_addr: None,
         });
+        *self.nat_type.lock().await = nat.nat_type;
 
         match RendezvousClient::connect("rendezvous.adtp.network", 40004).await {
             Ok(client) => {
@@ -148,6 +162,10 @@ impl P2PModule {
         self.peer_id_hex.clone()
     }
 
+    pub async fn nat_type(&self) -> NatType {
+        *self.nat_type.lock().await
+    }
+
     pub async fn connect_to_peer(&self, peer_id: &str) -> Result<Arc<adtp_core::transfer::AdtpConnection>, String> {
         {
             let conns = self.connections.lock().await;
@@ -210,18 +228,39 @@ impl P2PModule {
         );
 
         let path = PathBuf::from(file_path);
-        handler
-            .push(&path)
-            .await
-            .map_err(|e| format!("Failed to send file: {}", e))?;
+        let result = handler.push(&path).await;
 
-        Ok(format!(
-            "✅ Sent '{}' to peer '{}'",
-            path.file_name()
-                .map(|n| n.to_string_lossy())
-                .unwrap_or_else(|| file_path.into()),
-            target_peer_id
-        ))
+        let mut history = self.transfer_history.lock().await;
+        match result {
+            Ok(_) => {
+                let record = TransferRecord {
+                    file_path: path.to_string_lossy().to_string(),
+                    peer_id: target_peer_id.to_string(),
+                    status: "completed".into(),
+                    timestamp: chrono::Utc::now().timestamp(),
+                    details: format!("Sent to peer '{}'", target_peer_id),
+                };
+                history.push(record);
+                Ok(format!(
+                    "Sent '{}' to peer '{}'",
+                    path.file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_else(|| file_path.into()),
+                    target_peer_id
+                ))
+            }
+            Err(e) => {
+                let record = TransferRecord {
+                    file_path: path.to_string_lossy().to_string(),
+                    peer_id: target_peer_id.to_string(),
+                    status: "failed".into(),
+                    timestamp: chrono::Utc::now().timestamp(),
+                    details: format!("Failed: {}", e),
+                };
+                history.push(record);
+                Err(format!("Failed to send file: {}", e))
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -278,5 +317,27 @@ impl ToolExecutor for P2PModule {
 
     async fn get_own_peer_id(&self) -> Result<String, String> {
         Ok(self.peer_id())
+    }
+
+    async fn list_transfers(&self, status_filter: Option<&str>) -> Result<String, String> {
+        let history = self.transfer_history.lock().await;
+        let filtered: Vec<_> = match status_filter {
+            Some(s) => history.iter().filter(|r| r.status == s).collect(),
+            None => history.iter().collect(),
+        };
+        if filtered.is_empty() {
+            return Ok("No transfers found.".into());
+        }
+        let mut lines = vec![format!("Recent transfers ({}):", filtered.len())];
+        for r in filtered.iter().rev().take(20) {
+            let time = chrono::DateTime::from_timestamp(r.timestamp, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_else(|| "unknown".into());
+            lines.push(format!(
+                "  [{}] {} — {} — {}",
+                r.status, r.file_path, r.peer_id, time
+            ));
+        }
+        Ok(lines.join("\n"))
     }
 }
