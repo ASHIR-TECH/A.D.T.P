@@ -338,11 +338,14 @@ pub async fn get_connection_status(
     p2p: P2PState<'_>,
 ) -> Result<ConnectionStatus, String> {
     match p2p.as_ref() {
-        Some(_module) => Ok(ConnectionStatus {
-            rendezvous_registered: true,
-            connected_peers: 0,
-            endpoint_port: adtp_core::types::ADTP_DEFAULT_PORT,
-        }),
+        Some(module) => {
+            let peers = module.list_connected_peers().await;
+            Ok(ConnectionStatus {
+                rendezvous_registered: true,
+                connected_peers: peers.len() as u32,
+                endpoint_port: adtp_core::types::ADTP_DEFAULT_PORT,
+            })
+        }
         None => Err("P2P module not initialized".into()),
     }
 }
@@ -402,6 +405,42 @@ pub async fn remove_peer(peer_id: String) -> Result<bool, String> {
     trust_store.remove_peer(&peer_id);
     trust_store.save().map_err(|e| format!("Failed to save peers: {}", e))?;
     Ok(true)
+}
+
+#[tauri::command]
+pub async fn get_own_nat_type(
+    p2p: P2PState<'_>,
+) -> Result<String, String> {
+    match p2p.as_ref() {
+        Some(m) => {
+            let nt = m.nat_type().await;
+            Ok(format!("{:?}", nt))
+        }
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct AgentStatusInfo {
+    pub agent_count: usize,
+    pub active_count: usize,
+    pub states: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_agent_status(
+    agent: AgentState<'_>,
+) -> Result<AgentStatusInfo, String> {
+    let mgr = agent.lock().await;
+    let agents = mgr.list_agents().await;
+    let active_count = agents.iter().filter(|a| a.enabled).count();
+    Ok(AgentStatusInfo {
+        agent_count: agents.len(),
+        active_count,
+        states: agents.iter().map(|a| {
+            if a.enabled { "active".into() } else { "inactive".into() }
+        }).collect(),
+    })
 }
 
 #[cfg(test)]
