@@ -74,7 +74,7 @@ async function loadPage(container) {
     container.querySelector('#page-prev').disabled = page === 0;
     container.querySelector('#page-next').disabled = (page + 1) * PAGE_SIZE >= total;
   } catch (err) {
-    container.querySelector('#audit-rows').innerHTML = `<div class="table-empty">Failed to load: ${err}</div>`;
+    container.querySelector('#audit-rows').innerHTML = `<div class="table-empty">History unavailable — daemon may be offline</div>`;
   }
 }
 
