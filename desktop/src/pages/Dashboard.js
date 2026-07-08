@@ -28,7 +28,7 @@ export async function render(container) {
           <span class="date-range-pill">Last 24 Hours</span>
           <div style="margin-left:auto"></div>
           <div class="toolbar-actions">
-            <button class="btn btn-sm btn-primary" id="send-to-peer-btn">Send to Peer</button>
+            <button class="btn btn-sm btn-ember" id="send-to-peer-btn">Send to Peer</button>
           </div>
         </div>
         <div class="widget-row" id="widget-row"></div>
@@ -55,7 +55,7 @@ export async function render(container) {
         <div class="field-group">
           <label>Peer</label>
           <select id="peer-select" class="peer-select">
-            ${peers.length === 0 ? '<option value="">No peers configured</option>' : ''}
+            ${peers.length === 0 ? '<option value="" style="color:#000">No peers configured</option>' : ''}
             ${peers.map(p => `<option value="${p.peer_id}">${p.nickname || p.peer_id.slice(0, 16)} — ${p.host}:${p.port}</option>`).join('')}
           </select>
           ${peers.length === 0 ? '<div style="color:var(--interactive-muted);font-size:12px;margin-top:4px">Add peers in Settings first</div>' : ''}
@@ -64,12 +64,12 @@ export async function render(container) {
           <label>File</label>
           <div style="display:flex;gap:var(--space-2);align-items:center">
             <input type="text" id="selected-file-path" readonly placeholder="No file selected" style="flex:1" />
-            <button class="btn btn-sm btn-secondary" id="pick-file-btn">Browse</button>
+            <button class="btn btn-secondary" id="pick-file-btn">Browse</button>
           </div>
         </div>
         <div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-5)">
-          <button class="btn btn-sm btn-secondary" id="modal-cancel">Cancel</button>
-          <button class="btn btn-sm btn-primary" id="modal-send" disabled>Send</button>
+          <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="modal-send" disabled>Send</button>
         </div>
         <div id="send-result" style="margin-top:var(--space-3);font-size:13px"></div>
       </div>
