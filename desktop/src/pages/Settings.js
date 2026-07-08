@@ -23,6 +23,21 @@ export async function render(container) {
     ownPeerId = await invoke('get_own_peer_id');
   } catch {}
 
+  let natType = 'Unknown';
+  try {
+    natType = await invoke('get_own_nat_type');
+  } catch {}
+
+  let connStatus = null;
+  try {
+    connStatus = await invoke('get_connection_status');
+  } catch {}
+
+  let agentStatus = null;
+  try {
+    agentStatus = await invoke('get_agent_status');
+  } catch {}
+
   let peers = [];
   try {
     peers = await invoke('list_peers');
@@ -42,6 +57,22 @@ export async function render(container) {
             <button class="btn btn-sm btn-secondary" id="copy-peer-id" ${!ownPeerId ? 'disabled' : ''}>Copy</button>
           </div>
         </div>
+        <div class="field-group" style="margin-top:var(--space-3)">
+          <label>Connection</label>
+          <div style="display:flex;gap:var(--space-4);font-size:13px;color:var(--interactive-muted)">
+            <span>NAT: <strong style="color:var(--white)">${natType}</strong></span>
+            <span>Peers: <strong style="color:var(--white)">${connStatus ? connStatus.connected_peers : '?'}</strong></span>
+            <span>Port: <strong style="color:var(--white)">${connStatus ? connStatus.endpoint_port : '?'}</strong></span>
+          </div>
+        </div>
+        ${agentStatus ? `
+        <div class="field-group">
+          <label>Agent Status</label>
+          <div style="display:flex;gap:var(--space-4);font-size:13px;color:var(--interactive-muted)">
+            <span>Agents: <strong style="color:var(--white)">${agentStatus.active_count}/${agentStatus.agent_count} active</strong></span>
+          </div>
+        </div>
+        ` : ''}
       </div>
 
       <!-- Peers Card -->
