@@ -139,6 +139,7 @@ pub fn run() {
             commands::agent_clear_conversation,
             commands::get_home_dir,
             commands::get_own_peer_id,
+            commands::get_connection_status,
             commands::list_peers,
             commands::send_file_to_peer,
             commands::add_peer,
