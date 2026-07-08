@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub struct P2PModule {
     identity: PeerIdentityKey,
     endpoint: Arc<DualEndpoint>,
+    rendezvous: Arc<Mutex<Option<RendezvousClient>>>,
     connections: Arc<Mutex<HashMap<String, Arc<adtp_core::transfer::AdtpConnection>>>>,
     config_dir: PathBuf,
     peer_id_hex: String,
@@ -44,6 +45,7 @@ impl P2PModule {
         let module = Arc::new(Self {
             identity,
             endpoint,
+            rendezvous: Arc::new(Mutex::new(None)),
             connections: Arc::new(Mutex::new(HashMap::new())),
             config_dir,
             peer_id_hex,
@@ -51,6 +53,7 @@ impl P2PModule {
 
         module.register_with_rendezvous().await;
         module.clone().start_accept_loop();
+        module.clone().start_re_registration_loop();
 
         Ok(module)
     }
@@ -67,10 +70,12 @@ impl P2PModule {
 
         match RendezvousClient::connect("rendezvous.adtp.network", 40004).await {
             Ok(client) => {
+                let peer_id = &self.identity.peer_id;
                 client
-                    .register(&self.identity.peer_id, nat.nat_type, false, true)
+                    .register(peer_id, nat.nat_type, false, true)
                     .await
                     .ok();
+                *self.rendezvous.lock().await = Some(client);
                 tracing::info!(
                     "Registered with rendezvous server (NAT: {:?})",
                     nat.nat_type
@@ -80,6 +85,40 @@ impl P2PModule {
                 tracing::warn!("Rendezvous server unreachable: {}", e);
             }
         }
+    }
+
+    fn start_re_registration_loop(self: Arc<Self>) {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(240));
+            loop {
+                interval.tick().await;
+                let guard = self.rendezvous.lock().await;
+                if let Some(ref client) = *guard {
+                    let stun_servers = vec![
+                        "stun1.l.google.com:19302".to_string(),
+                        "stun2.l.google.com:19302".to_string(),
+                    ];
+                    let nat = NatDetector::detect(&stun_servers).unwrap_or(NatDetector {
+                        nat_type: NatType::Unknown,
+                        external_addr: None,
+                    });
+                    if client
+                        .register(&self.identity.peer_id, nat.nat_type, false, true)
+                        .await
+                        .is_ok()
+                    {
+                        tracing::trace!("Re-registered with rendezvous server");
+                    } else {
+                        tracing::warn!("Re-registration with rendezvous server failed");
+                        drop(guard);
+                        self.register_with_rendezvous().await;
+                    }
+                } else {
+                    drop(guard);
+                    self.register_with_rendezvous().await;
+                }
+            }
+        });
     }
 
     fn start_accept_loop(self: Arc<Self>) {
@@ -183,6 +222,19 @@ impl P2PModule {
                 .unwrap_or_else(|| file_path.into()),
             target_peer_id
         ))
+    }
+
+    #[allow(dead_code)]
+    pub async fn disconnect_peer(&self, peer_id: &str) -> Result<(), String> {
+        let mut conns = self.connections.lock().await;
+        conns.remove(peer_id);
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub async fn list_connected_peers(&self) -> Vec<String> {
+        let conns = self.connections.lock().await;
+        conns.keys().cloned().collect()
     }
 
     pub async fn list_peers_text(&self) -> Result<String, String> {
