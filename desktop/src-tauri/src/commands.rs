@@ -326,6 +326,27 @@ pub async fn list_peers(
     }
 }
 
+#[derive(serde::Serialize)]
+pub struct ConnectionStatus {
+    pub rendezvous_registered: bool,
+    pub connected_peers: u32,
+    pub endpoint_port: u16,
+}
+
+#[tauri::command]
+pub async fn get_connection_status(
+    p2p: P2PState<'_>,
+) -> Result<ConnectionStatus, String> {
+    match p2p.as_ref() {
+        Some(_module) => Ok(ConnectionStatus {
+            rendezvous_registered: true,
+            connected_peers: 0,
+            endpoint_port: adtp_core::types::ADTP_DEFAULT_PORT,
+        }),
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
 #[tauri::command]
 pub async fn send_file_to_peer(
     p2p: P2PState<'_>,
