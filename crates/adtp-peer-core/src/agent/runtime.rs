@@ -20,6 +20,7 @@ pub trait ToolExecutor: Send + Sync {
     async fn send_file(&self, file_path: &str, peer_id: &str) -> Result<String, String>;
     async fn list_peers(&self) -> Result<String, String>;
     async fn get_own_peer_id(&self) -> Result<String, String>;
+    async fn list_transfers(&self, status: Option<&str>) -> Result<String, String>;
 }
 
 pub struct AgentRuntime {
@@ -58,6 +59,24 @@ impl AgentRuntime {
             ToolDefinition {
                 name: "list_peers".into(),
                 description: "List known remote peers and their online status".into(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            },
+            ToolDefinition {
+                name: "list_transfers".into(),
+                description: "List recent file transfers. Optionally filter by status (completed, failed, in_progress)".into(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string", "description": "Filter by status: completed, failed, or in_progress"},
+                    },
+                }),
+            },
+            ToolDefinition {
+                name: "get_own_peer_id".into(),
+                description: "Get this computer's own peer ID. Use this when the user asks for their peer ID.".into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {},
@@ -272,6 +291,19 @@ impl AgentRuntime {
                     None => Ok("No P2P module connected. You are offline.".into()),
                 }
             }
+            "list_transfers" => {
+                let status = call.arguments.get("status").and_then(|v| v.as_str());
+                match executor {
+                    Some(exe) => exe.list_transfers(status).await,
+                    None => Ok("No P2P module connected.".into()),
+                }
+            }
+            "get_own_peer_id" => {
+                match executor {
+                    Some(exe) => exe.get_own_peer_id().await,
+                    None => Err("P2P module not initialized.".into()),
+                }
+            }
             "find_file" => {
                 let pattern = call.arguments.get("pattern")
                     .and_then(|v| v.as_str())
@@ -420,6 +452,8 @@ impl AgentRuntime {
 You have access to the following tools:
 - send_file: Send a file to another computer by peer ID (requires file_path and peer_id)
 - list_peers: List known remote peers and their online status
+- list_transfers: List recent file transfers (optionally filter by status: completed, failed, in_progress)
+- get_own_peer_id: Get this computer's own peer ID
 - find_file: Search for files on this machine
 - read_file: Read the contents of a local file
 - list_directory: List contents of a directory
@@ -429,6 +463,9 @@ When the user asks you to send a file to another computer:
 1. First use list_peers to see available peers
 2. If the target peer exists, use send_file with the file path and peer ID
 3. After sending, tell the user the result
+
+When the user asks for their peer ID, use get_own_peer_id.
+When the user asks about recent transfers, use list_transfers.
 
 You are allowed to read files from: {allowed_str}
 You are allowed to write to: {writable_str}
