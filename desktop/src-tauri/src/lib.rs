@@ -28,6 +28,11 @@ pub fn run() {
         .setup(|app| {
             tray::build_tray(app.handle())?;
 
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
             let config_dir = dirs::config_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("adtp");
