@@ -140,6 +140,8 @@ pub fn run() {
             commands::get_home_dir,
             commands::get_own_peer_id,
             commands::get_connection_status,
+            commands::get_own_nat_type,
+            commands::get_agent_status,
             commands::list_peers,
             commands::send_file_to_peer,
             commands::add_peer,
