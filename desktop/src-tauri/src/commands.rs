@@ -296,6 +296,153 @@ pub fn get_home_dir() -> Result<String, String> {
     dirs::home_dir().map(|p| p.to_string_lossy().to_string()).ok_or("Cannot determine home directory".into())
 }
 
+type P2PState<'a> = State<'a, Option<std::sync::Arc<crate::p2p::P2PModule>>>;
+
+#[tauri::command]
+pub async fn get_own_peer_id(
+    p2p: P2PState<'_>,
+) -> Result<String, String> {
+    match p2p.as_ref() {
+        Some(m) => Ok(m.peer_id()),
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn list_peers(
+    p2p: P2PState<'_>,
+) -> Result<Vec<adtp_core::types::PeerEntry>, String> {
+    match p2p.as_ref() {
+        Some(_module) => {
+            let config_dir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("adtp");
+            let peers_path = config_dir.join("peers.toml");
+            let trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
+            let peers: Vec<adtp_core::types::PeerEntry> = trust_store.list_peers().into_iter().cloned().collect();
+            Ok(peers)
+        }
+        None => Ok(vec![]),
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct ConnectionStatus {
+    pub rendezvous_registered: bool,
+    pub connected_peers: u32,
+    pub endpoint_port: u16,
+}
+
+#[tauri::command]
+pub async fn get_connection_status(
+    p2p: P2PState<'_>,
+) -> Result<ConnectionStatus, String> {
+    match p2p.as_ref() {
+        Some(module) => {
+            let peers = module.list_connected_peers().await;
+            Ok(ConnectionStatus {
+                rendezvous_registered: true,
+                connected_peers: peers.len() as u32,
+                endpoint_port: adtp_core::types::ADTP_DEFAULT_PORT,
+            })
+        }
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn send_file_to_peer(
+    p2p: P2PState<'_>,
+    file_path: String,
+    peer_id: String,
+) -> Result<String, String> {
+    match p2p.as_ref() {
+        Some(module) => module.send_file_to_peer(&file_path, &peer_id).await,
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn add_peer(
+    peer_id: String,
+    public_key: String,
+    host: String,
+    port: u16,
+    nickname: Option<String>,
+    trust_level: String,
+) -> Result<bool, String> {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("adtp");
+    let peers_path = config_dir.join("peers.toml");
+    let mut trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
+
+    let level = match trust_level.to_lowercase().as_str() {
+        "trusted" => adtp_core::types::TrustLevel::Trusted,
+        "blocked" => adtp_core::types::TrustLevel::Blocked,
+        _ => adtp_core::types::TrustLevel::Unverified,
+    };
+
+    trust_store.add_peer(adtp_core::types::PeerEntry {
+        peer_id,
+        public_key,
+        nickname,
+        host,
+        port,
+        trust_level: level,
+    });
+    trust_store.save().map_err(|e| format!("Failed to save peers: {}", e))?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn remove_peer(peer_id: String) -> Result<bool, String> {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("adtp");
+    let peers_path = config_dir.join("peers.toml");
+    let mut trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
+    trust_store.remove_peer(&peer_id);
+    trust_store.save().map_err(|e| format!("Failed to save peers: {}", e))?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn get_own_nat_type(
+    p2p: P2PState<'_>,
+) -> Result<String, String> {
+    match p2p.as_ref() {
+        Some(m) => {
+            let nt = m.nat_type().await;
+            Ok(format!("{:?}", nt))
+        }
+        None => Err("P2P module not initialized".into()),
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct AgentStatusInfo {
+    pub agent_count: usize,
+    pub active_count: usize,
+    pub states: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_agent_status(
+    agent: AgentState<'_>,
+) -> Result<AgentStatusInfo, String> {
+    let mgr = agent.lock().await;
+    let agents = mgr.list_agents().await;
+    let active_count = agents.iter().filter(|a| a.enabled).count();
+    Ok(AgentStatusInfo {
+        agent_count: agents.len(),
+        active_count,
+        states: agents.iter().map(|a| {
+            if a.enabled { "active".into() } else { "inactive".into() }
+        }).collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use serde::Serialize;

@@ -31,7 +31,7 @@ async function loadPage(tab) {
       const mod = await import(`./pages/${tab.charAt(0).toUpperCase() + tab.slice(1)}.js`);
       await mod.render(pageContainer);
     } catch (err) {
-      pageContainer.innerHTML = `<p style="color:var(--ember);padding:24px;">Failed to load ${tab}: ${err.message}</p>`;
+      pageContainer.innerHTML = `<p style="color:var(--interactive-muted);padding:24px;">Page unavailable — daemon may be offline</p>`;
     }
     pageContainer.classList.add('motion-fade-in');
     setTimeout(() => pageContainer.classList.remove('motion-fade-in'), 80);

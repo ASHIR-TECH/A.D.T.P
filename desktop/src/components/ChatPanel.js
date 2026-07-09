@@ -21,13 +21,7 @@ export async function render(container) {
       </div>
       <div class="chat-messages" id="chat-messages">
         ${messages.length === 0 ? '<div class="chat-empty">Ask the agent something</div>' : ''}
-        ${messages.map(m => `
-          <div class="chat-msg ${m.role === 'user' ? 'chat-msg-right' : 'chat-msg-left'}">
-            <div class="chat-msg-label">${m.role === 'user' ? 'You' : 'Agent'}</div>
-            <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
-            <div class="chat-msg-time">${new Date(m.timestamp).toLocaleTimeString()}</div>
-          </div>
-        `).join('')}
+        ${messages.map(m => renderMessage(m)).join('')}
       </div>
       <div class="chat-input-area">
         <textarea class="chat-input" id="chat-input" placeholder="Ask the agent..." rows="1" maxlength="4000" ${agentState !== 'active' ? 'disabled' : ''}></textarea>
@@ -38,6 +32,50 @@ export async function render(container) {
 
   setupChat(container);
   listenToEvents(container);
+}
+
+function renderMessage(m) {
+  const isUser = m.role === 'user';
+  const hasToolCalls = m.tool_calls && m.tool_calls.length > 0;
+  const content = escapeHtml(m.content);
+  const time = new Date(m.timestamp).toLocaleTimeString();
+
+  if (isUser) {
+    return `
+      <div class="chat-msg chat-msg-right">
+        <div class="chat-msg-label">You</div>
+        <div class="chat-msg-bubble">${content}</div>
+        <div class="chat-msg-time">${time}</div>
+      </div>
+    `;
+  }
+
+  let toolSteps = '';
+  if (hasToolCalls) {
+    toolSteps = m.tool_calls.map((tc, i) => `
+      <div class="chat-tool-call">
+        <div class="chat-tool-call-header" data-index="${i}">
+          <span class="chat-tool-call-icon">🔧</span>
+          <span class="chat-tool-call-name">${escapeHtml(tc)}</span>
+          <span class="chat-tool-call-toggle">+</span>
+        </div>
+        <div class="chat-tool-call-detail" style="display:none">
+          <code>${escapeHtml(JSON.stringify(tc, null, 2))}</code>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  return `
+    <div class="chat-msg chat-msg-left">
+      <div class="chat-msg-label">Agent</div>
+      <div class="chat-msg-bubble">
+        ${content}
+        ${toolSteps ? `<div class="chat-tool-steps">${toolSteps}</div>` : ''}
+      </div>
+      <div class="chat-msg-time">${time}</div>
+    </div>
+  `;
 }
 
 function listenToEvents(container) {
@@ -120,13 +158,18 @@ function renderMessages(container) {
     el.innerHTML = '<div class="chat-empty">Ask the agent something</div>';
     return;
   }
-  el.innerHTML = messages.map(m => `
-    <div class="chat-msg ${m.role === 'user' ? 'chat-msg-right' : 'chat-msg-left'}">
-      <div class="chat-msg-label">${m.role === 'user' ? 'You' : 'Agent'}</div>
-      <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
-      <div class="chat-msg-time">${new Date(m.timestamp).toLocaleTimeString()}</div>
-    </div>
-  `).join('');
+  el.innerHTML = messages.map(m => renderMessage(m)).join('');
+  el.querySelectorAll('.chat-tool-call-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const detail = header.nextElementSibling;
+      const toggle = header.querySelector('.chat-tool-call-toggle');
+      if (detail) {
+        const isHidden = detail.style.display === 'none' || !detail.style.display;
+        detail.style.display = isHidden ? 'block' : 'none';
+        toggle.textContent = isHidden ? '−' : '+';
+      }
+    });
+  });
   el.scrollTop = el.scrollHeight;
 }
 

@@ -10,11 +10,11 @@
     "windows": [
       {
         "title": "ADTP Desktop — Ashir Tech",
-        "width": 1024,
-        "height": 720,
         "minWidth": 800,
         "minHeight": 500,
         "center": true,
+        "maximized": true,
+        "visible": false,
         "resizable": true
       }
     ],
