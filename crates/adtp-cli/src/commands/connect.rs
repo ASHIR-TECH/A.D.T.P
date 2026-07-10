@@ -18,7 +18,7 @@ pub struct ConnectArgs {
     pub default: bool,
 }
 
-pub async fn execute(cfg: &mut CliConfig, args: &ConnectArgs) -> Result<i32, CliError> {
+pub async fn execute(cfg: &CliConfig, args: &ConnectArgs) -> Result<i32, CliError> {
     if args.port < 1 {
         return Err(CliError::Config {
             message: "Port must be between 1 and 65535.".into(),
@@ -32,16 +32,18 @@ pub async fn execute(cfg: &mut CliConfig, args: &ConnectArgs) -> Result<i32, Cli
         default: args.default,
     };
 
-    cfg.agents.retain(|a| a.name != agent.name);
-    cfg.agents.push(agent);
+    // Load, modify, save
+    let mut updated = cfg.clone();
+    updated.agents.retain(|a| a.name != agent.name);
+    updated.agents.push(agent);
 
     if args.default {
-        for a in &mut cfg.agents {
+        for a in &mut updated.agents {
             a.default = a.name == args.name;
         }
     }
 
-    cfg.save()?;
+    updated.save()?;
 
     if cfg.output_format == "json" {
         println!(
