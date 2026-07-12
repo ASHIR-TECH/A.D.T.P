@@ -13,15 +13,43 @@ pub struct AgentEntry {
 pub struct CliConfig {
     pub api_url: String,
     pub api_token: String,
+
+    #[serde(default)]
     pub default_agent: String,
+
+    #[serde(default)]
+    pub default_peer: Option<String>,
+
+    #[serde(default)]
     pub output_format: String,
+
+    #[serde(default = "default_poll_interval")]
     pub poll_interval_ms: u64,
+
+    #[serde(default = "default_connect_timeout")]
     pub connect_timeout_ms: u64,
+
+    #[serde(default = "default_request_timeout")]
     pub request_timeout_ms: u64,
+
+    #[serde(default = "default_keepalive")]
+    pub keepalive_ms: u64,
+
+    #[serde(default)]
+    pub nat_override: Option<String>,
+
+    #[serde(default = "default_rendezvous")]
+    pub rendezvous_server: String,
 
     #[serde(default)]
     pub agents: Vec<AgentEntry>,
 }
+
+fn default_poll_interval() -> u64 { 500 }
+fn default_connect_timeout() -> u64 { 5000 }
+fn default_request_timeout() -> u64 { 30000 }
+fn default_keepalive() -> u64 { 25000 }
+fn default_rendezvous() -> String { "udp://ashir.world:40004".into() }
 
 impl Default for CliConfig {
     fn default() -> Self {
@@ -29,10 +57,14 @@ impl Default for CliConfig {
             api_url: "http://127.0.0.1:40003".into(),
             api_token: String::new(),
             default_agent: "default".into(),
+            default_peer: None,
             output_format: "table".into(),
             poll_interval_ms: 500,
             connect_timeout_ms: 5000,
             request_timeout_ms: 30000,
+            keepalive_ms: 25000,
+            nat_override: None,
+            rendezvous_server: "udp://ashir.world:40004".into(),
             agents: Vec::new(),
         }
     }
@@ -55,7 +87,9 @@ impl CliConfig {
             let content = std::fs::read_to_string(&path)?;
             toml::from_str(&content)?
         } else {
-            Self::default()
+            let cfg = Self::default();
+            let _ = cfg.save();
+            cfg
         };
         cfg.apply_env_overrides();
         Ok(cfg)
@@ -81,6 +115,9 @@ impl CliConfig {
         if let Ok(v) = std::env::var("ADTP_DEFAULT_AGENT") {
             self.default_agent = v;
         }
+        if let Ok(v) = std::env::var("ADTP_DEFAULT_PEER") {
+            self.default_peer = Some(v);
+        }
         if let Ok(v) = std::env::var("ADTP_OUTPUT_FORMAT") {
             self.output_format = v;
         }
@@ -99,6 +136,17 @@ impl CliConfig {
                 self.request_timeout_ms = n;
             }
         }
+        if let Ok(v) = std::env::var("ADTP_KEEPALIVE") {
+            if let Ok(n) = v.parse() {
+                self.keepalive_ms = n;
+            }
+        }
+        if let Ok(v) = std::env::var("ADTP_RENDEZVOUS") {
+            self.rendezvous_server = v;
+        }
+        if let Ok(v) = std::env::var("ADTP_NAT_OVERRIDE") {
+            self.nat_override = Some(v);
+        }
     }
 
     pub fn validate(&self) -> Result<(), crate::errors::CliError> {
@@ -107,6 +155,23 @@ impl CliConfig {
                 message: "ADTP_API_TOKEN is not set. Set it in cli.toml or ADTP_API_TOKEN env var.".into(),
             });
         }
+        Ok(())
+    }
+
+    pub fn token_from_keychain(&self) -> Option<String> {
+        let service = "adtp-cli";
+        let entry = keyring::Entry::new(service, "api_token").ok()?;
+        entry.get_password().ok()
+    }
+
+    pub fn save_token_to_keychain(&self, token: &str) -> Result<(), crate::errors::CliError> {
+        let service = "adtp-cli";
+        let entry = keyring::Entry::new(service, "api_token").map_err(|e| {
+            crate::errors::CliError::Io { message: format!("Keychain error: {e}") }
+        })?;
+        entry.set_password(token).map_err(|e| {
+            crate::errors::CliError::Io { message: format!("Failed to save token: {e}") }
+        })?;
         Ok(())
     }
 }

@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 adtp-core = { path = "../adtp-core" }
 adtp-peer-core = { path = "../adtp-peer-core" }
-clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -21,9 +21,15 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+rustyline = "14"
+keyring = { version = "2", features = ["linux-secret-service-rt-tokio-crypto-rust"] }
+crossterm = "0.28"
+supports-color = "3"
+atty = "0.2"
 
 [dev-dependencies]
 wiremock = "0.6"
+criterion = "0.5"
 
 [lib]
 name = "adtp_cli"

@@ -25,8 +25,17 @@ fn build_cli_args(extra_args: &[&str]) -> Command {
     cmd.env("ADTP_API_URL", &api_url());
     cmd.env("ADTP_API_TOKEN", "test-token-abcdef1234567890");
     cmd.env("ADTP_OUTPUT_FORMAT", "json");
+    cmd.env("ADTP_DEFAULT_PEER", "test-peer");
     cmd.args(extra_args);
     cmd
+}
+
+fn base_envs() -> Vec<(&'static str, String)> {
+    vec![
+        ("ADTP_API_TOKEN", "test-token-abcdef1234567890".to_string()),
+        ("ADTP_OUTPUT_FORMAT", "json".to_string()),
+        ("ADTP_DEFAULT_PEER", "test-peer".to_string()),
+    ]
 }
 
 #[tokio::test]
@@ -49,8 +58,7 @@ async fn test_send_success() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("send")
         .arg("/tmp/test.txt")
         .output()
@@ -77,7 +85,7 @@ async fn test_send_file_not_found() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
+        .envs(base_envs())
         .arg("send")
         .arg("/nonexistent/file.txt")
         .output()
@@ -107,8 +115,7 @@ async fn test_receive_empty() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("receive")
         .output()
         .expect("failed to execute process");
@@ -182,8 +189,7 @@ async fn test_receive_with_results() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("receive")
         .output()
         .expect("failed to execute process");
@@ -214,8 +220,7 @@ async fn test_verify_valid_chain() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("verify")
         .output()
         .expect("failed to execute process");
@@ -244,8 +249,7 @@ async fn test_verify_tampered_chain() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("verify")
         .output()
         .expect("failed to execute process");
@@ -286,7 +290,7 @@ async fn test_status_daemon_down() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
+        .envs(base_envs())
         .arg("status")
         .output()
         .expect("failed to execute process");
@@ -322,7 +326,7 @@ async fn test_export_to_file() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
+        .envs(base_envs())
         .arg("export")
         .arg("--output")
         .arg(out_path.to_str().unwrap())
@@ -352,6 +356,8 @@ async fn test_auth_invalid_token() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
         .env("ADTP_API_TOKEN", "invalid-token")
+        .env("ADTP_DEFAULT_PEER", "test-peer")
+        .env("ADTP_OUTPUT_FORMAT", "json")
         .arg("receive")
         .output()
         .expect("failed to execute process");
@@ -380,8 +386,7 @@ async fn test_json_output_format() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("receive")
         .output()
         .expect("failed to execute process");
@@ -398,6 +403,8 @@ async fn test_connect_writes_config() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", "http://127.0.0.1:40003")
         .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
+        .env("ADTP_DEFAULT_PEER", "test-peer")
+        .env("ADTP_OUTPUT_FORMAT", "json")
         .env("HOME", std::env::temp_dir().to_str().unwrap())
         .arg("connect")
         .arg("--host")
@@ -435,8 +442,7 @@ async fn test_context_empty() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("context")
         .arg("abc-123")
         .output()
@@ -473,9 +479,9 @@ async fn test_session_list() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("session")
+        .arg("list")
         .output()
         .expect("failed to execute process");
 
@@ -518,8 +524,7 @@ async fn test_history_with_date_filter() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("history")
         .arg("--from")
         .arg("2026-06-01")
@@ -554,8 +559,7 @@ async fn test_send_watch_flow() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
-        .env("ADTP_OUTPUT_FORMAT", "json")
+        .envs(base_envs())
         .arg("watch")
         .arg("/tmp/watchdir")
         .arg("--pattern")
@@ -580,7 +584,7 @@ async fn test_unwatch_delete() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adtp"))
         .env("ADTP_API_URL", format!("http://{}", mock.address()))
-        .env("ADTP_API_TOKEN", "test-token-abcdef1234567890")
+        .envs(base_envs())
         .arg("unwatch")
         .arg("watch-123")
         .output()
