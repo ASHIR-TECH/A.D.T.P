@@ -2,6 +2,7 @@ pub mod agent;
 pub mod audit;
 pub mod config;
 pub mod connect;
+pub mod desktop;
 pub mod context;
 pub mod export;
 pub mod history;
