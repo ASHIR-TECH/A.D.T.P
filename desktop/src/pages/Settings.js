@@ -125,6 +125,30 @@ export async function render(container) {
         </div>
       </div>
 
+      <!-- CLI Card -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h3>CLI / Terminal</h3>
+        </div>
+        <div class="field-group">
+          <label>ADTP Desktop bundles a full CLI — use it for scripting, automation, or power-user workflows</label>
+          <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3)">
+            <button class="btn btn-sm btn-primary" id="launch-cli">Open Terminal (CLI)</button>
+          </div>
+          <div style="margin-top:var(--space-4);font-size:12px;color:var(--interactive-muted)">
+            <strong>Quick reference:</strong>
+            <code style="display:block;margin-top:var(--space-1);padding:var(--space-2);background:var(--bg-deepest);border-radius:var(--radius-sm)">
+adtp send &lt;file&gt;        &mdash; send a file
+adtp status              &mdash; check transfer status
+adtp peer list           &mdash; list peers
+adtp agent ask "..."     &mdash; ask the AI agent
+adtp desktop             &mdash; launch this desktop app from CLI
+adtp                     &mdash; enter REPL mode
+            </code>
+          </div>
+        </div>
+      </div>
+
       <!-- Connection Card -->
       <div class="settings-card">
         <div class="settings-card-header">
@@ -352,6 +376,16 @@ function setupEventHandlers(container, settings) {
     content.style.display = advancedOpen ? 'block' : 'none';
     toggle.style.animation = advancedOpen ? 'none' : '';
     if (advancedOpen) saveSettings(container);
+  });
+
+  container.querySelector('#launch-cli')?.addEventListener('click', async () => {
+    try {
+      const homeDir = await invoke('get_home_dir');
+      const cliPath = await invoke('launch_cli');
+      show(`CLI launched — check your terminal`, 'success', 'top-right');
+    } catch (err) {
+      show(`Couldn't open terminal: ${err}`, 'error', 'top-right');
+    }
   });
 
   container.querySelector('#copy-peer-id')?.addEventListener('click', async () => {
