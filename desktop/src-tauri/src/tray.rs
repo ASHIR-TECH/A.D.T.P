@@ -13,9 +13,11 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let sep = PredefinedMenuItem::separator(app)?;
     let status = MenuItem::with_id(app, "status", "Status: Checking...", false, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
+    let cli = MenuItem::with_id(app, "cli", "Launch CLI...", true, None::<&str>)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&open, &send, &sep, &status, &sep2, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &send, &sep, &status, &sep2, &cli, &sep3, &quit])?;
 
     let idle_img = decode_png(include_bytes!("../icons/tray-idle.png"));
 
@@ -32,6 +34,9 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             }
             "send" => {
                 let _ = app.emit("tray-send", ());
+            }
+            "cli" => {
+                launch_cli_terminal(app);
             }
             "quit" => {
                 app.exit(0);
@@ -93,6 +98,91 @@ pub fn update_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str, status_text
         let _ = tray.set_icon(Some(Image::new(&rgba, w, h)));
         let _ = tray.set_tooltip(Some(format!("ADTP Desktop — {status_text}")));
     }
+}
+
+/// Launch a terminal with the `adtp` CLI ready to use.
+/// Tries several terminal emulators; falls back to spawning `adtp`
+/// directly inside a new terminal window.
+pub fn launch_cli_terminal<R: Runtime>(app: &AppHandle<R>) {
+    // Find the CLI binary next to our own executable, or in PATH
+    let cli_path = resolve_cli_binary(app);
+
+    let terminal_cmd: &[(_, &[&str])] = &[
+        ("kgx", &["kgx", "-e", &cli_path]),
+        ("gnome-terminal", &["gnome-terminal", "--", &cli_path]),
+        ("konsole", &["konsole", "-e", &cli_path]),
+        ("xfce4-terminal", &["xfce4-terminal", "-e", &cli_path]),
+        ("xterm", &["xterm", "-e", &cli_path]),
+        ("alacritty", &["alacritty", "-e", &cli_path]),
+        ("wezterm", &["wezterm", "start", &cli_path]),
+        ("windows-terminal", &["start", "wt", "-d", ".", &cli_path]),
+    ];
+
+    for (name, cmd) in terminal_cmd {
+        if *name == "windows-terminal" && cfg!(not(target_os = "windows")) {
+            continue;
+        }
+        if std::process::Command::new(cmd[0])
+            .args(&cmd[1..])
+            .spawn()
+            .is_ok()
+        {
+            return;
+        }
+    }
+
+    // Last resort: just spawn CLI in the background (no terminal window)
+    let _ = std::process::Command::new(&cli_path)
+        .spawn();
+}
+
+/// Find the `adtp` CLI binary.  Checks: 1) next to our own exe
+/// (bundled case), 2) PATH, 3) common install locations.
+fn resolve_cli_binary<R: Runtime>(app: &AppHandle<R>) -> String {
+    // 1. Next to our own executable (bundled distribution)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let bundled = parent.join("adtp");
+            if bundled.exists() {
+                return bundled.to_string_lossy().to_string();
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let bundled_exe = parent.join("adtp.exe");
+                if bundled_exe.exists() {
+                    return bundled_exe.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
+
+    // 2. Next to the Tauri resource dir
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bundled = resource_dir.join("adtp");
+        if bundled.exists() {
+            return bundled.to_string_lossy().to_string();
+        }
+    }
+
+    // 3. Check PATH
+    if let Ok(paths) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join("adtp");
+            if candidate.is_file() {
+                return candidate.to_string_lossy().to_string();
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let candidate_exe = dir.join("adtp.exe");
+                if candidate_exe.is_file() {
+                    return candidate_exe.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
+
+    // 4. Fallback: just return the name and let the OS figure it out
+    "adtp".to_string()
 }
 
 #[cfg(test)]
