@@ -98,5 +98,6 @@ async fn dispatch(
         adtp_cli::Commands::Config(args) => adtp_cli::commands::config::execute(cfg, args).await,
         adtp_cli::Commands::Audit(args) => adtp_cli::commands::audit::execute(cfg, args).await,
         adtp_cli::Commands::Ask(args) => adtp_cli::commands::agent::execute(cfg, args).await,
+        adtp_cli::Commands::Desktop(args) => adtp_cli::commands::desktop::execute(cfg, args).await,
     }
 }
