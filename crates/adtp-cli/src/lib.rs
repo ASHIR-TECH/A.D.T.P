@@ -56,6 +56,8 @@ pub enum Commands {
     Audit(commands::audit::AuditArgs),
     /// Send a natural language instruction to the agent — `adtp ask "<instruction>"`
     Ask(commands::agent::AgentArgs),
+    /// Launch ADTP Desktop GUI — `adtp desktop [--background]`
+    Desktop(commands::desktop::DesktopArgs),
 }
 
 pub fn resolve_aliases(args: &[String]) -> Option<Vec<String>> {
@@ -99,6 +101,11 @@ pub fn resolve_aliases(args: &[String]) -> Option<Vec<String>> {
             v.extend_from_slice(&args[2..]);
             v
         }
+        "dt" => {
+            let mut v = vec!["adtp".to_string(), "desktop".to_string()];
+            v.extend_from_slice(&args[2..]);
+            v
+        }
         _ => return None,
     };
     Some(resolved)
@@ -128,6 +135,7 @@ pub fn dispatch_command(
                 Commands::Config(args) => commands::config::execute(cfg, args).await,
                 Commands::Audit(args) => commands::audit::execute(cfg, args).await,
                 Commands::Ask(args) => commands::agent::execute(cfg, args).await,
+                Commands::Desktop(args) => commands::desktop::execute(cfg, args).await,
             }
         });
     result
