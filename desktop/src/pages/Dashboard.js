@@ -37,7 +37,7 @@ export async function render(container) {
         <div class="toolbar-row" style="margin-top:var(--space-4)">
           <input class="search-input" id="table-search" placeholder="Search events..." />
           <div class="toolbar-actions">
-            <button class="btn btn-sm btn-secondary" id="refresh-dash">Refresh</button>
+            <button class="btn-toolbar-action" id="refresh-dash">Refresh</button>
           </div>
         </div>
         <div id="event-table"></div>
