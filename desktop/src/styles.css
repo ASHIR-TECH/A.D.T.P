@@ -346,9 +346,9 @@ body {
 .btn-primary:hover { background: rgba(255,255,255,0.1); }
 
 .btn-secondary {
-  background: #000000;
+  background: rgba;
   color: var(--white);
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 1px solid #d94a1a(255,255,255,0.2);
 }
 .btn-secondary:hover { background: rgba(255,255,255,0.1); }
 
@@ -357,7 +357,7 @@ body {
   color: var(--white);
   border: 1px solid var(--white);
 }
-.btn-outline-gold:hover { background: rgba(255,255,255,0.1); }
+.btn-outline-gold:hover { background: #d94a1a(255,255,255,0.1); }
 
 .btn-danger {
   background: var(--ember);
@@ -388,6 +388,36 @@ body {
 }
 
 .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Toolbar action buttons — match date-range-pill colour by default, ember on hover */
+.btn-toolbar-action {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-body);
+  background: var(--surface-card);
+  color: var(--white);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-toolbar-action:hover {
+  background: var(--ember);
+  border-color: var(--ember);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(200,67,10,0.4);
+}
+.btn-toolbar-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-toolbar-action:disabled:hover {
+  background: var(--surface-card);
+  border-color: rgba(255,255,255,0.2);
+  box-shadow: none;
+}
 .btn-icon {
   padding: 4px 8px;
   background: transparent;

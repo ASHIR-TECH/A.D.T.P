@@ -151,6 +151,7 @@ pub fn run() {
             commands::send_file_to_peer,
             commands::add_peer,
             commands::remove_peer,
+            commands::launch_cli,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ADTP Desktop");

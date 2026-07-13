@@ -28,7 +28,8 @@ export async function render(container) {
           <span class="date-range-pill">Last 24 Hours</span>
           <div style="margin-left:auto"></div>
           <div class="toolbar-actions">
-            <button class="btn btn-sm btn-ember" id="send-to-peer-btn">Send to Peer</button>
+            <button class="btn-toolbar-action" id="open-cli-btn" title="Open ADTP CLI in terminal">Open Terminal (CLI)</button>
+            <button class="btn-toolbar-action" id="send-to-peer-btn">Send to Peer</button>
           </div>
         </div>
         <div class="widget-row" id="widget-row"></div>
@@ -36,7 +37,7 @@ export async function render(container) {
         <div class="toolbar-row" style="margin-top:var(--space-4)">
           <input class="search-input" id="table-search" placeholder="Search events..." />
           <div class="toolbar-actions">
-            <button class="btn btn-sm btn-secondary" id="refresh-dash">Refresh</button>
+            <button class="btn-toolbar-action" id="refresh-dash">Refresh</button>
           </div>
         </div>
         <div id="event-table"></div>
@@ -188,6 +189,17 @@ function setupSendToPeer(container) {
 }
 
 function setupDashboardEvents(container) {
+  container.querySelector('#open-cli-btn')?.addEventListener('click', async () => {
+    try {
+      await invoke('launch_cli');
+      const { show } = await import('../components/Toast.js');
+      show('CLI launched — check your terminal', 'success', 'top-right');
+    } catch (err) {
+      const { show } = await import('../components/Toast.js');
+      show(`Couldn't open terminal: ${err}`, 'error', 'top-right');
+    }
+  });
+
   container.querySelector('#refresh-dash')?.addEventListener('click', () => {
     render(container.parentElement ? container : container);
   });

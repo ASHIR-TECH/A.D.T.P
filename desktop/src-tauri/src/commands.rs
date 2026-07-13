@@ -443,6 +443,13 @@ pub async fn get_agent_status(
     })
 }
 
+#[tauri::command]
+pub fn launch_cli(app: AppHandle) -> Result<String, String> {
+    // Reuse the tray's launch logic
+    crate::tray::launch_cli_terminal(&app);
+    Ok("CLI launched".into())
+}
+
 #[cfg(test)]
 mod tests {
     use serde::Serialize;
