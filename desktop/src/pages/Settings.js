@@ -54,7 +54,7 @@ export async function render(container) {
           <label>This computer's unique ID — share this so other PCs can send files to you</label>
           <div class="peer-id-display">
             <code id="own-peer-id">${ownPeerId || 'Initializing...'}</code>
-            <button class="btn btn-sm btn-secondary" id="copy-peer-id" ${!ownPeerId ? 'disabled' : ''}>Copy</button>
+            <button class="btn-toolbar-action" id="copy-peer-id" ${!ownPeerId ? 'disabled' : ''}>Copy</button>
           </div>
         </div>
         <div class="field-group" style="margin-top:var(--space-3)">
@@ -159,7 +159,7 @@ adtp                     &mdash; enter REPL mode
           <input type="text" id="api-url" value="${settings.api_url}" />
         </div>
         <div style="display:flex;gap:var(--space-2)">
-          <button class="btn btn-sm btn-secondary" id="test-connection">Test Connection</button>
+          <button class="btn-toolbar-action" id="test-connection">Test Connection</button>
         </div>
       </div>
 
