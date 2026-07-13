@@ -408,6 +408,16 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(200,67,10,0.4);
 }
+.btn-toolbar-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-toolbar-action:disabled:hover {
+  background: var(--surface-card);
+  border-color: rgba(255,255,255,0.2);
+  box-shadow: none;
+}
 .btn-icon {
   padding: 4px 8px;
   background: transparent;
