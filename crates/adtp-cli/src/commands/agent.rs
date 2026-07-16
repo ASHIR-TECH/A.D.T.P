@@ -6,6 +6,19 @@ use crate::display;
 use crate::errors::CliError;
 use crate::models::*;
 
+const MAX_DISPLAY_LEN: usize = 160;
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut idx = max;
+    while !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    format!("{}… ({} more chars)", &s[..idx], s.len() - idx)
+}
+
 #[derive(Subcommand, Debug)]
 pub enum AgentCommands {
     /// Send a natural language instruction to the agent
@@ -95,7 +108,9 @@ async fn agent_ask(cfg: &CliConfig, args: &AgentAskArgs) -> Result<i32, CliError
             "failed" => "✗".red(),
             _ => "⟳".to_string().truecolor(124, 124, 191),
         };
-        println!(" {icon} {}  {}  →  {}", tc.tool, tc.input, tc.result.as_deref().unwrap_or(""));
+        let input = truncate(&tc.input, MAX_DISPLAY_LEN);
+        let result = tc.result.as_deref().map(|r| truncate(r, MAX_DISPLAY_LEN)).unwrap_or_default();
+        println!(" {icon} {}  {}  →  {}", tc.tool, input, result);
     }
 
     if !resp.tool_calls.is_empty() {
