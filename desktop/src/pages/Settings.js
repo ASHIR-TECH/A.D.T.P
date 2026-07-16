@@ -169,10 +169,15 @@ adtp                     &mdash; enter REPL mode
           <h3>Authentication</h3>
         </div>
         <div class="field-group">
-          <label>API Token (write-only)</label>
-          <input type="password" id="api-token" placeholder="Enter new token..." />
+          <label>API Token</label>
+          <div style="display:flex;gap:var(--space-2)">
+            <input type="password" id="api-token" placeholder="Enter new token..." style="flex:1" />
+            <button class="btn btn-sm btn-secondary" id="generate-token" title="Generate a random API token">Generate</button>
+          </div>
+          <div style="margin-top:var(--space-2);display:flex;gap:var(--space-2)">
+            <button class="btn btn-sm btn-primary" id="save-token">Save Token</button>
+          </div>
         </div>
-        <button class="btn btn-sm btn-primary" id="save-token">Save Token</button>
       </div>
 
       <!-- Agents Card -->
@@ -263,8 +268,9 @@ function setupEventHandlers(container, settings) {
     if (token.length >= 32) {
       try {
         await invoke('save_api_token', { token });
-        show('Token saved to keychain', 'success');
+        show('Token saved to keychain and CLI config', 'success');
         tokenInput.value = '';
+        tokenInput.type = 'password';
       } catch (err) { show(`Failed: ${err}`, 'error'); }
     } else if (token.length > 0) {
       show('Token must be at least 32 characters', 'warning');
@@ -273,6 +279,19 @@ function setupEventHandlers(container, settings) {
 
   container.querySelector('#save-token')?.addEventListener('click', () => {
     tokenInput?.dispatchEvent(new Event('change'));
+  });
+
+  container.querySelector('#generate-token')?.addEventListener('click', async () => {
+    try {
+      const token = await invoke('generate_api_token');
+      if (tokenInput) {
+        tokenInput.value = token;
+        tokenInput.type = 'text';
+      }
+      show('Token generated — click Save Token to persist', 'success');
+    } catch (err) {
+      show(`Failed to generate token: ${err}`, 'error');
+    }
   });
 
   container.querySelector('#test-connection')?.addEventListener('click', async () => {

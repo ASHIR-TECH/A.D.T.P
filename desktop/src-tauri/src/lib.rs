@@ -132,6 +132,7 @@ pub fn run() {
             commands::load_settings,
             commands::save_api_token,
             commands::load_api_token,
+            commands::generate_api_token,
             commands::write_file,
             commands::get_app_health,
             commands::agent_list,

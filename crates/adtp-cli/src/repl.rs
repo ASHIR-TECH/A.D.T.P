@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::io::{self, Write};
 use rustyline::completion::{Completer, Pair, FilenameCompleter};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -9,9 +10,11 @@ use std::borrow::Cow::{self, Owned};
 use std::collections::HashSet;
 
 use crate::art;
+use crate::client::ApiClient;
 use crate::commands;
 use crate::config::CliConfig;
 use crate::errors::CliError;
+use crate::models::{PeerList, AgentStatusResponse};
 
 const KNOWN_COMMANDS: &[&str] = &[
     "send", "receive", "recv", "status", "st",
@@ -82,7 +85,7 @@ impl Helper for ReplHelper {}
 
 pub async fn run(cfg: &CliConfig) -> Result<i32, CliError> {
     art::print_art();
-    print_status_bar(cfg);
+    print_status_bar(cfg).await;
     println!();
     println!("Type a command (without 'adtp') or ask the agent anything.");
     println!("'help' for commands · 'exit' or Ctrl+D to quit.\n");
@@ -104,6 +107,8 @@ pub async fn run(cfg: &CliConfig) -> Result<i32, CliError> {
                 if trimmed.is_empty() {
                     continue;
                 }
+                // Strip "adtp" prefix if typed out of habit from the shell
+                let trimmed = trimmed.strip_prefix("adtp ").unwrap_or(trimmed);
                 let _ = rl.add_history_entry(trimmed);
                 rl.save_history(&history_path()).ok();
 
@@ -116,12 +121,14 @@ pub async fn run(cfg: &CliConfig) -> Result<i32, CliError> {
                         print_repl_help();
                     }
                     _ => {
+                        io::stdout().flush().ok();
                         if let Err(e) = execute_repl_command(cfg, trimmed).await {
                             eprintln!("Error: {e}");
                             if let Some(hint) = crate::errors::hint(&e) {
                                 eprintln!("Hint: {hint}");
                             }
                         }
+                        io::stdout().flush().ok();
                     }
                 }
             }
@@ -140,17 +147,28 @@ pub async fn run(cfg: &CliConfig) -> Result<i32, CliError> {
     Ok(0)
 }
 
-fn print_status_bar(cfg: &CliConfig) {
+async fn print_status_bar(cfg: &CliConfig) {
     let dim = "\x1b[2m";
     let reset = "\x1b[0m";
     let gold = crate::art::gold_style();
 
     let peer_id = cfg.default_peer.as_deref().unwrap_or("--");
-    let peers_str = "--";
-    let agent_str = "--";
+
+    let (peers_str, agent_str) = match ApiClient::new(cfg) {
+        Ok(client) => {
+            let peers = client.get::<PeerList>("/api/v1/peers").await
+                .map(|p| p.total.to_string())
+                .unwrap_or_else(|_| "--".to_string());
+            let agent = client.get::<AgentStatusResponse>("/api/v1/agent/status").await
+                .map(|a| if a.active { format!("{} ({})", a.provider, a.model) } else { "inactive".into() })
+                .unwrap_or_else(|_| "--".to_string());
+            (peers, agent)
+        }
+        Err(_) => ("--".to_string(), "--".to_string()),
+    };
 
     println!(
-        "  {gold}{}{reset}  {dim}|{reset}  peer: {}  {dim}|{reset}  {} peers connected  {dim}|{reset}  agent: {}",
+        "  {gold}{}{reset}  {dim}|{reset}  peer: {}  {dim}|{reset}  {} peers  {dim}|{reset}  agent: {}",
         crate::art::VERSION, peer_id, peers_str, agent_str,
     );
 }
@@ -214,7 +232,7 @@ async fn execute_repl_command(cfg: &CliConfig, input: &str) -> Result<i32, CliEr
     };
 
     if let Some(cmd) = cli.command {
-        crate::dispatch_command(cfg, &cmd)
+        crate::exec_command(cfg, &cmd).await
     } else {
         Ok(0)
     }

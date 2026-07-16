@@ -111,32 +111,36 @@ pub fn resolve_aliases(args: &[String]) -> Option<Vec<String>> {
     Some(resolved)
 }
 
+pub async fn exec_command(
+    cfg: &config::CliConfig,
+    command: &Commands,
+) -> Result<i32, errors::CliError> {
+    match command {
+        Commands::Send(args) => commands::send::execute(cfg, args).await,
+        Commands::Receive(args) => commands::receive::execute(cfg, args).await,
+        Commands::Watch(args) => commands::watch::execute(cfg, args).await,
+        Commands::Unwatch(args) => commands::unwatch::execute(cfg, args).await,
+        Commands::Status(args) => commands::status::execute(cfg, args).await,
+        Commands::History(args) => commands::history::execute(cfg, args).await,
+        Commands::Verify(args) => commands::verify::execute(cfg, args).await,
+        Commands::Connect(args) => commands::connect::execute(cfg, args).await,
+        Commands::Context(args) => commands::context::execute(cfg, args).await,
+        Commands::Export(args) => commands::export::execute(cfg, args).await,
+        Commands::Session(args) => commands::session::execute(cfg, args).await,
+        Commands::Peer(args) => commands::peer::execute(cfg, args).await,
+        Commands::Agent(args) => commands::agent::execute(cfg, args).await,
+        Commands::Config(args) => commands::config::execute(cfg, args).await,
+        Commands::Audit(args) => commands::audit::execute(cfg, args).await,
+        Commands::Ask(args) => commands::agent::execute(cfg, args).await,
+        Commands::Desktop(args) => commands::desktop::execute(cfg, args).await,
+    }
+}
+
 pub fn dispatch_command(
     cfg: &config::CliConfig,
     command: &Commands,
 ) -> Result<i32, errors::CliError> {
-    let result = tokio::runtime::Runtime::new()
+    tokio::runtime::Runtime::new()
         .expect("Failed to create runtime")
-        .block_on(async {
-            match command {
-                Commands::Send(args) => commands::send::execute(cfg, args).await,
-                Commands::Receive(args) => commands::receive::execute(cfg, args).await,
-                Commands::Watch(args) => commands::watch::execute(cfg, args).await,
-                Commands::Unwatch(args) => commands::unwatch::execute(cfg, args).await,
-                Commands::Status(args) => commands::status::execute(cfg, args).await,
-                Commands::History(args) => commands::history::execute(cfg, args).await,
-                Commands::Verify(args) => commands::verify::execute(cfg, args).await,
-                Commands::Connect(args) => commands::connect::execute(cfg, args).await,
-                Commands::Context(args) => commands::context::execute(cfg, args).await,
-                Commands::Export(args) => commands::export::execute(cfg, args).await,
-                Commands::Session(args) => commands::session::execute(cfg, args).await,
-                Commands::Peer(args) => commands::peer::execute(cfg, args).await,
-                Commands::Agent(args) => commands::agent::execute(cfg, args).await,
-                Commands::Config(args) => commands::config::execute(cfg, args).await,
-                Commands::Audit(args) => commands::audit::execute(cfg, args).await,
-                Commands::Ask(args) => commands::agent::execute(cfg, args).await,
-                Commands::Desktop(args) => commands::desktop::execute(cfg, args).await,
-            }
-        });
-    result
+        .block_on(exec_command(cfg, command))
 }
