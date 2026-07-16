@@ -59,6 +59,16 @@ pub fn load_api_token(app: &AppHandle) -> Option<String> {
     store.get(TOKEN_KEY).and_then(|v| v.as_str().map(String::from))
 }
 
+pub fn write_token_to_cli_config(token: &str) -> Result<(), String> {
+    let mut cfg = adtp_cli::config::CliConfig::load().map_err(|e| e.to_string())?;
+    cfg.api_token = token.to_string();
+    cfg.save().map_err(|e| e.to_string())
+}
+
+pub fn generate_token() -> String {
+    uuid::Uuid::new_v4().to_string().replace('-', "")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
