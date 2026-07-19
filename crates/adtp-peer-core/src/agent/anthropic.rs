@@ -1,5 +1,5 @@
+use crate::agent::provider::{LlmMessage, LlmResponse, Provider, ToolCall, ToolDefinition};
 use async_trait::async_trait;
-use crate::agent::provider::{LlmMessage, LlmResponse, ToolCall, ToolDefinition, Provider};
 
 pub struct AnthropicProvider {
     api_key: String,
@@ -19,13 +19,16 @@ impl AnthropicProvider {
     }
 
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
-        tools.iter().map(|t| {
-            serde_json::json!({
-                "name": t.name,
-                "description": t.description,
-                "input_schema": t.input_schema,
+        tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.input_schema,
+                })
             })
-        }).collect()
+            .collect()
     }
 }
 
@@ -45,12 +48,15 @@ impl Provider for AnthropicProvider {
         system_prompt: &str,
         tools: &[ToolDefinition],
     ) -> Result<LlmResponse, String> {
-        let anthropic_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
-            serde_json::json!({
-                "role": m.role,
-                "content": m.content,
+        let anthropic_messages: Vec<serde_json::Value> = messages
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "role": m.role,
+                    "content": m.content,
+                })
             })
-        }).collect();
+            .collect();
 
         let mut body = serde_json::json!({
             "model": self.model,
@@ -63,7 +69,8 @@ impl Provider for AnthropicProvider {
             body["tools"] = serde_json::Value::Array(Self::convert_tools(tools));
         }
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
@@ -88,7 +95,9 @@ impl Provider for AnthropicProvider {
             return Err(format!("Anthropic API error ({}): {}", status, err_msg));
         }
 
-        let content_blocks = response_json["content"].as_array().ok_or("No content in response")?;
+        let content_blocks = response_json["content"]
+            .as_array()
+            .ok_or("No content in response")?;
         let mut text_content = String::new();
         let mut tool_calls = Vec::new();
 
