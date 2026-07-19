@@ -1,5 +1,5 @@
-use adtp_core::types::NatType;
 use adtp_core::errors::{AdtpError, AdtpResult};
+use adtp_core::types::NatType;
 use std::net::UdpSocket;
 use std::time::Duration;
 
@@ -37,10 +37,12 @@ impl NatDetector {
 
         // STUN binding request (RFC 8489)
         let mut req = vec![0u8; 20];
-        req[0] = 0x00; req[1] = 0x01; // Binding Request
-        req[2] = 0x00; req[3] = 0x0c; // Message Length
+        req[0] = 0x00;
+        req[1] = 0x01; // Binding Request
+        req[2] = 0x00;
+        req[3] = 0x0c; // Message Length
         req[4..8].copy_from_slice(&0x2112A442u32.to_be_bytes()); // Magic Cookie
-        // Transaction ID (random)
+                                                                 // Transaction ID (random)
         for i in 0..12 {
             req[8 + i] = rand::random::<u8>();
         }
@@ -51,14 +53,18 @@ impl NatDetector {
         req.extend_from_slice(&attr_len.to_be_bytes());
         req.extend_from_slice(software);
 
-        socket.send_to(&req, server).map_err(|e| AdtpError::NatDetectionFailed {
-            reason: format!("send to {server} failed: {e}"),
-        })?;
+        socket
+            .send_to(&req, server)
+            .map_err(|e| AdtpError::NatDetectionFailed {
+                reason: format!("send to {server} failed: {e}"),
+            })?;
 
         let mut buf = [0u8; 512];
-        let (len, _) = socket.recv_from(&mut buf).map_err(|_| AdtpError::NatDetectionFailed {
-            reason: format!("no response from {server}"),
-        })?;
+        let (len, _) = socket
+            .recv_from(&mut buf)
+            .map_err(|_| AdtpError::NatDetectionFailed {
+                reason: format!("no response from {server}"),
+            })?;
 
         if len < 20 || buf[0] != 0x01 || buf[1] != 0x01 {
             return Err(AdtpError::NatDetectionFailed {
@@ -82,7 +88,10 @@ impl NatDetector {
                         buf[i + 6] ^ 0xA4,
                         buf[i + 7] ^ 0x42,
                     ];
-                    let external_addr = format!("{}.{}.{}.{}:{}", ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3], port);
+                    let external_addr = format!(
+                        "{}.{}.{}.{}:{}",
+                        ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3], port
+                    );
                     return Ok(Self {
                         nat_type: NatType::PortRestricted, // Default assumption
                         external_addr: Some(external_addr),
@@ -95,6 +104,12 @@ impl NatDetector {
         Err(AdtpError::NatDetectionFailed {
             reason: "no XOR-MAPPED-ADDRESS in STUN response".into(),
         })
+    }
+}
+
+impl Default for NatDetector {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
