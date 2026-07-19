@@ -1,9 +1,9 @@
-use clap::Args;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
 use crate::models::AuditLogList;
+use clap::Args;
 
 #[derive(Args)]
 pub struct HistoryArgs {
@@ -31,10 +31,7 @@ pub async fn execute(cfg: &CliConfig, args: &HistoryArgs) -> Result<i32, CliErro
 
     let limit_str = args.limit.to_string();
     let offset_str = args.offset.to_string();
-    let mut params: Vec<(&str, &str)> = vec![
-        ("limit", &limit_str),
-        ("offset", &offset_str),
-    ];
+    let mut params: Vec<(&str, &str)> = vec![("limit", &limit_str), ("offset", &offset_str)];
 
     if let Some(s) = &args.status {
         params.push(("status", s));
