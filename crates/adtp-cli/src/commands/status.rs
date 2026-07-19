@@ -1,11 +1,11 @@
-use clap::Args;
-use std::io::{self, Write};
-use std::time::Duration;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
-use crate::models::{ReadinessResponse, QueueResponse, AgentStatusResponse, TransferStatus};
+use crate::models::{AgentStatusResponse, QueueResponse, ReadinessResponse, TransferStatus};
+use clap::Args;
+use std::io::{self, Write};
+use std::time::Duration;
 
 #[derive(Args)]
 pub struct StatusArgs {
@@ -25,18 +25,21 @@ pub async fn execute(cfg: &CliConfig, args: &StatusArgs) -> Result<i32, CliError
     let client = ApiClient::new(cfg)?;
 
     if let Some(tid) = &args.transfer_id {
-        let status: TransferStatus =
-            client.get(&format!("/api/v1/transfers/{}/status", tid)).await?;
+        let status: TransferStatus = client
+            .get(&format!("/api/v1/transfers/{}/status", tid))
+            .await?;
 
         if cfg.output_format == "json" {
             println!("{}", serde_json::to_string_pretty(&status).unwrap());
         } else if args.watch {
             loop {
-                let status: TransferStatus =
-                    match client.get(&format!("/api/v1/transfers/{}/status", tid)).await {
-                        Ok(s) => s,
-                        Err(_) => continue,
-                    };
+                let status: TransferStatus = match client
+                    .get(&format!("/api/v1/transfers/{}/status", tid))
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
 
                 let detail = display::render_transfer_detail(&status);
                 let badge = display::status_badge(&status.status);
@@ -89,14 +92,20 @@ pub async fn execute(cfg: &CliConfig, args: &StatusArgs) -> Result<i32, CliError
             queue_resp.pending, queue_resp.in_progress, queue_resp.failed_last_hour
         );
     } else {
-        println!("{}", display::render_status_overview(&ready, &queue_resp, agent.as_ref()));
+        println!(
+            "{}",
+            display::render_status_overview(&ready, &queue_resp, agent.as_ref())
+        );
     }
 
     if args.watch {
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
 
-            let ready = match client.get::<ReadinessResponse>("/api/v1/health/ready").await {
+            let ready = match client
+                .get::<ReadinessResponse>("/api/v1/health/ready")
+                .await
+            {
                 Ok(r) => r,
                 Err(_) => continue,
             };
@@ -104,7 +113,10 @@ pub async fn execute(cfg: &CliConfig, args: &StatusArgs) -> Result<i32, CliError
                 Ok(q) => q,
                 Err(_) => continue,
             };
-            let agent = client.get::<AgentStatusResponse>("/api/v1/agent/status").await.ok();
+            let agent = client
+                .get::<AgentStatusResponse>("/api/v1/agent/status")
+                .await
+                .ok();
 
             let output = display::render_status_overview(&ready, &queue_resp, agent.as_ref());
             print!("\r{}", output.replace('\n', "\n\r"));
