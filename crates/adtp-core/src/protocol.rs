@@ -25,32 +25,22 @@ pub struct PacketHeader {
 }
 
 impl PacketHeader {
-    pub fn new(
-        transfer_type: TransferType,
-        session_id: Uuid,
-        transfer_id: Uuid,
-        sender_peer_id: [u8; PEER_ID_SIZE],
-        receiver_peer_id: [u8; PEER_ID_SIZE],
-        nonce: [u8; AES_NONCE_SIZE],
-        content_hash: [u8; BLAKE3_HASH_SIZE],
-        context_len: u32,
-        payload_len: u64,
-    ) -> Self {
+    pub fn new(parts: PacketHeaderParts) -> Self {
         Self {
             magic: ADTP_MAGIC,
             version: ADTP_VERSION,
-            transfer_type,
+            transfer_type: parts.transfer_type,
             priority: Priority::Normal,
             flags: 0x00,
-            session_id,
-            transfer_id,
-            sender_peer_id,
-            receiver_peer_id,
+            session_id: parts.session_id,
+            transfer_id: parts.transfer_id,
+            sender_peer_id: parts.sender_peer_id,
+            receiver_peer_id: parts.receiver_peer_id,
             timestamp_ns: Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64,
-            context_len,
-            payload_len,
-            nonce,
-            content_hash,
+            context_len: parts.context_len,
+            payload_len: parts.payload_len,
+            nonce: parts.nonce,
+            content_hash: parts.content_hash,
         }
     }
 
@@ -76,6 +66,19 @@ impl PacketHeader {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct PacketHeaderParts {
+    pub transfer_type: TransferType,
+    pub session_id: Uuid,
+    pub transfer_id: Uuid,
+    pub sender_peer_id: [u8; PEER_ID_SIZE],
+    pub receiver_peer_id: [u8; PEER_ID_SIZE],
+    pub nonce: [u8; AES_NONCE_SIZE],
+    pub content_hash: [u8; BLAKE3_HASH_SIZE],
+    pub context_len: u32,
+    pub payload_len: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -187,17 +190,17 @@ mod tests {
         let payload = Bytes::from(b"encrypted bytes here".to_vec());
         let sender_peer_id = [1u8; PEER_ID_SIZE];
         let receiver_peer_id = [2u8; PEER_ID_SIZE];
-        let header = PacketHeader::new(
-            TransferType::Transfer,
+        let header = PacketHeader::new(PacketHeaderParts {
+            transfer_type: TransferType::Transfer,
             session_id,
             transfer_id,
             sender_peer_id,
             receiver_peer_id,
             nonce,
             content_hash,
-            context.len() as u32,
-            payload.len() as u64,
-        );
+            context_len: context.len() as u32,
+            payload_len: payload.len() as u64,
+        });
 
         AdtpPacket {
             header,
