@@ -1,5 +1,7 @@
 use adtp_core::errors::{AdtpError, AdtpResult};
-use adtp_core::types::{PunchReadyPayload, RendezvousRequestPayload, RendezvousResponsePayload, PEER_ID_SIZE};
+use adtp_core::types::{
+    PunchReadyPayload, RendezvousRequestPayload, RendezvousResponsePayload, PEER_ID_SIZE,
+};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::net::UdpSocket;
@@ -11,9 +13,12 @@ pub struct StunPunch {
 
 impl StunPunch {
     pub async fn new() -> AdtpResult<Self> {
-        let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|e| AdtpError::HolePunchFailed {
-            reason: format!("bind: {e}"),
-        })?;
+        let socket =
+            UdpSocket::bind("0.0.0.0:0")
+                .await
+                .map_err(|e| AdtpError::HolePunchFailed {
+                    reason: format!("bind: {e}"),
+                })?;
         Ok(Self { socket })
     }
 
@@ -29,21 +34,30 @@ impl StunPunch {
             token: None,
         };
         let mut buf = vec![0x21u8];
-        buf.extend(serde_json::to_vec(&req).map_err(|e| AdtpError::HolePunchFailed {
-            reason: format!("serialize: {e}"),
-        })?);
-        self.socket.send_to(&buf, rendezvous_addr).await.map_err(|e| AdtpError::HolePunchFailed {
-            reason: format!("send rendezvous request: {e}"),
-        })?;
+        buf.extend(
+            serde_json::to_vec(&req).map_err(|e| AdtpError::HolePunchFailed {
+                reason: format!("serialize: {e}"),
+            })?,
+        );
+        self.socket
+            .send_to(&buf, rendezvous_addr)
+            .await
+            .map_err(|e| AdtpError::HolePunchFailed {
+                reason: format!("send rendezvous request: {e}"),
+            })?;
 
         let mut recv_buf = [0u8; 2048];
-        timeout(Duration::from_millis(1500), self.socket.recv_from(&mut recv_buf)).await
-            .map_err(|_| AdtpError::HolePunchFailed {
-                reason: "rendezvous response timeout".into(),
-            })?
-            .map_err(|e| AdtpError::HolePunchFailed {
-                reason: format!("recv: {e}"),
-            })?;
+        timeout(
+            Duration::from_millis(1500),
+            self.socket.recv_from(&mut recv_buf),
+        )
+        .await
+        .map_err(|_| AdtpError::HolePunchFailed {
+            reason: "rendezvous response timeout".into(),
+        })?
+        .map_err(|e| AdtpError::HolePunchFailed {
+            reason: format!("recv: {e}"),
+        })?;
 
         if recv_buf[0] != 0x22 {
             return Err(AdtpError::HolePunchFailed {
@@ -51,9 +65,10 @@ impl StunPunch {
             });
         }
 
-        let resp: RendezvousResponsePayload = serde_json::from_slice(&recv_buf[1..]).map_err(|e| AdtpError::HolePunchFailed {
-            reason: format!("deserialize: {e}"),
-        })?;
+        let resp: RendezvousResponsePayload =
+            serde_json::from_slice(&recv_buf[1..]).map_err(|e| AdtpError::HolePunchFailed {
+                reason: format!("deserialize: {e}"),
+            })?;
 
         Ok(resp)
     }
@@ -69,9 +84,11 @@ impl StunPunch {
             sender_peer_id: *sender_id,
         };
         let mut buf = vec![0x23u8];
-        buf.extend(serde_json::to_vec(&payload).map_err(|e| AdtpError::HolePunchFailed {
-            reason: format!("serialize punch: {e}"),
-        })?);
+        buf.extend(
+            serde_json::to_vec(&payload).map_err(|e| AdtpError::HolePunchFailed {
+                reason: format!("serialize punch: {e}"),
+            })?,
+        );
 
         // Send multiple punch packets
         for _ in 0..3 {
@@ -81,13 +98,17 @@ impl StunPunch {
 
         // Listen for incoming punch response
         let mut recv_buf = [0u8; 2048];
-        timeout(Duration::from_millis(1500), self.socket.recv_from(&mut recv_buf)).await
-            .map_err(|_| AdtpError::HolePunchFailed {
-                reason: "punch response timeout".into(),
-            })?
-            .map_err(|e| AdtpError::HolePunchFailed {
-                reason: format!("recv punch: {e}"),
-            })?;
+        timeout(
+            Duration::from_millis(1500),
+            self.socket.recv_from(&mut recv_buf),
+        )
+        .await
+        .map_err(|_| AdtpError::HolePunchFailed {
+            reason: "punch response timeout".into(),
+        })?
+        .map_err(|e| AdtpError::HolePunchFailed {
+            reason: format!("recv punch: {e}"),
+        })?;
 
         Ok(())
     }
