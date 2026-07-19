@@ -1,9 +1,9 @@
-use clap::Args;
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::errors::CliError;
 use crate::models::ChainVerifyResult;
+use clap::Args;
+use colored::Colorize;
 
 #[derive(Args)]
 pub struct VerifyArgs {}
@@ -11,7 +11,9 @@ pub struct VerifyArgs {}
 pub async fn execute(cfg: &CliConfig, _args: &VerifyArgs) -> Result<i32, CliError> {
     let client = ApiClient::new(cfg)?;
 
-    let result: ChainVerifyResult = client.post("/api/v1/audit/verify", &serde_json::json!({})).await?;
+    let result: ChainVerifyResult = client
+        .post("/api/v1/audit/verify", &serde_json::json!({}))
+        .await?;
 
     if cfg.output_format == "json" {
         println!("{}", serde_json::to_string_pretty(&result).unwrap());
