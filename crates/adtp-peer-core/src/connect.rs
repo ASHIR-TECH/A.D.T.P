@@ -1,8 +1,8 @@
-use adtp_core::errors::{AdtpError, AdtpResult};
-use adtp_core::types::{NatType, PeerConfig, PEER_ID_SIZE};
 use crate::nat_detect::NatDetector;
 use crate::paths;
 use crate::rendezvous_client::RendezvousClient;
+use adtp_core::errors::{AdtpError, AdtpResult};
+use adtp_core::types::{NatType, PeerConfig, PEER_ID_SIZE};
 use std::net::SocketAddr;
 
 pub enum ConnectionPath {
@@ -36,10 +36,7 @@ pub struct ConnectionCoordinator {
 }
 
 impl ConnectionCoordinator {
-    pub async fn new(
-        peer_id: [u8; PEER_ID_SIZE],
-        config: PeerConfig,
-    ) -> AdtpResult<Self> {
+    pub async fn new(peer_id: [u8; PEER_ID_SIZE], config: PeerConfig) -> AdtpResult<Self> {
         let nat = if let Some(ref override_type) = config.nat_type_override {
             NatDetector {
                 nat_type: *override_type,
@@ -52,7 +49,10 @@ impl ConnectionCoordinator {
         let rendezvous_client = if let Some(ref server) = config.rendezvous_server {
             match RendezvousClient::connect(server, config.rendezvous_port).await {
                 Ok(client) => {
-                    client.register(&peer_id, nat.nat_type, false, config.relay_enabled).await.ok();
+                    client
+                        .register(&peer_id, nat.nat_type, false, config.relay_enabled)
+                        .await
+                        .ok();
                     Some(client)
                 }
                 Err(e) => {
@@ -64,7 +64,11 @@ impl ConnectionCoordinator {
             None
         };
 
-        tracing::info!("NAT type: {:?}, external_addr: {:?}", nat.nat_type, nat.external_addr);
+        tracing::info!(
+            "NAT type: {:?}, external_addr: {:?}",
+            nat.nat_type,
+            nat.external_addr
+        );
 
         Ok(Self {
             peer_id,
@@ -75,7 +79,11 @@ impl ConnectionCoordinator {
         })
     }
 
-    pub async fn connect(&self, target_peer_id: &[u8; PEER_ID_SIZE], target_addr: Option<&SocketAddr>) -> AdtpResult<ConnectionPath> {
+    pub async fn connect(
+        &self,
+        target_peer_id: &[u8; PEER_ID_SIZE],
+        target_addr: Option<&SocketAddr>,
+    ) -> AdtpResult<ConnectionPath> {
         // Step 1: IPv6 direct
         if let Some(addr) = target_addr {
             if addr.is_ipv6() {
