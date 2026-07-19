@@ -1,8 +1,8 @@
-use clap::Args;
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::errors::CliError;
+use clap::Args;
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -34,7 +34,9 @@ pub async fn execute(cfg: &CliConfig, args: &ExportArgs) -> Result<i32, CliError
         params.push(("session_id", sid));
     }
 
-    let csv_content = client.get_raw_with_query("/api/v1/audit/export", &params).await?;
+    let csv_content = client
+        .get_raw_with_query("/api/v1/audit/export", &params)
+        .await?;
 
     if let Some(path_str) = &args.output {
         let path = PathBuf::from(path_str);
