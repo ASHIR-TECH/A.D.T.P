@@ -1,17 +1,17 @@
+use std::process::Command;
+use std::sync::OnceLock;
 use wiremock::{
     matchers::{method, path, query_param},
     Mock, MockServer, ResponseTemplate,
 };
-use std::process::Command;
-use std::sync::OnceLock;
 
 static SERVER: OnceLock<MockServer> = OnceLock::new();
 
 fn api_url() -> String {
     let server = SERVER.get_or_init(|| {
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            MockServer::start().await
-        })
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async { MockServer::start().await })
     });
     format!("http://{}", server.address())
 }
@@ -44,15 +44,13 @@ async fn test_send_success() {
 
     Mock::given(method("POST"))
         .and(path("/api/v1/transfers/send"))
-        .respond_with(
-            ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                "transfer_id": "abc-123",
-                "status": "queued",
-                "filename": "test.txt",
-                "queued_at": "2026-06-15T00:00:00Z",
-                "estimated_ms": 500
-            })),
-        )
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "transfer_id": "abc-123",
+            "status": "queued",
+            "filename": "test.txt",
+            "queued_at": "2026-06-15T00:00:00Z",
+            "estimated_ms": 500
+        })))
         .mount(&mock)
         .await;
 
@@ -75,11 +73,9 @@ async fn test_send_file_not_found() {
 
     Mock::given(method("POST"))
         .and(path("/api/v1/transfers/send"))
-        .respond_with(
-            ResponseTemplate::new(404).set_body_json(serde_json::json!({
-                "detail": "File not found: /nonexistent/file.txt"
-            })),
-        )
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "detail": "File not found: /nonexistent/file.txt"
+        })))
         .mount(&mock)
         .await;
 
@@ -102,14 +98,12 @@ async fn test_receive_empty() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/transfers"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "transfers": [],
-                "total": 0,
-                "limit": 20,
-                "offset": 0
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "transfers": [],
+            "total": 0,
+            "limit": 20,
+            "offset": 0
+        })))
         .mount(&mock)
         .await;
 
@@ -176,14 +170,12 @@ async fn test_receive_with_results() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/transfers"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "transfers": records,
-                "total": 3,
-                "limit": 20,
-                "offset": 0
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "transfers": records,
+            "total": 3,
+            "limit": 20,
+            "offset": 0
+        })))
         .mount(&mock)
         .await;
 
@@ -207,14 +199,12 @@ async fn test_verify_valid_chain() {
 
     Mock::given(method("POST"))
         .and(path("/api/v1/audit/verify"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "valid": true,
-                "entries_checked": 150,
-                "first_failure_id": null,
-                "verified_at": "2026-06-15T00:00:00Z"
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "valid": true,
+            "entries_checked": 150,
+            "first_failure_id": null,
+            "verified_at": "2026-06-15T00:00:00Z"
+        })))
         .mount(&mock)
         .await;
 
@@ -236,14 +226,12 @@ async fn test_verify_tampered_chain() {
 
     Mock::given(method("POST"))
         .and(path("/api/v1/audit/verify"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "valid": false,
-                "entries_checked": 5,
-                "first_failure_id": "abc-123-def",
-                "verified_at": "2026-06-15T00:00:00Z"
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "valid": false,
+            "entries_checked": 5,
+            "first_failure_id": "abc-123-def",
+            "verified_at": "2026-06-15T00:00:00Z"
+        })))
         .mount(&mock)
         .await;
 
@@ -264,27 +252,23 @@ async fn test_status_daemon_down() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/health/ready"))
-        .respond_with(
-            ResponseTemplate::new(503).set_body_json(serde_json::json!({
-                "ready": false,
-                "daemon_connected": false,
-                "audit_db_ok": false,
-                "bridge_ok": false
-            })),
-        )
+        .respond_with(ResponseTemplate::new(503).set_body_json(serde_json::json!({
+            "ready": false,
+            "daemon_connected": false,
+            "audit_db_ok": false,
+            "bridge_ok": false
+        })))
         .mount(&mock)
         .await;
 
     Mock::given(method("GET"))
         .and(path("/api/v1/health/queue"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "pending": 0,
-                "in_progress": 0,
-                "failed_last_hour": 0,
-                "avg_delivery_ms": 0
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "pending": 0,
+            "in_progress": 0,
+            "failed_last_hour": 0,
+            "avg_delivery_ms": 0
+        })))
         .mount(&mock)
         .await;
 
@@ -309,7 +293,8 @@ async fn test_status_daemon_down() {
 async fn test_export_to_file() {
     let mock = setup().await;
 
-    let csv_content = "id,session_id,filename\nabc-123,sess-1,report.pdf\ndef-456,sess-1,photo.jpg\n";
+    let csv_content =
+        "id,session_id,filename\nabc-123,sess-1,report.pdf\ndef-456,sess-1,photo.jpg\n";
 
     Mock::given(method("GET"))
         .and(path("/api/v1/audit/export"))
@@ -345,11 +330,9 @@ async fn test_auth_invalid_token() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/transfers"))
-        .respond_with(
-            ResponseTemplate::new(401).set_body_json(serde_json::json!({
-                "detail": "Unauthorized"
-            })),
-        )
+        .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+            "detail": "Unauthorized"
+        })))
         .mount(&mock)
         .await;
 
@@ -373,14 +356,12 @@ async fn test_json_output_format() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/transfers"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "transfers": [],
-                "total": 0,
-                "limit": 20,
-                "offset": 0
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "transfers": [],
+            "total": 0,
+            "limit": 20,
+            "offset": 0
+        })))
         .mount(&mock)
         .await;
 
@@ -394,7 +375,8 @@ async fn test_json_output_format() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Verify it's valid JSON
-    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("output should be valid JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("output should be valid JSON");
     assert!(parsed.is_object());
 }
 
@@ -428,15 +410,13 @@ async fn test_context_empty() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/transfers/abc-123/context"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "schema": null,
-                "summary": null,
-                "agent_hint": null,
-                "transfer_history": [],
-                "extraction_ms": null
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "schema": null,
+            "summary": null,
+            "agent_hint": null,
+            "transfer_history": [],
+            "extraction_ms": null
+        })))
         .mount(&mock)
         .await;
 
@@ -459,21 +439,19 @@ async fn test_session_list() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/sessions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "sessions": [
-                    {
-                        "id": "sess-1",
-                        "peer_addr": "127.0.0.1:40001",
-                        "started_at": "2026-06-15T00:00:00Z",
-                        "ended_at": null,
-                        "transfer_count": 5,
-                        "bytes_transferred": 1048576
-                    }
-                ],
-                "total": 1
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "sessions": [
+                {
+                    "id": "sess-1",
+                    "peer_addr": "127.0.0.1:40001",
+                    "started_at": "2026-06-15T00:00:00Z",
+                    "ended_at": null,
+                    "transfer_count": 5,
+                    "bytes_transferred": 1048576
+                }
+            ],
+            "total": 1
+        })))
         .mount(&mock)
         .await;
 
@@ -498,27 +476,25 @@ async fn test_history_with_date_filter() {
         .and(path("/api/v1/audit/log"))
         .and(query_param("from_ts", "2026-06-01"))
         .and(query_param("to_ts", "2026-06-15"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "entries": [
-                    {
-                        "id": "abc-123",
-                        "session_id": "sess-1",
-                        "transfer_type": "send",
-                        "filename": "test.txt",
-                        "mime_type": "text/plain",
-                        "file_size": 1000,
-                        "status": "delivered",
-                        "integrity_verified": true,
-                        "signature": "",
-                        "chain_hash": "",
-                        "initiated_at": "2026-06-10T00:00:00Z",
-                        "completed_at": "2026-06-10T00:00:05Z"
-                    }
-                ],
-                "total": 1
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "entries": [
+                {
+                    "id": "abc-123",
+                    "session_id": "sess-1",
+                    "transfer_type": "send",
+                    "filename": "test.txt",
+                    "mime_type": "text/plain",
+                    "file_size": 1000,
+                    "status": "delivered",
+                    "integrity_verified": true,
+                    "signature": "",
+                    "chain_hash": "",
+                    "initiated_at": "2026-06-10T00:00:00Z",
+                    "completed_at": "2026-06-10T00:00:05Z"
+                }
+            ],
+            "total": 1
+        })))
         .mount(&mock)
         .await;
 
@@ -544,16 +520,14 @@ async fn test_send_watch_flow() {
 
     Mock::given(method("POST"))
         .and(path("/api/v1/watchers"))
-        .respond_with(
-            ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                "watch_id": "watch-123",
-                "folder_path": "/tmp/watchdir",
-                "file_pattern": "*.csv",
-                "trigger_action": null,
-                "active": true,
-                "agent_name": "default"
-            })),
-        )
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "watch_id": "watch-123",
+            "folder_path": "/tmp/watchdir",
+            "file_pattern": "*.csv",
+            "trigger_action": null,
+            "active": true,
+            "agent_name": "default"
+        })))
         .mount(&mock)
         .await;
 
@@ -578,7 +552,9 @@ async fn test_unwatch_delete() {
 
     Mock::given(method("DELETE"))
         .and(path("/api/v1/watchers/watch-123"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"removed": true})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"removed": true})),
+        )
         .mount(&mock)
         .await;
 
