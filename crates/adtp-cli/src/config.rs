@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentEntry {
@@ -45,11 +45,21 @@ pub struct CliConfig {
     pub agents: Vec<AgentEntry>,
 }
 
-fn default_poll_interval() -> u64 { 500 }
-fn default_connect_timeout() -> u64 { 5000 }
-fn default_request_timeout() -> u64 { 30000 }
-fn default_keepalive() -> u64 { 25000 }
-fn default_rendezvous() -> String { "udp://ashir.world:40004".into() }
+fn default_poll_interval() -> u64 {
+    500
+}
+fn default_connect_timeout() -> u64 {
+    5000
+}
+fn default_request_timeout() -> u64 {
+    30000
+}
+fn default_keepalive() -> u64 {
+    25000
+}
+fn default_rendezvous() -> String {
+    "udp://ashir.world:40004".into()
+}
 
 impl Default for CliConfig {
     fn default() -> Self {
@@ -98,8 +108,8 @@ impl CliConfig {
     pub fn save(&self) -> Result<(), crate::errors::CliError> {
         let dir = Self::config_dir();
         std::fs::create_dir_all(&dir)?;
-        let content = toml::to_string_pretty(self).map_err(|e| {
-            crate::errors::CliError::Parse { message: e.to_string() }
+        let content = toml::to_string_pretty(self).map_err(|e| crate::errors::CliError::Parse {
+            message: e.to_string(),
         })?;
         std::fs::write(Self::config_path(), content)?;
         Ok(())
@@ -152,7 +162,8 @@ impl CliConfig {
     pub fn validate(&self) -> Result<(), crate::errors::CliError> {
         if self.api_token.is_empty() {
             return Err(crate::errors::CliError::Config {
-                message: "ADTP_API_TOKEN is not set. Set it in cli.toml or ADTP_API_TOKEN env var.".into(),
+                message: "ADTP_API_TOKEN is not set. Set it in cli.toml or ADTP_API_TOKEN env var."
+                    .into(),
             });
         }
         Ok(())
@@ -166,12 +177,15 @@ impl CliConfig {
 
     pub fn save_token_to_keychain(&self, token: &str) -> Result<(), crate::errors::CliError> {
         let service = "adtp-cli";
-        let entry = keyring::Entry::new(service, "api_token").map_err(|e| {
-            crate::errors::CliError::Io { message: format!("Keychain error: {e}") }
-        })?;
-        entry.set_password(token).map_err(|e| {
-            crate::errors::CliError::Io { message: format!("Failed to save token: {e}") }
-        })?;
+        let entry =
+            keyring::Entry::new(service, "api_token").map_err(|e| crate::errors::CliError::Io {
+                message: format!("Keychain error: {e}"),
+            })?;
+        entry
+            .set_password(token)
+            .map_err(|e| crate::errors::CliError::Io {
+                message: format!("Failed to save token: {e}"),
+            })?;
         Ok(())
     }
 }

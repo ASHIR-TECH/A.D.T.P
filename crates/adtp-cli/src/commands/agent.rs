@@ -1,10 +1,10 @@
-use clap::{Args, Subcommand};
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
 use crate::models::*;
+use clap::{Args, Subcommand};
+use colored::Colorize;
 
 const MAX_DISPLAY_LEN: usize = 160;
 
@@ -73,10 +73,7 @@ impl AgentAskArgs {
     }
 }
 
-pub async fn execute(
-    cfg: &CliConfig,
-    args: &AgentArgs,
-) -> Result<i32, CliError> {
+pub async fn execute(cfg: &CliConfig, args: &AgentArgs) -> Result<i32, CliError> {
     match &args.command {
         AgentCommands::Ask(a) => agent_ask(cfg, a).await,
         AgentCommands::Status => agent_status(cfg).await,
@@ -109,7 +106,11 @@ async fn agent_ask(cfg: &CliConfig, args: &AgentAskArgs) -> Result<i32, CliError
             _ => "⟳".to_string().truecolor(124, 124, 191),
         };
         let input = truncate(&tc.input, MAX_DISPLAY_LEN);
-        let result = tc.result.as_deref().map(|r| truncate(r, MAX_DISPLAY_LEN)).unwrap_or_default();
+        let result = tc
+            .result
+            .as_deref()
+            .map(|r| truncate(r, MAX_DISPLAY_LEN))
+            .unwrap_or_default();
         println!(" {icon} {}  {}  →  {}", tc.tool, input, result);
     }
 
@@ -132,7 +133,9 @@ async fn agent_status(cfg: &CliConfig) -> Result<i32, CliError> {
 
 async fn agent_activate(cfg: &CliConfig) -> Result<i32, CliError> {
     let client = ApiClient::new(cfg)?;
-    client.post::<serde_json::Value>("/api/v1/agent/activate", &serde_json::json!({})).await?;
+    client
+        .post::<serde_json::Value>("/api/v1/agent/activate", &serde_json::json!({}))
+        .await?;
     if cfg.output_format != "json" {
         println!("{} Agent activated", "✔".green());
     }
@@ -141,7 +144,9 @@ async fn agent_activate(cfg: &CliConfig) -> Result<i32, CliError> {
 
 async fn agent_deactivate(cfg: &CliConfig) -> Result<i32, CliError> {
     let client = ApiClient::new(cfg)?;
-    client.post::<serde_json::Value>("/api/v1/agent/deactivate", &serde_json::json!({})).await?;
+    client
+        .post::<serde_json::Value>("/api/v1/agent/deactivate", &serde_json::json!({}))
+        .await?;
     if cfg.output_format != "json" {
         println!("{} Agent deactivated", "✔".green());
     }
@@ -154,7 +159,10 @@ async fn agent_permissions(cfg: &CliConfig, args: &AgentPermissionsArgs) -> Resu
     match &args.command {
         Some(PermissionSubcommands::AddPath(a)) => {
             let _: serde_json::Value = client
-                .post("/api/v1/agent/permissions/add-path", &serde_json::json!({"path": a.path}))
+                .post(
+                    "/api/v1/agent/permissions/add-path",
+                    &serde_json::json!({"path": a.path}),
+                )
                 .await?;
             if cfg.output_format != "json" {
                 println!("{} Added path: {}", "✔".green(), a.path);
@@ -170,7 +178,10 @@ async fn agent_permissions(cfg: &CliConfig, args: &AgentPermissionsArgs) -> Resu
         }
         Some(PermissionSubcommands::AllowCommand(a)) => {
             let _: serde_json::Value = client
-                .post("/api/v1/agent/permissions/allow-command", &serde_json::json!({"command": a.command}))
+                .post(
+                    "/api/v1/agent/permissions/allow-command",
+                    &serde_json::json!({"command": a.command}),
+                )
                 .await?;
             if cfg.output_format != "json" {
                 println!("{} Allowed command: {}", "✔".green(), a.command);

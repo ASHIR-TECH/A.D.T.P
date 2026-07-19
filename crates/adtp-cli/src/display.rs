@@ -98,7 +98,9 @@ pub fn new_progress_bar(len: u64) -> ProgressBar {
     let pb = ProgressBar::new(len);
     pb.set_style(
         ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+            )
             .unwrap()
             .progress_chars("#>-"),
     );
@@ -265,12 +267,19 @@ pub fn render_peer_status(p: &PeerInfo) -> String {
         out.push_str(&format!("Endpoint:    {endpoint}\n"));
     }
     let rv = if p.rendezvous_registered.unwrap_or(false) {
-        format!("Registered  {}  (last: {})", green("●"), p.rendezvous_last_seen.as_deref().unwrap_or("—"))
+        format!(
+            "Registered  {}  (last: {})",
+            green("●"),
+            p.rendezvous_last_seen.as_deref().unwrap_or("—")
+        )
     } else {
         muted("Not registered").to_string()
     };
     out.push_str(&format!("Rendezvous:  {rv}\n"));
-    out.push_str(&format!("Connections: {} active\n", p.connections_active.unwrap_or(0)));
+    out.push_str(&format!(
+        "Connections: {} active\n",
+        p.connections_active.unwrap_or(0)
+    ));
     out
 }
 
@@ -305,21 +314,49 @@ pub fn render_scan_results(peers: &[PeerInfo]) -> String {
 
 // ── Status ──
 
-pub fn render_status_overview(ready: &ReadinessResponse, queue: &QueueResponse, agent: Option<&AgentStatusResponse>) -> String {
-    let api_status = if ready.bridge_ok { green("Connected") } else { ember("Disconnected") };
-    let daemon_status = if ready.daemon_connected { green("Connected") } else { ember("Disconnected") };
+pub fn render_status_overview(
+    ready: &ReadinessResponse,
+    queue: &QueueResponse,
+    agent: Option<&AgentStatusResponse>,
+) -> String {
+    let api_status = if ready.bridge_ok {
+        green("Connected")
+    } else {
+        ember("Disconnected")
+    };
+    let daemon_status = if ready.daemon_connected {
+        green("Connected")
+    } else {
+        ember("Disconnected")
+    };
     let rv_status = green("Registered");
-    let lines = vec![
-        format!("┌─ ADTP Status ──────────────────────────────────────────┐"),
-        format!("│  API          {}      http://127.0.0.1:40003    │", api_status),
-        format!("│  Daemon       {}                           │", daemon_status),
-        format!("│  Rendezvous   {}                               │", rv_status),
+    let lines = [
+        "┌─ ADTP Status ──────────────────────────────────────────┐".to_string(),
+        format!(
+            "│  API          {}      http://127.0.0.1:40003    │",
+            api_status
+        ),
+        format!(
+            "│  Daemon       {}                           │",
+            daemon_status
+        ),
+        format!(
+            "│  Rendezvous   {}                               │",
+            rv_status
+        ),
     ];
 
     let mut result = lines.join("\n");
     if let Some(a) = agent {
-        let agent_status = if a.active { green("Active") } else { muted("Inactive") };
-        result.push_str(&format!("\n│  Agent        {}         {}      │", agent_status, a.model));
+        let agent_status = if a.active {
+            green("Active")
+        } else {
+            muted("Inactive")
+        };
+        result.push_str(&format!(
+            "\n│  Agent        {}         {}      │",
+            agent_status, a.model
+        ));
     }
     result.push_str(&format!(
         "\n│  Queue        {} pending  ·  {} in progress  ·  {} failed │",
@@ -345,11 +382,7 @@ pub fn render_transfer_detail(status: &TransferStatus) -> String {
     let bar_width: usize = 20;
     let filled = (status.percent / 100.0 * bar_width as f64).round() as usize;
     let empty = bar_width.saturating_sub(filled);
-    let bar = format!(
-        "{}{}",
-        "█".repeat(filled).green().to_string(),
-        "░".repeat(empty).to_string()
-    );
+    let bar = format!("{}{}", "█".repeat(filled).green(), "░".repeat(empty));
     format!(
         "Progress:  {}  {:.0}%  {} / {}\nElapsed:   {:.1}s",
         bar,
@@ -375,16 +408,17 @@ pub fn render_agent_status(status: &AgentStatusResponse) -> String {
          Model:    {}\n\
          Uptime:   {uptime}\n\
          Tasks:    {} completed today",
-        status.provider,
-        status.model,
-        status.tasks_completed_today,
+        status.provider, status.model, status.tasks_completed_today,
     )
 }
 
 pub fn render_agent_permissions(perms: &AgentPermissions) -> String {
-    let mut lines = vec![
-        format!("{:<20} {:<30} {}", muted("PERMISSION"), muted("VALUE"), muted("LAST USED")),
-    ];
+    let mut lines = vec![format!(
+        "{:<20} {:<30} {}",
+        muted("PERMISSION"),
+        muted("VALUE"),
+        muted("LAST USED")
+    )];
     for p in &perms.allowed_paths {
         lines.push(format!("{:<20} {:<30} {}", "Allowed paths", p, "—"));
     }
@@ -394,9 +428,18 @@ pub fn render_agent_permissions(perms: &AgentPermissions) -> String {
     for c in &perms.allowed_commands {
         lines.push(format!("{:<20} {:<30} {}", "Allowed commands", c, "—"));
     }
-    lines.push(format!("{:<20} {:<30}", "Hidden files", &perms.hidden_files));
-    lines.push(format!("{:<20} {:<30}", "Remote tasks", &perms.remote_tasks));
-    lines.push(format!("{:<20} {} MB", "File size limit", perms.file_size_limit_mb));
+    lines.push(format!(
+        "{:<20} {:<30}",
+        "Hidden files", &perms.hidden_files
+    ));
+    lines.push(format!(
+        "{:<20} {:<30}",
+        "Remote tasks", &perms.remote_tasks
+    ));
+    lines.push(format!(
+        "{:<20} {} MB",
+        "File size limit", perms.file_size_limit_mb
+    ));
     lines.join("\n")
 }
 
@@ -465,7 +508,10 @@ pub fn render_context(ctx: &ContextBlock) -> String {
                 }
             }
             other => {
-                out.push_str(&format!("  {}\n", serde_json::to_string_pretty(other).unwrap_or_default()));
+                out.push_str(&format!(
+                    "  {}\n",
+                    serde_json::to_string_pretty(other).unwrap_or_default()
+                ));
             }
         }
     }

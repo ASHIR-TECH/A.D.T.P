@@ -19,7 +19,9 @@ impl ApiClient {
             .connect_timeout(connect_timeout)
             .timeout(request_timeout)
             .build()
-            .map_err(|e| CliError::Http { message: e.to_string() })?;
+            .map_err(|e| CliError::Http {
+                message: e.to_string(),
+            })?;
 
         Ok(Self {
             client,
@@ -45,13 +47,10 @@ impl ApiClient {
         format!("{}{}", self.base_url, path)
     }
 
-    pub async fn get<T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-    ) -> Result<T, CliError> {
+    pub async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, CliError> {
         let resp = self
             .client
-            .get(&self.url(path))
+            .get(self.url(path))
             .headers(self.headers())
             .send()
             .await
@@ -75,7 +74,7 @@ impl ApiClient {
     ) -> Result<T, CliError> {
         let resp = self
             .client
-            .get(&self.url(path))
+            .get(self.url(path))
             .headers(self.headers())
             .query(params)
             .send()
@@ -96,7 +95,7 @@ impl ApiClient {
     pub async fn get_raw(&self, path: &str) -> Result<String, CliError> {
         let resp = self
             .client
-            .get(&self.url(path))
+            .get(self.url(path))
             .headers(self.headers())
             .send()
             .await
@@ -120,7 +119,7 @@ impl ApiClient {
     ) -> Result<String, CliError> {
         let resp = self
             .client
-            .get(&self.url(path))
+            .get(self.url(path))
             .headers(self.headers())
             .query(params)
             .send()
@@ -145,7 +144,7 @@ impl ApiClient {
     ) -> Result<T, CliError> {
         let resp = self
             .client
-            .post(&self.url(path))
+            .post(self.url(path))
             .headers(self.headers())
             .json(body)
             .send()
@@ -166,7 +165,7 @@ impl ApiClient {
     pub async fn delete(&self, path: &str) -> Result<(), CliError> {
         let resp = self
             .client
-            .delete(&self.url(path))
+            .delete(self.url(path))
             .headers(self.headers())
             .send()
             .await
@@ -185,9 +184,7 @@ impl ApiClient {
 fn map_http_error(e: reqwest::Error, base_url: &str) -> CliError {
     if e.is_connect() || e.is_timeout() {
         CliError::Http {
-            message: format!(
-                "Cannot connect to ADTP API at {base_url}. Is adtp-api running?"
-            ),
+            message: format!("Cannot connect to ADTP API at {base_url}. Is adtp-api running?"),
         }
     } else {
         CliError::Http {
@@ -203,7 +200,10 @@ fn map_api_error(status: u16, body: &str) -> CliError {
             status,
             message: "Invalid API token. Check ADTP_API_TOKEN.".into(),
         },
-        404 => CliError::Api { status, message: detail },
+        404 => CliError::Api {
+            status,
+            message: detail,
+        },
         413 => CliError::Api {
             status,
             message: format!("File exceeds size limit. {}", detail),
@@ -214,9 +214,15 @@ fn map_api_error(status: u16, body: &str) -> CliError {
         },
         503 => CliError::Api {
             status,
-            message: format!("Agent daemon unreachable. Is adtp-client running? {}", detail),
+            message: format!(
+                "Agent daemon unreachable. Is adtp-client running? {}",
+                detail
+            ),
         },
-        _ => CliError::Api { status, message: detail },
+        _ => CliError::Api {
+            status,
+            message: detail,
+        },
     }
 }
 

@@ -2,7 +2,10 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "adtp-peer", about = "ADTP peer daemon — symmetric transfer agent")]
+#[command(
+    name = "adtp-peer",
+    about = "ADTP peer daemon — symmetric transfer agent"
+)]
 pub struct CliArgs {
     #[arg(long, default_value = "127.0.0.1")]
     pub listen_host: String,

@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use crate::agent::runtime::AgentRuntime;
 use crate::agent::artifact_writer::ArtifactWriter;
+use crate::agent::runtime::AgentRuntime;
+use std::sync::Arc;
 
 pub struct TaskRouter {
     runtime: Arc<AgentRuntime>,
@@ -47,6 +47,9 @@ impl TaskRouter {
         let writer = ArtifactWriter::new();
         let artifact_path = writer.write_artifact(&response).await?;
 
-        Ok(format!("{}\n\nArtifact written to: {}", response, artifact_path))
+        Ok(format!(
+            "{}\n\nArtifact written to: {}",
+            response, artifact_path
+        ))
     }
 }

@@ -9,7 +9,7 @@ use adtp_core::{
     encryption::encrypt_file_bytes,
     errors::{AdtpError, AdtpResult},
     integrity::hash_file,
-    protocol::{AdtpPacket, ContextEnvelope, PacketHeader},
+    protocol::{AdtpPacket, ContextEnvelope, PacketHeader, PacketHeaderParts},
     session::{new_session, SessionKeys},
     transfer::{AdtpClient, AdtpConnection},
     types::*,
@@ -154,17 +154,17 @@ async fn send_file(
     };
     let context_bytes = serde_json::to_vec(&context_env).map_err(AdtpError::Json)?;
     let (ciphertext, nonce) = encrypt_file_bytes(session_key, &file_bytes)?;
-    let header = PacketHeader::new(
-        TransferType::Transfer,
+    let header = PacketHeader::new(PacketHeaderParts {
+        transfer_type: TransferType::Transfer,
         session_id,
         transfer_id,
-        [0u8; PEER_ID_SIZE],
-        [0u8; PEER_ID_SIZE],
+        sender_peer_id: [0u8; PEER_ID_SIZE],
+        receiver_peer_id: [0u8; PEER_ID_SIZE],
         nonce,
         content_hash,
-        context_bytes.len() as u32,
-        ciphertext.len() as u64,
-    );
+        context_len: context_bytes.len() as u32,
+        payload_len: ciphertext.len() as u64,
+    });
     let packet = AdtpPacket {
         header,
         context: Bytes::from(context_bytes),

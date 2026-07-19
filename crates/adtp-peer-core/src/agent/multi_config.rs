@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::config::AgentConfig;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentEntry {
@@ -28,15 +28,9 @@ impl AgentEntry {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentsConfig {
     pub agents: Vec<AgentEntry>,
-}
-
-impl Default for AgentsConfig {
-    fn default() -> Self {
-        Self { agents: vec![] }
-    }
 }
 
 impl AgentsConfig {
@@ -91,7 +85,9 @@ impl AgentsConfig {
             enabled: true,
         };
 
-        let config = Self { agents: vec![entry] };
+        let config = Self {
+            agents: vec![entry],
+        };
         config.save()?;
         let _ = std::fs::remove_file(&old_path);
         Ok(config)

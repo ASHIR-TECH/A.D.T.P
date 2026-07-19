@@ -1,10 +1,10 @@
-use clap::{Args, Subcommand};
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
 use crate::models::{PeerInfo, PeerList, ScanResult};
+use clap::{Args, Subcommand};
+use colored::Colorize;
 
 #[derive(Subcommand, Debug)]
 pub enum PeerCommands {
@@ -59,10 +59,7 @@ pub struct PeerShowArgs {
     pub peer_id_or_nickname: String,
 }
 
-pub async fn execute(
-    cfg: &CliConfig,
-    args: &PeerArgs,
-) -> Result<i32, CliError> {
+pub async fn execute(cfg: &CliConfig, args: &PeerArgs) -> Result<i32, CliError> {
     match &args.command {
         PeerCommands::List => peer_list(cfg).await,
         PeerCommands::Add(a) => peer_add(cfg, a).await,
@@ -122,12 +119,18 @@ async fn peer_remove(cfg: &CliConfig, args: &PeerRemoveArgs) -> Result<i32, CliE
 async fn peer_trust(cfg: &CliConfig, args: &PeerTrustArgs) -> Result<i32, CliError> {
     if cfg.output_format == "json" {
         let resp: serde_json::Value = ApiClient::new(cfg)?
-            .post(&format!("/api/v1/peers/{}/trust", args.peer_id), &serde_json::json!({}))
+            .post(
+                &format!("/api/v1/peers/{}/trust", args.peer_id),
+                &serde_json::json!({}),
+            )
             .await?;
         println!("{}", serde_json::to_string_pretty(&resp).unwrap());
     } else {
         let _: serde_json::Value = ApiClient::new(cfg)?
-            .post(&format!("/api/v1/peers/{}/trust", args.peer_id), &serde_json::json!({}))
+            .post(
+                &format!("/api/v1/peers/{}/trust", args.peer_id),
+                &serde_json::json!({}),
+            )
             .await?;
         println!("{} Trusted peer {}", "✔".green(), args.peer_id);
     }
@@ -137,12 +140,18 @@ async fn peer_trust(cfg: &CliConfig, args: &PeerTrustArgs) -> Result<i32, CliErr
 async fn peer_block(cfg: &CliConfig, args: &PeerBlockArgs) -> Result<i32, CliError> {
     if cfg.output_format == "json" {
         let resp: serde_json::Value = ApiClient::new(cfg)?
-            .post(&format!("/api/v1/peers/{}/block", args.peer_id), &serde_json::json!({}))
+            .post(
+                &format!("/api/v1/peers/{}/block", args.peer_id),
+                &serde_json::json!({}),
+            )
             .await?;
         println!("{}", serde_json::to_string_pretty(&resp).unwrap());
     } else {
         let _: serde_json::Value = ApiClient::new(cfg)?
-            .post(&format!("/api/v1/peers/{}/block", args.peer_id), &serde_json::json!({}))
+            .post(
+                &format!("/api/v1/peers/{}/block", args.peer_id),
+                &serde_json::json!({}),
+            )
             .await?;
         println!("{} Blocked peer {}", "✔".green(), args.peer_id);
     }
@@ -163,7 +172,9 @@ async fn peer_scan(cfg: &CliConfig) -> Result<i32, CliError> {
     if cfg.output_format != "json" {
         println!("Scanning local network...\n");
     }
-    let result: ScanResult = ApiClient::new(cfg)?.post("/api/v1/peers/scan", &serde_json::json!({})).await?;
+    let result: ScanResult = ApiClient::new(cfg)?
+        .post("/api/v1/peers/scan", &serde_json::json!({}))
+        .await?;
     if cfg.output_format == "json" {
         println!("{}", serde_json::to_string_pretty(&result).unwrap());
     } else if result.peers.is_empty() {

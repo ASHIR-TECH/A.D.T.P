@@ -21,7 +21,9 @@ pub mod trust;
 pub use agent::{
     AgentConfig, AgentRuntime, ArtifactWriter, PendingTaskQueue, PermissionStore, TaskRouter,
 };
-pub use agent_card::{build_unsigned_card, sign_card, verify_card, AgentCard, UnsignedCard};
+pub use agent_card::{
+    build_unsigned_card, sign_card, verify_card, AgentCard, UnsignedCard, UnsignedCardInput,
+};
 pub use agent_card_server::AgentCardServer;
 pub use artifact::Artifact;
 pub use audit::AuditLog;
@@ -33,7 +35,10 @@ pub use keepalive::Keepalive;
 pub use nat_detect::NatDetector;
 pub use paths::{direct, lan, qowt, relay as relay_path, stun};
 pub use push::PushHandler;
-pub use relay::{build_relay_path, check_hop_limit, check_loop, parse_adtp_uri, RelayConfig, RelayRequest, UriParts};
+pub use relay::{
+    build_relay_path, check_hop_limit, check_loop, parse_adtp_uri, RelayConfig, RelayRequest,
+    UriParts,
+};
 pub use rendezvous_client::RendezvousClient;
 pub use subscribe::SubscribeManager;
 pub use task::{Task, TaskRecord, TaskState, TaskStore};

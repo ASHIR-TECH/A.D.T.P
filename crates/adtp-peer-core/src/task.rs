@@ -254,27 +254,20 @@ impl TaskStore {
 
     pub fn list(&self) -> Vec<&Task> {
         let mut tasks: Vec<&Task> = self.tasks.values().collect();
-        tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        tasks.sort_by_key(|task| std::cmp::Reverse(task.created_at));
         tasks
     }
 
-    pub fn list_filtered(
-        &self,
-        peer_id: Option<&str>,
-        state: Option<&str>,
-    ) -> Vec<&Task> {
+    pub fn list_filtered(&self, peer_id: Option<&str>, state: Option<&str>) -> Vec<&Task> {
         self.tasks
             .values()
             .filter(|t| {
                 let matches_peer = peer_id
                     .map(|p| {
-                        hex::encode(t.sender_peer_id) == p
-                            || hex::encode(t.receiver_peer_id) == p
+                        hex::encode(t.sender_peer_id) == p || hex::encode(t.receiver_peer_id) == p
                     })
                     .unwrap_or(true);
-                let matches_state = state
-                    .map(|s| t.state.to_string() == s)
-                    .unwrap_or(true);
+                let matches_state = state.map(|s| t.state.to_string() == s).unwrap_or(true);
                 matches_peer && matches_state
             })
             .collect()
@@ -397,12 +390,7 @@ mod tests {
         task.add_artifact("a.txt".into(), Uuid::new_v4(), "text/plain".into(), 100)
             .unwrap();
 
-        let result = task.add_artifact(
-            "a.txt".into(),
-            Uuid::new_v4(),
-            "text/plain".into(),
-            200,
-        );
+        let result = task.add_artifact("a.txt".into(), Uuid::new_v4(), "text/plain".into(), 200);
         assert!(result.is_err());
     }
 

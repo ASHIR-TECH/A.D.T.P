@@ -1,6 +1,6 @@
 pub mod art;
-pub mod commands;
 pub mod client;
+pub mod commands;
 pub mod config;
 pub mod display;
 pub mod errors;
@@ -10,9 +10,18 @@ pub mod repl;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "adtp", about = "ADTP CLI — Agent Data Transfer Protocol", version)]
+#[command(
+    name = "adtp",
+    about = "ADTP CLI — Agent Data Transfer Protocol",
+    version
+)]
 pub struct Cli {
-    #[arg(global = true, long, value_name = "FORMAT", help = "Output format: json, table, plain")]
+    #[arg(
+        global = true,
+        long,
+        value_name = "FORMAT",
+        help = "Output format: json, table, plain"
+    )]
     pub format: Option<String>,
 
     #[arg(global = true, short, long, help = "Suppress all output except errors")]
@@ -97,7 +106,11 @@ pub fn resolve_aliases(args: &[String]) -> Option<Vec<String>> {
             v
         }
         "av" => {
-            let mut v = vec!["adtp".to_string(), "audit".to_string(), "verify".to_string()];
+            let mut v = vec![
+                "adtp".to_string(),
+                "audit".to_string(),
+                "verify".to_string(),
+            ];
             v.extend_from_slice(&args[2..]);
             v
         }

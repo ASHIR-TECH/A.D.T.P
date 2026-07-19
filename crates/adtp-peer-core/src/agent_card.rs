@@ -36,30 +36,32 @@ pub struct UnsignedCard {
     pub issued_at: String,
 }
 
-pub fn build_unsigned_card(
-    peer_id: &[u8; PEER_ID_SIZE],
-    public_key: &[u8; 32],
-    display_name: Option<String>,
-    host: &str,
-    port: u16,
-    max_file_size: u64,
-    supported_mime_types: Vec<String>,
-    supports_tasks: bool,
-    supports_multihop: bool,
-    relay_of: Vec<String>,
-) -> UnsignedCard {
+pub struct UnsignedCardInput<'a> {
+    pub peer_id: &'a [u8; PEER_ID_SIZE],
+    pub public_key: &'a [u8; 32],
+    pub display_name: Option<String>,
+    pub host: &'a str,
+    pub port: u16,
+    pub max_file_size: u64,
+    pub supported_mime_types: Vec<String>,
+    pub supports_tasks: bool,
+    pub supports_multihop: bool,
+    pub relay_of: Vec<String>,
+}
+
+pub fn build_unsigned_card(input: UnsignedCardInput<'_>) -> UnsignedCard {
     UnsignedCard {
         adtp_version: adtp_core::types::ADTP_VERSION,
-        peer_id: hex::encode(peer_id),
-        public_key_hex: hex::encode(public_key),
-        display_name,
-        host: host.to_string(),
-        port,
-        max_file_size,
-        supported_mime_types,
-        supports_tasks,
-        supports_multihop,
-        relay_of,
+        peer_id: hex::encode(input.peer_id),
+        public_key_hex: hex::encode(input.public_key),
+        display_name: input.display_name,
+        host: input.host.to_string(),
+        port: input.port,
+        max_file_size: input.max_file_size,
+        supported_mime_types: input.supported_mime_types,
+        supports_tasks: input.supports_tasks,
+        supports_multihop: input.supports_multihop,
+        relay_of: input.relay_of,
         issued_at: Utc::now().to_rfc3339(),
     }
 }
@@ -85,12 +87,19 @@ pub fn sign_card(unsigned: &UnsignedCard, signing_key: &SigningKey) -> AgentCard
 }
 
 pub fn verify_card(card: &AgentCard) -> Result<bool, String> {
-    let public_key_bytes = hex::decode(&card.public_key_hex).map_err(|e| format!("Invalid public_key_hex: {e}"))?;
-    let public_key_array: [u8; 32] = public_key_bytes.try_into().map_err(|_| "Public key must be 32 bytes".to_string())?;
-    let verifying_key = VerifyingKey::from_bytes(&public_key_array).map_err(|e| format!("Invalid ed25519 key: {e}"))?;
+    let public_key_bytes =
+        hex::decode(&card.public_key_hex).map_err(|e| format!("Invalid public_key_hex: {e}"))?;
+    let public_key_array: [u8; 32] = public_key_bytes
+        .try_into()
+        .map_err(|_| "Public key must be 32 bytes".to_string())?;
+    let verifying_key = VerifyingKey::from_bytes(&public_key_array)
+        .map_err(|e| format!("Invalid ed25519 key: {e}"))?;
 
-    let signature_bytes = hex::decode(&card.signature).map_err(|e| format!("Invalid signature hex: {e}"))?;
-    let sig_array: [u8; 64] = signature_bytes.try_into().map_err(|_| "Signature must be 64 bytes".to_string())?;
+    let signature_bytes =
+        hex::decode(&card.signature).map_err(|e| format!("Invalid signature hex: {e}"))?;
+    let sig_array: [u8; 64] = signature_bytes
+        .try_into()
+        .map_err(|_| "Signature must be 64 bytes".to_string())?;
     let signature = Signature::from_bytes(&sig_array);
 
     let unsigned = UnsignedCard {
@@ -109,7 +118,9 @@ pub fn verify_card(card: &AgentCard) -> Result<bool, String> {
     };
     let canonical = serde_json::to_string(&unsigned).unwrap_or_default();
 
-    Ok(verifying_key.verify(canonical.as_bytes(), &signature).is_ok())
+    Ok(verifying_key
+        .verify(canonical.as_bytes(), &signature)
+        .is_ok())
 }
 
 #[cfg(test)]
@@ -124,18 +135,18 @@ mod tests {
         let verifying_key = signing_key.verifying_key();
         let peer_id = [1u8; PEER_ID_SIZE];
 
-        let unsigned = build_unsigned_card(
-            &peer_id,
-            &verifying_key.to_bytes(),
-            Some("test-peer".into()),
-            "127.0.0.1",
-            40001,
-            1073741824,
-            vec!["text/plain".into()],
-            true,
-            false,
-            vec![],
-        );
+        let unsigned = build_unsigned_card(UnsignedCardInput {
+            peer_id: &peer_id,
+            public_key: &verifying_key.to_bytes(),
+            display_name: Some("test-peer".into()),
+            host: "127.0.0.1",
+            port: 40001,
+            max_file_size: 1073741824,
+            supported_mime_types: vec!["text/plain".into()],
+            supports_tasks: true,
+            supports_multihop: false,
+            relay_of: vec![],
+        });
 
         let card = sign_card(&unsigned, &signing_key);
         assert!(!card.signature.is_empty());
@@ -148,18 +159,18 @@ mod tests {
         let verifying_key = signing_key.verifying_key();
         let peer_id = [2u8; PEER_ID_SIZE];
 
-        let unsigned = build_unsigned_card(
-            &peer_id,
-            &verifying_key.to_bytes(),
-            None,
-            "10.0.0.1",
-            40001,
-            1073741824,
-            vec![],
-            true,
-            true,
-            vec!["peer_c".into()],
-        );
+        let unsigned = build_unsigned_card(UnsignedCardInput {
+            peer_id: &peer_id,
+            public_key: &verifying_key.to_bytes(),
+            display_name: None,
+            host: "10.0.0.1",
+            port: 40001,
+            max_file_size: 1073741824,
+            supported_mime_types: vec![],
+            supports_tasks: true,
+            supports_multihop: true,
+            relay_of: vec!["peer_c".into()],
+        });
 
         let mut card = sign_card(&unsigned, &signing_key);
         card.max_file_size = 999;

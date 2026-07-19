@@ -36,7 +36,11 @@ impl PendingTaskQueue {
         }
     }
 
-    pub async fn enqueue(&self, target_peer_id: String, instruction: String) -> Result<String, String> {
+    pub async fn enqueue(
+        &self,
+        target_peer_id: String,
+        instruction: String,
+    ) -> Result<String, String> {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
         let expires_at = now + chrono::Duration::hours(self.expiry_hours as i64);
@@ -133,7 +137,10 @@ mod tests {
     #[tokio::test]
     async fn test_enqueue_and_fire() {
         let queue = PendingTaskQueue::new(24);
-        let id = queue.enqueue("peer-1".into(), "send file x".into()).await.unwrap();
+        let id = queue
+            .enqueue("peer-1".into(), "send file x".into())
+            .await
+            .unwrap();
         assert!(!id.is_empty());
         let fired = queue.fire(&id).await;
         assert!(fired.is_some());
@@ -143,7 +150,10 @@ mod tests {
     #[tokio::test]
     async fn test_cancel() {
         let queue = PendingTaskQueue::new(24);
-        let id = queue.enqueue("peer-1".into(), "send file x".into()).await.unwrap();
+        let id = queue
+            .enqueue("peer-1".into(), "send file x".into())
+            .await
+            .unwrap();
         assert!(queue.cancel(&id).await);
         assert!(queue.fire(&id).await.is_none());
     }
@@ -151,9 +161,18 @@ mod tests {
     #[tokio::test]
     async fn test_pending_for_peer() {
         let queue = PendingTaskQueue::new(24);
-        queue.enqueue("peer-1".into(), "task 1".into()).await.unwrap();
-        queue.enqueue("peer-2".into(), "task 2".into()).await.unwrap();
-        queue.enqueue("peer-1".into(), "task 3".into()).await.unwrap();
+        queue
+            .enqueue("peer-1".into(), "task 1".into())
+            .await
+            .unwrap();
+        queue
+            .enqueue("peer-2".into(), "task 2".into())
+            .await
+            .unwrap();
+        queue
+            .enqueue("peer-1".into(), "task 3".into())
+            .await
+            .unwrap();
         let peer1_tasks = queue.pending_for_peer("peer-1").await;
         assert_eq!(peer1_tasks.len(), 2);
     }

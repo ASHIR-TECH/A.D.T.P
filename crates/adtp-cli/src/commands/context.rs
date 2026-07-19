@@ -1,9 +1,9 @@
-use clap::Args;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
 use crate::models::ContextBlock;
+use clap::Args;
 
 #[derive(Args)]
 pub struct ContextArgs {

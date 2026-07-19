@@ -1,5 +1,5 @@
 use adtp_core::errors::{AdtpError, AdtpResult};
-use adtp_core::protocol::AdtpPacket;
+use adtp_core::protocol::{AdtpPacket, PacketHeaderParts};
 use adtp_core::transfer::AdtpConnection;
 use adtp_core::types::TransferType;
 use bytes::Bytes;
@@ -24,11 +24,7 @@ impl SubscribeManager {
         }
     }
 
-    pub async fn register(
-        &self,
-        peer_id: [u8; 16],
-        connection: Arc<AdtpConnection>,
-    ) {
+    pub async fn register(&self, peer_id: [u8; 16], connection: Arc<AdtpConnection>) {
         let mut conns = self.connections.lock().await;
         conns.retain(|p| p.peer_id != peer_id);
         conns.push(SubscribePeer {
@@ -36,7 +32,10 @@ impl SubscribeManager {
             connection,
             sequence_number: 0,
         });
-        tracing::info!("Subscribe stream registered for peer {}", hex::encode(peer_id));
+        tracing::info!(
+            "Subscribe stream registered for peer {}",
+            hex::encode(peer_id)
+        );
     }
 
     pub async fn unregister(&self, peer_id: &[u8; 16]) {
@@ -74,17 +73,17 @@ impl SubscribeManager {
         let context_bytes = serde_json::to_vec(&notify_payload)?;
 
         let packet = AdtpPacket {
-            header: adtp_core::protocol::PacketHeader::new(
-                TransferType::Notify,
-                Uuid::nil(),
-                Uuid::new_v4(),
-                [0u8; 16],
-                *target_peer,
-                [0u8; 12],
-                [0u8; 32],
-                context_bytes.len() as u32,
-                0,
-            ),
+            header: adtp_core::protocol::PacketHeader::new(PacketHeaderParts {
+                transfer_type: TransferType::Notify,
+                session_id: Uuid::nil(),
+                transfer_id: Uuid::new_v4(),
+                sender_peer_id: [0u8; 16],
+                receiver_peer_id: *target_peer,
+                nonce: [0u8; 12],
+                content_hash: [0u8; 32],
+                context_len: context_bytes.len() as u32,
+                payload_len: 0,
+            }),
             context: Bytes::from(context_bytes),
             payload: Bytes::new(),
             signature: [0u8; 64],

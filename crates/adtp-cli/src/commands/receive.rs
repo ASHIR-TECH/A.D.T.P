@@ -1,9 +1,9 @@
-use clap::Args;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
 use crate::models::TransferList;
+use clap::Args;
 
 #[derive(Args)]
 pub struct ReceiveArgs {
@@ -33,9 +33,7 @@ pub async fn execute(cfg: &CliConfig, args: &ReceiveArgs) -> Result<i32, CliErro
     let client = ApiClient::new(cfg)?;
 
     let limit_str = args.limit.to_string();
-    let mut params: Vec<(&str, &str)> = vec![
-        ("limit", &limit_str),
-    ];
+    let mut params: Vec<(&str, &str)> = vec![("limit", &limit_str)];
 
     // Determine status filter: shortcuts take priority
     let status = if args.pending {

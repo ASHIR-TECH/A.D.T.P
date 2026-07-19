@@ -1,12 +1,11 @@
-use clap::Args;
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
 use crate::models::{TransferSendResponse, TransferStatus};
+use clap::Args;
+use colored::Colorize;
 use std::time::Duration;
-
 
 #[derive(Args)]
 pub struct SendArgs {
@@ -44,7 +43,8 @@ pub async fn execute(cfg: &CliConfig, args: &SendArgs) -> Result<i32, CliError> 
                         list.peers[0].peer_id.clone()
                     } else if list.peers.is_empty() {
                         return Err(CliError::Config {
-                            message: "No default peer set and no peers found. Use --to <peer>.".into(),
+                            message: "No default peer set and no peers found. Use --to <peer>."
+                                .into(),
                         });
                     } else {
                         return Err(CliError::Config {
@@ -91,12 +91,13 @@ pub async fn execute(cfg: &CliConfig, args: &SendArgs) -> Result<i32, CliError> 
         loop {
             tokio::time::sleep(Duration::from_millis(cfg.poll_interval_ms)).await;
 
-            let status: TransferStatus =
-                match client.get(&format!("/api/v1/transfers/{}/status", resp.transfer_id)).await
-                {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
+            let status: TransferStatus = match client
+                .get(&format!("/api/v1/transfers/{}/status", resp.transfer_id))
+                .await
+            {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
 
             pb.set_position(status.percent as u64);
             pb.set_message(format!(
@@ -120,11 +121,7 @@ pub async fn execute(cfg: &CliConfig, args: &SendArgs) -> Result<i32, CliError> 
                     return Ok(0);
                 }
                 "failed" => {
-                    pb.finish_with_message(format!(
-                        "{} Failed — {}",
-                        "✘".red(),
-                        resp.filename
-                    ));
+                    pb.finish_with_message(format!("{} Failed — {}", "✘".red(), resp.filename));
                     return Ok(1);
                 }
                 "cancelled" => {

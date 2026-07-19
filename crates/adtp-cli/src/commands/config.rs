@@ -1,8 +1,8 @@
-use clap::{Args, Subcommand};
-use colored::Colorize;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
+use clap::{Args, Subcommand};
+use colored::Colorize;
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigCommands {
@@ -28,10 +28,7 @@ pub struct ConfigSetArgs {
     pub value: String,
 }
 
-pub async fn execute(
-    cfg: &CliConfig,
-    args: &ConfigArgs,
-) -> Result<i32, CliError> {
+pub async fn execute(cfg: &CliConfig, args: &ConfigArgs) -> Result<i32, CliError> {
     match &args.command {
         ConfigCommands::Show => config_show(cfg).await,
         ConfigCommands::Set(a) => config_set(cfg, a).await,
@@ -57,7 +54,10 @@ async fn config_set(cfg: &CliConfig, args: &ConfigSetArgs) -> Result<i32, CliErr
         "api-token" => {
             updated.save_token_to_keychain(&args.value)?;
             if cfg.output_format != "json" {
-                println!("{} Token saved to system keychain. Not written to any file.", "✔".green());
+                println!(
+                    "{} Token saved to system keychain. Not written to any file.",
+                    "✔".green()
+                );
             } else {
                 println!(r#"{{"saved": true, "target": "keychain"}}"#);
             }
@@ -67,7 +67,10 @@ async fn config_set(cfg: &CliConfig, args: &ConfigSetArgs) -> Result<i32, CliErr
         "default-agent" => updated.default_agent = args.value.clone(),
         "agent-model" => {
             if cfg.output_format != "json" {
-                println!("{} Note: agent model is configured server-side. Updated local config.", "ℹ".yellow());
+                println!(
+                    "{} Note: agent model is configured server-side. Updated local config.",
+                    "ℹ".yellow()
+                );
             }
         }
         "poll-interval" | "poll_interval_ms" => {
@@ -107,14 +110,12 @@ async fn config_set(cfg: &CliConfig, args: &ConfigSetArgs) -> Result<i32, CliErr
     updated.save()?;
 
     if cfg.output_format == "json" {
-        println!(r#"{{"updated": true, "key": "{}", "value": "{}"}}"#, args.key, args.value);
-    } else {
         println!(
-            "{} Updated {} = {}",
-            "✔".green(),
-            args.key,
-            args.value
+            r#"{{"updated": true, "key": "{}", "value": "{}"}}"#,
+            args.key, args.value
         );
+    } else {
+        println!("{} Updated {} = {}", "✔".green(), args.key, args.value);
     }
     Ok(0)
 }

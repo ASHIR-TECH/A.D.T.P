@@ -20,7 +20,10 @@ impl fmt::Display for CliError {
                 write!(f, "API error ({status}): {message}")
             }
             Self::ChainTampered { first_failure_id } => {
-                write!(f, "Audit chain TAMPERED — first failure at {first_failure_id}")
+                write!(
+                    f,
+                    "Audit chain TAMPERED — first failure at {first_failure_id}"
+                )
             }
             Self::PermissionDenied { message } => write!(f, "Permission denied: {message}"),
             Self::Http { message } => write!(f, "Connection error: {message}"),
@@ -33,31 +36,41 @@ impl fmt::Display for CliError {
 
 impl From<anyhow::Error> for CliError {
     fn from(e: anyhow::Error) -> Self {
-        Self::Http { message: e.to_string() }
+        Self::Http {
+            message: e.to_string(),
+        }
     }
 }
 
 impl From<reqwest::Error> for CliError {
     fn from(e: reqwest::Error) -> Self {
-        Self::Http { message: e.to_string() }
+        Self::Http {
+            message: e.to_string(),
+        }
     }
 }
 
 impl From<toml::de::Error> for CliError {
     fn from(e: toml::de::Error) -> Self {
-        Self::Parse { message: e.to_string() }
+        Self::Parse {
+            message: e.to_string(),
+        }
     }
 }
 
 impl From<toml::ser::Error> for CliError {
     fn from(e: toml::ser::Error) -> Self {
-        Self::Parse { message: e.to_string() }
+        Self::Parse {
+            message: e.to_string(),
+        }
     }
 }
 
 impl From<std::io::Error> for CliError {
     fn from(e: std::io::Error) -> Self {
-        Self::Io { message: e.to_string() }
+        Self::Io {
+            message: e.to_string(),
+        }
     }
 }
 
@@ -81,7 +94,9 @@ pub fn hint(err: &CliError) -> Option<&'static str> {
             Some("Is adtp-api running? Try `systemctl start adtp-api` or `adtp status`")
         }
         CliError::Api { status, .. } => match status {
-            401 => Some("Check your API token — set ADTP_API_TOKEN or run `adtp config set api-token`"),
+            401 => {
+                Some("Check your API token — set ADTP_API_TOKEN or run `adtp config set api-token`")
+            }
             404 => Some("The resource was not found. Check the ID or path."),
             413 => Some("The file exceeds the maximum allowed size."),
             429 => Some("You are being rate-limited. Wait and retry."),

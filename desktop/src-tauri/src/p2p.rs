@@ -166,7 +166,10 @@ impl P2PModule {
         *self.nat_type.lock().await
     }
 
-    pub async fn connect_to_peer(&self, peer_id: &str) -> Result<Arc<adtp_core::transfer::AdtpConnection>, String> {
+    pub async fn connect_to_peer(
+        &self,
+        peer_id: &str,
+    ) -> Result<Arc<adtp_core::transfer::AdtpConnection>, String> {
         {
             let conns = self.connections.lock().await;
             if let Some(conn) = conns.get(peer_id) {
@@ -292,10 +295,7 @@ impl P2PModule {
                 adtp_core::types::TrustLevel::Unverified => "unverified",
                 adtp_core::types::TrustLevel::Blocked => "blocked",
             };
-            let nickname = p
-                .nickname
-                .as_deref()
-                .unwrap_or(&p.peer_id[..16]);
+            let nickname = p.nickname.as_deref().unwrap_or(&p.peer_id[..16]);
             lines.push(format!(
                 "  {} — {} ({}:{}, {})",
                 nickname, p.peer_id, p.host, p.port, trust

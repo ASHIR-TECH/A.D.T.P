@@ -43,9 +43,8 @@ impl TrustStore {
         let config = PeersConfig {
             peer: self.peers.values().cloned().collect(),
         };
-        let content = toml::to_string_pretty(&config).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })?;
+        let content = toml::to_string_pretty(&config)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
         std::fs::write(&self.path, content)?;
         Ok(())
     }

@@ -1,10 +1,10 @@
-use clap::{Args, Subcommand};
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
 use crate::models::*;
+use clap::{Args, Subcommand};
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Subcommand, Debug)]
@@ -54,10 +54,7 @@ pub struct AuditShowArgs {
     pub transfer_id: String,
 }
 
-pub async fn execute(
-    cfg: &CliConfig,
-    args: &AuditArgs,
-) -> Result<i32, CliError> {
+pub async fn execute(cfg: &CliConfig, args: &AuditArgs) -> Result<i32, CliError> {
     match &args.command {
         AuditCommands::Log(a) => audit_log(cfg, a).await,
         AuditCommands::Verify => audit_verify(cfg).await,
@@ -144,7 +141,9 @@ async fn audit_export(cfg: &CliConfig, args: &AuditExportArgs) -> Result<i32, Cl
         params.push(("to_ts", t));
     }
 
-    let csv_content = client.get_raw_with_query("/api/v1/audit/export", &params).await?;
+    let csv_content = client
+        .get_raw_with_query("/api/v1/audit/export", &params)
+        .await?;
 
     if let Some(path_str) = &args.out {
         let path = PathBuf::from(path_str);
@@ -154,9 +153,17 @@ async fn audit_export(cfg: &CliConfig, args: &AuditExportArgs) -> Result<i32, Cl
 
         let line_count = csv_content.lines().count().saturating_sub(1);
         if cfg.output_format == "json" {
-            println!(r#"{{"exported": true, "entries": {}, "path": "{}"}}"#, line_count, path_str);
+            println!(
+                r#"{{"exported": true, "entries": {}, "path": "{}"}}"#,
+                line_count, path_str
+            );
         } else {
-            println!("{} Exported {} entries to {}", "✓".green(), line_count, path_str);
+            println!(
+                "{} Exported {} entries to {}",
+                "✓".green(),
+                line_count,
+                path_str
+            );
         }
     } else {
         print!("{csv_content}");
@@ -175,10 +182,17 @@ async fn audit_show(cfg: &CliConfig, args: &AuditShowArgs) -> Result<i32, CliErr
         println!("{}", serde_json::to_string_pretty(&record).unwrap());
     } else {
         println!("Transfer:  {}", args.transfer_id);
-        println!("File:      {} ({})", record.filename, display::format_file_size(record.file_size));
+        println!(
+            "File:      {} ({})",
+            record.filename,
+            display::format_file_size(record.file_size)
+        );
         println!("Type:      {}", record.transfer_type);
         println!("Status:    {}", display::status_badge(&record.status));
-        println!("Integrity: {}", display::integrity_badge(record.integrity_verified));
+        println!(
+            "Integrity: {}",
+            display::integrity_badge(record.integrity_verified)
+        );
         if let Some(completed) = &record.completed_at {
             println!("Completed: {completed}");
         }

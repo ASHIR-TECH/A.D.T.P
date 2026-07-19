@@ -1,5 +1,7 @@
 use adtp_core::errors::AdtpResult;
-use adtp_core::types::{DEAD_DETECTION_PINGS, KEEPALIVE_DEFAULT_MS, PEER_ID_SIZE, RECONNECT_BACKOFF_MAX_SECS};
+use adtp_core::types::{
+    DEAD_DETECTION_PINGS, KEEPALIVE_DEFAULT_MS, PEER_ID_SIZE, RECONNECT_BACKOFF_MAX_SECS,
+};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

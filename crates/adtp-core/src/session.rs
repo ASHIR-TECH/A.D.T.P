@@ -36,11 +36,9 @@ impl PersistentPeerIdentity {
             bytes
         };
 
-        let signing_key = SigningKey::from_keypair_bytes(
-            &key_bytes.try_into().map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid key file")
-            })?,
-        )
+        let signing_key = SigningKey::from_keypair_bytes(&key_bytes.try_into().map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid key file")
+        })?)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let verifying_key = signing_key.verifying_key();
         let public_bytes = verifying_key.to_bytes();

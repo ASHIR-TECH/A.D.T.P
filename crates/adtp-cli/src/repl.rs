@@ -1,26 +1,24 @@
 use clap::Parser;
-use std::io::{self, Write};
-use rustyline::completion::{Completer, Pair, FilenameCompleter};
+use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
-use rustyline::validate::{Validator, ValidationContext, ValidationResult};
+use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{Context, Editor, Helper};
 use std::borrow::Cow::{self, Owned};
 use std::collections::HashSet;
+use std::io::{self, Write};
 
 use crate::art;
 use crate::client::ApiClient;
 use crate::commands;
 use crate::config::CliConfig;
 use crate::errors::CliError;
-use crate::models::{PeerList, AgentStatusResponse};
+use crate::models::{AgentStatusResponse, PeerList};
 
 const KNOWN_COMMANDS: &[&str] = &[
-    "send", "receive", "recv", "status", "st",
-    "peer", "pl", "pa", "agent", "ask",
-    "watch", "unwatch", "session", "audit", "config",
-    "history", "verify", "export", "context", "connect",
+    "send", "receive", "recv", "status", "st", "peer", "pl", "pa", "agent", "ask", "watch",
+    "unwatch", "session", "audit", "config", "history", "verify", "export", "context", "connect",
     "help", "exit", "quit", "sf",
 ];
 
@@ -38,7 +36,10 @@ impl Completer for ReplHelper {
         pos: usize,
         _ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Pair>), ReadlineError> {
-        let start = line[..pos].rfind(char::is_whitespace).map(|i| i + 1).unwrap_or(0);
+        let start = line[..pos]
+            .rfind(char::is_whitespace)
+            .map(|i| i + 1)
+            .unwrap_or(0);
         let prefix = &line[start..pos];
 
         let mut candidates: Vec<Pair> = self
@@ -136,7 +137,7 @@ pub async fn run(cfg: &CliConfig) -> Result<i32, CliError> {
                 println!();
                 return Ok(0);
             }
-        Err(e) => {
+            Err(e) => {
                 eprintln!("REPL error: {e}");
                 let _ = rl.save_history(&history_path());
                 break;
@@ -156,11 +157,21 @@ async fn print_status_bar(cfg: &CliConfig) {
 
     let (peers_str, agent_str) = match ApiClient::new(cfg) {
         Ok(client) => {
-            let peers = client.get::<PeerList>("/api/v1/peers").await
+            let peers = client
+                .get::<PeerList>("/api/v1/peers")
+                .await
                 .map(|p| p.total.to_string())
                 .unwrap_or_else(|_| "--".to_string());
-            let agent = client.get::<AgentStatusResponse>("/api/v1/agent/status").await
-                .map(|a| if a.active { format!("{} ({})", a.provider, a.model) } else { "inactive".into() })
+            let agent = client
+                .get::<AgentStatusResponse>("/api/v1/agent/status")
+                .await
+                .map(|a| {
+                    if a.active {
+                        format!("{} ({})", a.provider, a.model)
+                    } else {
+                        "inactive".into()
+                    }
+                })
                 .unwrap_or_else(|_| "--".to_string());
             (peers, agent)
         }
@@ -179,7 +190,9 @@ fn print_repl_help() {
     println!("  receive             List incoming transfers");
     println!("  status              Overall health and queue");
     println!("  peer <subcmd>       Peer management (list, add, remove, trust, block, status, scan, show)");
-    println!("  agent <subcmd>      Agent commands (ask, status, activate, deactivate, permissions)");
+    println!(
+        "  agent <subcmd>      Agent commands (ask, status, activate, deactivate, permissions)"
+    );
     println!("  config <subcmd>     Configuration (show, set, reset, permissions)");
     println!("  audit <subcmd>      Audit log, verify, export, show");
     println!("  session <subcmd>    Session management (list, show, close, transfers)");
@@ -189,7 +202,9 @@ fn print_repl_help() {
     println!("  help                Show this help");
     println!("  exit / quit         Exit REPL");
     println!();
-    println!("Natural language: Type anything that doesn't match a command and it's sent to the agent.");
+    println!(
+        "Natural language: Type anything that doesn't match a command and it's sent to the agent."
+    );
 }
 
 async fn execute_repl_command(cfg: &CliConfig, input: &str) -> Result<i32, CliError> {
@@ -253,7 +268,5 @@ fn history_path() -> String {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("adtp");
     std::fs::create_dir_all(&dir).ok();
-    dir.join("repl_history.txt")
-        .to_string_lossy()
-        .to_string()
+    dir.join("repl_history.txt").to_string_lossy().to_string()
 }

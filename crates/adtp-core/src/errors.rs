@@ -79,7 +79,11 @@ pub enum AdtpError {
     #[error("Task not found: {task_id}")]
     TaskNotFound { task_id: String },
     #[error("Illegal task state transition: {from} → {to} — {reason}")]
-    IllegalTaskTransition { from: String, to: String, reason: String },
+    IllegalTaskTransition {
+        from: String,
+        to: String,
+        reason: String,
+    },
     #[error("Task is in terminal state: {state}")]
     TaskTerminal { state: String },
     #[error("Artifact not found for task {task_id}: {artifact_name}")]

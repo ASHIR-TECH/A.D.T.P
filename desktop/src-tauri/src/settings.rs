@@ -56,7 +56,9 @@ pub fn save_api_token(app: &AppHandle, token: &str) -> Result<(), String> {
 
 pub fn load_api_token(app: &AppHandle) -> Option<String> {
     let store = app.store(STORE_FILE).ok()?;
-    store.get(TOKEN_KEY).and_then(|v| v.as_str().map(String::from))
+    store
+        .get(TOKEN_KEY)
+        .and_then(|v| v.as_str().map(String::from))
 }
 
 pub fn write_token_to_cli_config(token: &str) -> Result<(), String> {
@@ -107,6 +109,4 @@ mod tests {
         assert_eq!(deserialized.agents.len(), 1);
         assert_eq!(deserialized.agents[0].name, "test-agent");
     }
-
-
 }

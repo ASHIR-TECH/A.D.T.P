@@ -1,9 +1,9 @@
-use clap::Args;
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::errors::CliError;
 use crate::models::WatchResponse;
+use clap::Args;
+use colored::Colorize;
 
 #[derive(Args)]
 pub struct WatchArgs {

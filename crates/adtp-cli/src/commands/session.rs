@@ -1,10 +1,10 @@
-use clap::{Args, Subcommand};
-use colored::Colorize;
 use crate::client::ApiClient;
 use crate::config::CliConfig;
 use crate::display;
 use crate::errors::CliError;
-use crate::models::{SessionList, SessionInfo, TransferList};
+use crate::models::{SessionInfo, SessionList, TransferList};
+use clap::{Args, Subcommand};
+use colored::Colorize;
 
 #[derive(Subcommand, Debug)]
 pub enum SessionCommands {
@@ -39,10 +39,7 @@ pub struct SessionTransfersArgs {
     pub session_id: String,
 }
 
-pub async fn execute(
-    cfg: &CliConfig,
-    args: &SessionArgs,
-) -> Result<i32, CliError> {
+pub async fn execute(cfg: &CliConfig, args: &SessionArgs) -> Result<i32, CliError> {
     match &args.command {
         SessionCommands::List => session_list(cfg).await,
         SessionCommands::Show(a) => session_show(cfg, a).await,
@@ -66,7 +63,9 @@ async fn session_list(cfg: &CliConfig) -> Result<i32, CliError> {
 
 async fn session_show(cfg: &CliConfig, args: &SessionShowArgs) -> Result<i32, CliError> {
     let client = ApiClient::new(cfg)?;
-    let session: SessionInfo = client.get(&format!("/api/v1/sessions/{}", args.session_id)).await?;
+    let session: SessionInfo = client
+        .get(&format!("/api/v1/sessions/{}", args.session_id))
+        .await?;
 
     if cfg.output_format == "json" {
         println!("{}", serde_json::to_string_pretty(&session).unwrap());
@@ -79,13 +78,20 @@ async fn session_show(cfg: &CliConfig, args: &SessionShowArgs) -> Result<i32, Cl
         println!(
             "ID:        {} ({})",
             args.session_id,
-            if session.ended_at.is_none() { "ACTIVE".green() } else { ended.normal() }
+            if session.ended_at.is_none() {
+                "ACTIVE".green()
+            } else {
+                ended.normal()
+            }
         );
         println!("Peer:      {}", session.peer_addr);
         println!("Started:   {}", session.started_at);
         println!("Ended:     {ended}");
         println!("Transfers: {}", session.transfer_count);
-        println!("Bytes:     {}", display::format_file_size(session.bytes_transferred));
+        println!(
+            "Bytes:     {}",
+            display::format_file_size(session.bytes_transferred)
+        );
         println!();
 
         let transfers: TransferList = client
@@ -98,7 +104,9 @@ async fn session_show(cfg: &CliConfig, args: &SessionShowArgs) -> Result<i32, Cl
 
 async fn session_close(cfg: &CliConfig, args: &SessionCloseArgs) -> Result<i32, CliError> {
     let client = ApiClient::new(cfg)?;
-    client.delete(&format!("/api/v1/sessions/{}", args.session_id)).await?;
+    client
+        .delete(&format!("/api/v1/sessions/{}", args.session_id))
+        .await?;
     if cfg.output_format == "json" {
         println!(r#"{{"closed": true, "session_id": "{}"}}"#, args.session_id);
     } else {

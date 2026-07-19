@@ -1,5 +1,5 @@
+use crate::agent::provider::{LlmMessage, LlmResponse, Provider, ToolDefinition};
 use async_trait::async_trait;
-use crate::agent::provider::{LlmMessage, LlmResponse, ToolDefinition, Provider};
 
 pub struct OllamaProvider {
     host: String,
@@ -21,13 +21,28 @@ impl OllamaProvider {
 
     pub async fn check_available(&self) -> Result<bool, String> {
         let url = format!("{}/api/tags", self.host);
-        let resp = self.client.get(&url).send().await.map_err(|e| format!("Ollama not reachable: {}", e))?;
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Ollama not reachable: {}", e))?;
         if !resp.status().is_success() {
             return Ok(false);
         }
-        let json: serde_json::Value = resp.json().await.map_err(|e| format!("Ollama parse error: {}", e))?;
-        let models = json["models"].as_array().ok_or("Unexpected response format")?;
-        Ok(models.iter().any(|m| m["name"].as_str().map(|n| n.starts_with(&self.model)).unwrap_or(false)))
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Ollama parse error: {}", e))?;
+        let models = json["models"]
+            .as_array()
+            .ok_or("Unexpected response format")?;
+        Ok(models.iter().any(|m| {
+            m["name"]
+                .as_str()
+                .map(|n| n.starts_with(&self.model))
+                .unwrap_or(false)
+        }))
     }
 }
 
@@ -47,12 +62,10 @@ impl Provider for OllamaProvider {
         system_prompt: &str,
         _tools: &[ToolDefinition],
     ) -> Result<LlmResponse, String> {
-        let mut ollama_messages: Vec<serde_json::Value> = vec![
-            serde_json::json!({
-                "role": "system",
-                "content": system_prompt,
-            }),
-        ];
+        let mut ollama_messages: Vec<serde_json::Value> = vec![serde_json::json!({
+            "role": "system",
+            "content": system_prompt,
+        })];
 
         for m in messages {
             ollama_messages.push(serde_json::json!({
@@ -71,7 +84,8 @@ impl Provider for OllamaProvider {
         });
 
         let url = format!("{}/api/chat", self.host);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&body)
             .send()
@@ -94,7 +108,10 @@ impl Provider for OllamaProvider {
             .unwrap_or("")
             .to_string();
 
-        let done_reason = response_json["done_reason"].as_str().unwrap_or("stop").to_string();
+        let done_reason = response_json["done_reason"]
+            .as_str()
+            .unwrap_or("stop")
+            .to_string();
 
         Ok(LlmResponse {
             content,

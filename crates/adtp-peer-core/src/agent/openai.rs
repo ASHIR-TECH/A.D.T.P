@@ -1,5 +1,5 @@
+use crate::agent::provider::{LlmMessage, LlmResponse, Provider, ToolCall, ToolDefinition};
 use async_trait::async_trait;
-use crate::agent::provider::{LlmMessage, LlmResponse, ToolCall, ToolDefinition, Provider};
 
 pub struct OpenAiProvider {
     api_key: String,
@@ -19,16 +19,19 @@ impl OpenAiProvider {
     }
 
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
-        tools.iter().map(|t| {
-            serde_json::json!({
-                "type": "function",
-                "function": {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.input_schema,
-                }
+        tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.input_schema,
+                    }
+                })
             })
-        }).collect()
+            .collect()
     }
 }
 
@@ -48,12 +51,10 @@ impl Provider for OpenAiProvider {
         system_prompt: &str,
         tools: &[ToolDefinition],
     ) -> Result<LlmResponse, String> {
-        let mut openai_messages: Vec<serde_json::Value> = vec![
-            serde_json::json!({
-                "role": "system",
-                "content": system_prompt,
-            }),
-        ];
+        let mut openai_messages: Vec<serde_json::Value> = vec![serde_json::json!({
+            "role": "system",
+            "content": system_prompt,
+        })];
 
         for m in messages {
             openai_messages.push(serde_json::json!({
@@ -74,7 +75,8 @@ impl Provider for OpenAiProvider {
             body["tool_choice"] = serde_json::json!("auto");
         }
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.openai.com/v1/chat/completions")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("content-type", "application/json")
@@ -107,7 +109,8 @@ impl Provider for OpenAiProvider {
 
         if let Some(tcs) = message["tool_calls"].as_array() {
             for tc in tcs {
-                if let (Some(id), Some(function)) = (tc["id"].as_str(), tc["function"].as_object()) {
+                if let (Some(id), Some(function)) = (tc["id"].as_str(), tc["function"].as_object())
+                {
                     let name = function["name"].as_str().unwrap_or("");
                     let args_str = function["arguments"].as_str().unwrap_or("{}");
                     if let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str) {
@@ -121,7 +124,10 @@ impl Provider for OpenAiProvider {
             }
         }
 
-        let finish_reason = choice["finish_reason"].as_str().unwrap_or("stop").to_string();
+        let finish_reason = choice["finish_reason"]
+            .as_str()
+            .unwrap_or("stop")
+            .to_string();
 
         Ok(LlmResponse {
             content: text_content,
