@@ -2,7 +2,7 @@ use adtp_client::audit::AuditLog;
 use adtp_core::{
     encryption::encrypt_file_bytes,
     integrity::hash_bytes,
-    protocol::{AdtpPacket, ContextEnvelope, PacketHeader},
+    protocol::{AdtpPacket, ContextEnvelope, PacketHeader, PacketHeaderParts},
     transfer::{AdtpClient, AdtpServer},
     types::*,
 };
@@ -21,7 +21,10 @@ async fn test_full_send_receive_cycle() {
             let packet = conn.recv_packet().await.unwrap();
             assert_eq!(packet.header.magic, ADTP_MAGIC);
             assert_eq!(packet.header.version, ADTP_VERSION);
-            assert!(matches!(packet.header.transfer_type, TransferType::Transfer));
+            assert!(matches!(
+                packet.header.transfer_type,
+                TransferType::Transfer
+            ));
             packet
         } else {
             panic!("No connection");
@@ -50,17 +53,17 @@ async fn test_full_send_receive_cycle() {
     };
     let ctx_bytes = serde_json::to_vec(&ctx).unwrap();
     let packet = AdtpPacket {
-        header: PacketHeader::new(
-            TransferType::Transfer,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            [0u8; PEER_ID_SIZE],
-            [0u8; PEER_ID_SIZE],
+        header: PacketHeader::new(PacketHeaderParts {
+            transfer_type: TransferType::Transfer,
+            session_id: Uuid::new_v4(),
+            transfer_id: Uuid::new_v4(),
+            sender_peer_id: [0u8; PEER_ID_SIZE],
+            receiver_peer_id: [0u8; PEER_ID_SIZE],
             nonce,
             content_hash,
-            ctx_bytes.len() as u32,
-            ciphertext.len() as u64,
-        ),
+            context_len: ctx_bytes.len() as u32,
+            payload_len: ciphertext.len() as u64,
+        }),
         context: Bytes::from(ctx_bytes),
         payload: Bytes::from(ciphertext),
         signature: [0u8; ED25519_SIG_SIZE],
