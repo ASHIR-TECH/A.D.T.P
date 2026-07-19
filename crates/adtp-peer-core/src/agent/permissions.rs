@@ -28,9 +28,26 @@ impl Default for PermissionConfig {
 }
 
 const BLOCKED_COMMANDS: &[&str] = &[
-    "rm", "sudo", "chmod", "chown", "dd", "mkfs", "fdisk", "mount", "umount",
-    "passwd", "useradd", "usermod", "groupadd", "kill", "pkill", "reboot",
-    "shutdown", "init", "systemctl", "journalctl",
+    "rm",
+    "sudo",
+    "chmod",
+    "chown",
+    "dd",
+    "mkfs",
+    "fdisk",
+    "mount",
+    "umount",
+    "passwd",
+    "useradd",
+    "usermod",
+    "groupadd",
+    "kill",
+    "pkill",
+    "reboot",
+    "shutdown",
+    "init",
+    "systemctl",
+    "journalctl",
 ];
 
 #[derive(Debug)]
@@ -51,7 +68,10 @@ impl PermissionStore {
             .iter()
             .map(|c| c.to_lowercase())
             .collect();
-        Self { config, allowed_commands_set }
+        Self {
+            config,
+            allowed_commands_set,
+        }
     }
 
     pub fn config(&self) -> &PermissionConfig {
@@ -61,16 +81,22 @@ impl PermissionStore {
     pub fn check_read_path(&self, path: &Path) -> PermissionCheck {
         let canonical = match path.canonicalize() {
             Ok(p) => p,
-            Err(_) => return PermissionCheck::Denied { reason: "Path does not exist or cannot be resolved".into() },
+            Err(_) => {
+                return PermissionCheck::Denied {
+                    reason: "Path does not exist or cannot be resolved".into(),
+                }
+            }
         };
 
-        if !self.config.allow_hidden_files {
-            if canonical.components().any(|c| {
+        if !self.config.allow_hidden_files
+            && canonical.components().any(|c| {
                 let s = c.as_os_str().to_string_lossy();
                 s.starts_with('.')
-            }) {
-                return PermissionCheck::Denied { reason: "Hidden files are not allowed".into() };
-            }
+            })
+        {
+            return PermissionCheck::Denied {
+                reason: "Hidden files are not allowed".into(),
+            };
         }
 
         for denied in &self.config.denied_paths {
@@ -85,7 +111,9 @@ impl PermissionStore {
 
         let traversal_attempt = path.components().any(|c| c.as_os_str() == "..");
         if traversal_attempt {
-            return PermissionCheck::Denied { reason: "Path traversal is not allowed".into() };
+            return PermissionCheck::Denied {
+                reason: "Path traversal is not allowed".into(),
+            };
         }
 
         for allowed in &self.config.allowed_paths {
@@ -108,10 +136,16 @@ impl PermissionStore {
                 if let Some(parent) = path.parent() {
                     match parent.canonicalize() {
                         Ok(p) => p.join(path.file_name().unwrap_or_default()),
-                        Err(_) => return PermissionCheck::Denied { reason: "Cannot resolve parent directory".into() },
+                        Err(_) => {
+                            return PermissionCheck::Denied {
+                                reason: "Cannot resolve parent directory".into(),
+                            }
+                        }
                     }
                 } else {
-                    return PermissionCheck::Denied { reason: "Cannot resolve path".into() };
+                    return PermissionCheck::Denied {
+                        reason: "Cannot resolve path".into(),
+                    };
                 }
             }
         };
@@ -217,9 +251,18 @@ mod tests {
             ..Default::default()
         };
         let store = PermissionStore::new(config);
-        assert!(matches!(store.check_command("ls"), PermissionCheck::Allowed));
-        assert!(matches!(store.check_command("cat"), PermissionCheck::Allowed));
-        assert!(matches!(store.check_command("grep"), PermissionCheck::Denied { .. }));
+        assert!(matches!(
+            store.check_command("ls"),
+            PermissionCheck::Allowed
+        ));
+        assert!(matches!(
+            store.check_command("cat"),
+            PermissionCheck::Allowed
+        ));
+        assert!(matches!(
+            store.check_command("grep"),
+            PermissionCheck::Denied { .. }
+        ));
     }
 
     #[test]
@@ -244,7 +287,10 @@ mod tests {
         let result = store.check_read_path(Path::new("/tmp/.hidden"));
         // This may pass or fail depending on whether /tmp is in allowed_paths
         // But confirm it's at least returning something valid
-        assert!(matches!(result, PermissionCheck::Allowed | PermissionCheck::Denied { .. }));
+        assert!(matches!(
+            result,
+            PermissionCheck::Allowed | PermissionCheck::Denied { .. }
+        ));
     }
 
     #[test]
