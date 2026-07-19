@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::agent::anthropic::AnthropicProvider;
 use crate::agent::config::AgentConfig;
+use crate::agent::ollama::OllamaProvider;
+use crate::agent::openai::OpenAiProvider;
 use crate::agent::permissions::{PermissionConfig, PermissionStore};
 use crate::agent::provider::{LlmMessage, LlmResponse, Provider, ToolCall, ToolDefinition};
-use crate::agent::anthropic::AnthropicProvider;
-use crate::agent::openai::OpenAiProvider;
-use crate::agent::ollama::OllamaProvider;
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub enum AgentState {
@@ -148,23 +148,43 @@ impl AgentRuntime {
     pub async fn activate(&self) -> Result<(), String> {
         let provider: Box<dyn Provider> = match self.config.provider.as_str() {
             "anthropic" => {
-                let key = self.config.api_key.as_ref().ok_or("Anthropic requires an API key")?;
+                let key = self
+                    .config
+                    .api_key
+                    .as_ref()
+                    .ok_or("Anthropic requires an API key")?;
                 Box::new(AnthropicProvider::new(
-                    key.clone(), self.config.model.clone(), self.config.max_tokens,
+                    key.clone(),
+                    self.config.model.clone(),
+                    self.config.max_tokens,
                 ))
             }
             "openai" => {
-                let key = self.config.api_key.as_ref().ok_or("OpenAI requires an API key")?;
+                let key = self
+                    .config
+                    .api_key
+                    .as_ref()
+                    .ok_or("OpenAI requires an API key")?;
                 Box::new(OpenAiProvider::new(
-                    key.clone(), self.config.model.clone(), self.config.max_tokens,
+                    key.clone(),
+                    self.config.model.clone(),
+                    self.config.max_tokens,
                 ))
             }
             "ollama" => {
-                let host = self.config.ollama_host.clone().unwrap_or_else(|| "http://localhost:11434".into());
-                let provider = OllamaProvider::new(host, self.config.model.clone(), self.config.max_tokens);
+                let host = self
+                    .config
+                    .ollama_host
+                    .clone()
+                    .unwrap_or_else(|| "http://localhost:11434".into());
+                let provider =
+                    OllamaProvider::new(host, self.config.model.clone(), self.config.max_tokens);
                 let available = provider.check_available().await?;
                 if !available {
-                    return Err(format!("Model '{}' not found in Ollama. Pull it first with: ollama pull {}", self.config.model, self.config.model));
+                    return Err(format!(
+                        "Model '{}' not found in Ollama. Pull it first with: ollama pull {}",
+                        self.config.model, self.config.model
+                    ));
                 }
                 Box::new(provider)
             }
@@ -221,14 +241,21 @@ impl AgentRuntime {
         let max_iterations = 10;
         for _iteration in 0..max_iterations {
             let hist = self.conversation.lock().await;
-            let messages: Vec<LlmMessage> = hist.iter().map(|e| LlmMessage {
-                role: e.role.clone(),
-                content: e.content.clone(),
-            }).collect();
+            let messages: Vec<LlmMessage> = hist
+                .iter()
+                .map(|e| LlmMessage {
+                    role: e.role.clone(),
+                    content: e.content.clone(),
+                })
+                .collect();
             drop(hist);
 
             let provider_guard = self.provider.lock().await;
-            let response: LlmResponse = provider_guard.as_ref().ok_or("Agent is not activated")?.send_message(&messages, &system_prompt, &self.tools).await?;
+            let response: LlmResponse = provider_guard
+                .as_ref()
+                .ok_or("Agent is not activated")?
+                .send_message(&messages, &system_prompt, &self.tools)
+                .await?;
             drop(provider_guard);
 
             let has_tool_calls = !response.tool_calls.is_empty();
@@ -270,27 +297,32 @@ impl AgentRuntime {
     ) -> Result<String, String> {
         match call.name.as_str() {
             "send_file" => {
-                let file_path = call.arguments.get("file_path")
+                let file_path = call
+                    .arguments
+                    .get("file_path")
                     .and_then(|v| v.as_str())
                     .ok_or("send_file: missing 'file_path' argument")?;
-                let peer_id = call.arguments.get("peer_id")
+                let peer_id = call
+                    .arguments
+                    .get("peer_id")
                     .and_then(|v| v.as_str())
                     .ok_or("send_file: missing 'peer_id' argument")?;
                 let perm = self.permission_store.config();
                 if !perm.allowed_paths.iter().any(|p| file_path.starts_with(p)) {
-                    return Err(format!("Permission denied: '{}' is not in allowed paths", file_path));
+                    return Err(format!(
+                        "Permission denied: '{}' is not in allowed paths",
+                        file_path
+                    ));
                 }
                 match executor {
                     Some(exe) => exe.send_file(file_path, peer_id).await,
                     None => Err("P2P module not initialized. Cannot send files.".into()),
                 }
             }
-            "list_peers" => {
-                match executor {
-                    Some(exe) => exe.list_peers().await,
-                    None => Ok("No P2P module connected. You are offline.".into()),
-                }
-            }
+            "list_peers" => match executor {
+                Some(exe) => exe.list_peers().await,
+                None => Ok("No P2P module connected. You are offline.".into()),
+            },
             "list_transfers" => {
                 let status = call.arguments.get("status").and_then(|v| v.as_str());
                 match executor {
@@ -298,14 +330,14 @@ impl AgentRuntime {
                     None => Ok("No P2P module connected.".into()),
                 }
             }
-            "get_own_peer_id" => {
-                match executor {
-                    Some(exe) => exe.get_own_peer_id().await,
-                    None => Err("P2P module not initialized.".into()),
-                }
-            }
+            "get_own_peer_id" => match executor {
+                Some(exe) => exe.get_own_peer_id().await,
+                None => Err("P2P module not initialized.".into()),
+            },
             "find_file" => {
-                let pattern = call.arguments.get("pattern")
+                let pattern = call
+                    .arguments
+                    .get("pattern")
                     .and_then(|v| v.as_str())
                     .ok_or("find_file: missing 'pattern' argument")?;
                 let dir = call.arguments.get("directory").and_then(|v| v.as_str());
@@ -315,38 +347,56 @@ impl AgentRuntime {
                 let search_in_allowed = search_dir.is_empty()
                     || perm.allowed_paths.iter().any(|p| search_dir.starts_with(p));
                 if !search_in_allowed {
-                    return Err(format!("Permission denied: directory '{}' is not in allowed paths", search_dir));
+                    return Err(format!(
+                        "Permission denied: directory '{}' is not in allowed paths",
+                        search_dir
+                    ));
                 }
                 self.find_file_local(pattern, dir, ext).await
             }
             "read_file" => {
-                let path = call.arguments.get("path")
+                let path = call
+                    .arguments
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or("read_file: missing 'path' argument")?;
                 let perm = self.permission_store.config();
                 if !perm.allowed_paths.iter().any(|p| path.starts_with(p)) {
-                    return Err(format!("Permission denied: '{}' is not in allowed paths", path));
+                    return Err(format!(
+                        "Permission denied: '{}' is not in allowed paths",
+                        path
+                    ));
                 }
                 self.read_file_local(path).await
             }
             "list_directory" => {
-                let path = call.arguments.get("path")
+                let path = call
+                    .arguments
+                    .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or("list_directory: missing 'path' argument")?;
                 let perm = self.permission_store.config();
                 if !perm.allowed_paths.iter().any(|p| path.starts_with(p)) {
-                    return Err(format!("Permission denied: '{}' is not in allowed paths", path));
+                    return Err(format!(
+                        "Permission denied: '{}' is not in allowed paths",
+                        path
+                    ));
                 }
                 self.list_directory_local(path).await
             }
             "shell_exec" => {
-                let command = call.arguments.get("command")
+                let command = call
+                    .arguments
+                    .get("command")
                     .and_then(|v| v.as_str())
                     .ok_or("shell_exec: missing 'command' argument")?;
                 let cmd_name = command.split_whitespace().next().unwrap_or("");
                 let perm = self.permission_store.config();
                 if !perm.allowed_commands.contains(&cmd_name.to_string()) {
-                    return Err(format!("Permission denied: command '{}' is not in allowed list", cmd_name));
+                    return Err(format!(
+                        "Permission denied: command '{}' is not in allowed list",
+                        cmd_name
+                    ));
                 }
                 self.shell_exec_local(command).await
             }
@@ -354,7 +404,12 @@ impl AgentRuntime {
         }
     }
 
-    async fn find_file_local(&self, pattern: &str, directory: Option<&str>, extension: Option<&str>) -> Result<String, String> {
+    async fn find_file_local(
+        &self,
+        pattern: &str,
+        directory: Option<&str>,
+        extension: Option<&str>,
+    ) -> Result<String, String> {
         let search_dir = directory.unwrap_or(".");
         let mut results = Vec::new();
         let walker = walkdir::WalkDir::new(search_dir).max_depth(5).into_iter();
@@ -376,26 +431,38 @@ impl AgentRuntime {
         if results.is_empty() {
             Ok("No files found matching the pattern.".into())
         } else {
-            Ok(format!("Found {} file(s):\n{}", results.len(), results.join("\n")))
+            Ok(format!(
+                "Found {} file(s):\n{}",
+                results.len(),
+                results.join("\n")
+            ))
         }
     }
 
     async fn read_file_local(&self, path: &str) -> Result<String, String> {
-        let content = tokio::fs::read_to_string(path).await
+        let content = tokio::fs::read_to_string(path)
+            .await
             .map_err(|e| format!("Cannot read file: {}", e))?;
         let max_len = 50000;
         if content.len() > max_len {
-            Ok(format!("{}\n... [truncated at {} characters]", &content[..max_len], max_len))
+            Ok(format!(
+                "{}\n... [truncated at {} characters]",
+                &content[..max_len],
+                max_len
+            ))
         } else {
             Ok(content)
         }
     }
 
     async fn list_directory_local(&self, path: &str) -> Result<String, String> {
-        let mut entries = tokio::fs::read_dir(path).await
+        let mut entries = tokio::fs::read_dir(path)
+            .await
             .map_err(|e| format!("Cannot list directory: {}", e))?;
         let mut items = Vec::new();
-        while let Some(entry) = entries.next_entry().await
+        while let Some(entry) = entries
+            .next_entry()
+            .await
             .map_err(|e| format!("Error reading directory: {}", e))?
         {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -442,9 +509,21 @@ impl AgentRuntime {
         let allowed = self.permission_store.config().allowed_paths.join(", ");
         let writable = self.permission_store.config().writable_paths.join(", ");
         let commands = self.permission_store.config().allowed_commands.join(", ");
-        let allowed_str = if allowed.is_empty() { "none (you cannot read any files yet)" } else { &allowed };
-        let writable_str = if writable.is_empty() { "none (you cannot write files yet)" } else { &writable };
-        let commands_str = if commands.is_empty() { "none (you cannot run shell commands)" } else { &commands };
+        let allowed_str = if allowed.is_empty() {
+            "none (you cannot read any files yet)"
+        } else {
+            &allowed
+        };
+        let writable_str = if writable.is_empty() {
+            "none (you cannot write files yet)"
+        } else {
+            &writable
+        };
+        let commands_str = if commands.is_empty() {
+            "none (you cannot run shell commands)"
+        } else {
+            &commands
+        };
 
         let mut prompt = format!(
             r#"You are the ADTP agent running locally on this machine. You manage files, execute commands, and send files to other computers over the internet.
@@ -487,7 +566,9 @@ If a permission is denied, tell the user clearly which permission needs to be gr
 }
 
 fn glob_match(pattern: &str, name: &str) -> bool {
-    if pattern == name { return true; }
+    if pattern == name {
+        return true;
+    }
     if let Some(prefix) = pattern.strip_suffix('*') {
         return name.starts_with(prefix);
     }
