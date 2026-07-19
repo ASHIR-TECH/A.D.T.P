@@ -1,7 +1,7 @@
-use clap::Args;
-use colored::Colorize;
 use crate::config::CliConfig;
 use crate::errors::CliError;
+use clap::Args;
+use colored::Colorize;
 
 #[derive(Args)]
 pub struct DesktopArgs {
@@ -75,10 +75,11 @@ fn resolve_desktop_binary(override_path: Option<&str>) -> Result<std::path::Path
         let path = std::path::PathBuf::from(candidate);
 
         // If it's a bare name (no path separators), check PATH
-        if !candidate.contains(std::path::MAIN_SEPARATOR) && !candidate.contains('/') {
-            if which(candidate).is_some() {
-                return Ok(path);
-            }
+        if !candidate.contains(std::path::MAIN_SEPARATOR)
+            && !candidate.contains('/')
+            && which(candidate).is_some()
+        {
+            return Ok(path);
         }
 
         if path.exists() {
