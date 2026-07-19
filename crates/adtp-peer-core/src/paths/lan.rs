@@ -1,9 +1,9 @@
 use adtp_core::errors::{AdtpError, AdtpResult};
 use adtp_core::types::ADTP_MDNS_SERVICE;
+use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use mdns_sd::{ServiceDaemon, ServiceInfo, ServiceEvent};
 
 pub struct LanDiscovery {
     daemon: Arc<ServiceDaemon>,
@@ -21,15 +21,18 @@ impl LanDiscovery {
             discovered: Arc::new(Mutex::new(HashMap::new())),
         };
 
-        let receiver = discovery.daemon.browse(ADTP_MDNS_SERVICE).map_err(|e| AdtpError::MdnsDiscoveryFailed {
-            reason: format!("browse failed: {e}"),
+        let receiver = discovery.daemon.browse(ADTP_MDNS_SERVICE).map_err(|e| {
+            AdtpError::MdnsDiscoveryFailed {
+                reason: format!("browse failed: {e}"),
+            }
         })?;
 
         let discovered = discovery.discovered.clone();
         tokio::spawn(async move {
             while let Ok(event) = receiver.recv() {
                 if let ServiceEvent::ServiceResolved(info) = event {
-                    let peer_id = info.get_property("peer_id")
+                    let peer_id = info
+                        .get_property("peer_id")
                         .map(|p| p.val_str())
                         .unwrap_or("unknown")
                         .to_string();
@@ -54,13 +57,16 @@ impl LanDiscovery {
             "",
             port,
             properties,
-        ).map_err(|e| AdtpError::MdnsDiscoveryFailed {
+        )
+        .map_err(|e| AdtpError::MdnsDiscoveryFailed {
             reason: format!("ServiceInfo failed: {e}"),
         })?;
 
-        self.daemon.register(service_info).map_err(|e| AdtpError::MdnsDiscoveryFailed {
-            reason: format!("register failed: {e}"),
-        })?;
+        self.daemon
+            .register(service_info)
+            .map_err(|e| AdtpError::MdnsDiscoveryFailed {
+                reason: format!("register failed: {e}"),
+            })?;
 
         Ok(())
     }
