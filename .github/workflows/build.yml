@@ -53,7 +53,6 @@ jobs:
             cli-binary: adtp
             cli-artifact-name: adtp-cli-linux
             desktop-artifact-name: adtp-desktop-linux
-            desktop-ext: ""
 
           - name: Windows
             os: windows-2025
@@ -62,7 +61,6 @@ jobs:
             cli-binary: adtp.exe
             cli-artifact-name: adtp-cli-windows
             desktop-artifact-name: adtp-desktop-windows
-            desktop-ext: ".exe"
 
           - name: macOS
             os: macos-14
@@ -71,7 +69,6 @@ jobs:
             cli-binary: adtp
             cli-artifact-name: adtp-cli-macos
             desktop-artifact-name: adtp-desktop-macos
-            desktop-ext: ""
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -85,8 +82,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-            patchelf libssl-dev libayatana-appindicator3-dev
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libappindicator3-dev librsvg2-dev patchelf \
+            libssl-dev libayatana-appindicator3-dev \
+            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev \
+            libgraphene-1.0-dev
 
       - uses: actions/setup-node@v4
         with:
@@ -185,25 +185,26 @@ jobs:
 
       - name: Generate release notes
         run: |
-          echo "## ADTP Desktop & CLI" > release-notes.md
-          echo "" >> release-notes.md
-          echo "### Downloads" >> release-notes.md
-          echo "" >> release-notes.md
-          echo "| Platform | Package | CLI Binary |" >> release-notes.md
-          echo "|----------|---------|------------|" >> release-notes.md
-          echo "| Linux (x86_64) | \`.deb\` / \`.AppImage\` | \`adtp\` (in archive) |" >> release-notes.md
-          echo "| Windows (x86_64) | \`.msi\` | \`adtp.exe\` (in archive) |" >> release-notes.md
-          echo "| macOS (Apple Silicon) | \`.dmg\` | \`adtp\` (in archive) |" >> release-notes.md
-          echo "" >> release-notes.md
-          echo "### Usage" >> release-notes.md
-          echo "" >> release-notes.md
-          echo '```' >> release-notes.md
-          echo "adtp send <file>              # send a file" >> release-notes.md
-          echo "adtp status                   # check transfer status" >> release-notes.md
-          echo "adtp peer list                # list peers" >> release-notes.md
-          echo "adtp desktop                  # launch desktop GUI from CLI" >> release-notes.md
-          echo "adtp                          # enter REPL mode" >> release-notes.md
-          echo '```' >> release-notes.md
+          cat > release-notes.md << 'EONOTES'
+          ## ADTP Desktop & CLI
+
+          ### Downloads
+
+          | Platform | Package | CLI Binary |
+          |----------|---------|------------|
+          | Linux (x86_64) | .deb / .AppImage | adtp (in archive) |
+          | Windows (x86_64) | .msi | adtp.exe (in archive) |
+          | macOS (Apple Silicon) | .dmg | adtp (in archive) |
+
+          ### Usage
+          ```
+          adtp send <file>              # send a file
+          adtp status                   # check transfer status
+          adtp peer list                # list peers
+          adtp desktop                  # launch desktop GUI from CLI
+          adtp                          # enter REPL mode
+          ```
+          EONOTES
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
