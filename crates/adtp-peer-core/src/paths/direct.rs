@@ -5,19 +5,26 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 
 pub async fn dial_direct(target: &SocketAddr, _peer_id: &[u8; PEER_ID_SIZE]) -> AdtpResult<()> {
-    let socket = UdpSocket::bind("0.0.0.0:0").await.map_err(|e| AdtpError::QuicConnectionFailed {
-        reason: format!("bind failed: {e}"),
-    })?;
+    let socket =
+        UdpSocket::bind("0.0.0.0:0")
+            .await
+            .map_err(|e| AdtpError::QuicConnectionFailed {
+                reason: format!("bind failed: {e}"),
+            })?;
 
     // Quick connectivity check via UDP
     let mut probe = vec![0u8; 1];
     probe[0] = 0x0A; // Ping
-    socket.send_to(&probe, target).await.map_err(|e| AdtpError::QuicConnectionFailed {
-        reason: format!("send probe to {target} failed: {e}"),
-    })?;
+    socket
+        .send_to(&probe, target)
+        .await
+        .map_err(|e| AdtpError::QuicConnectionFailed {
+            reason: format!("send probe to {target} failed: {e}"),
+        })?;
 
     let mut buf = [0u8; 1];
-    tokio::time::timeout(Duration::from_millis(500), socket.recv_from(&mut buf)).await
+    tokio::time::timeout(Duration::from_millis(500), socket.recv_from(&mut buf))
+        .await
         .map_err(|_| AdtpError::QuicConnectionFailed {
             reason: format!("direct dial timeout to {target}"),
         })?
