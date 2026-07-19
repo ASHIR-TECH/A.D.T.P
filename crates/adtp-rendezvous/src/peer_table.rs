@@ -29,18 +29,28 @@ impl PeerTable {
         table
     }
 
-    pub fn register(&self, peer_id: [u8; PEER_ID_SIZE], external_addr: String, nat_type: NatType, supports_ipv6: bool, can_relay: bool) {
-        self.peers.insert(peer_id, PeerInfo {
-            external_addr,
-            nat_type,
-            supports_ipv6,
-            can_relay,
-            last_seen: Utc::now().timestamp(),
-        });
+    pub fn register(
+        &self,
+        peer_id: [u8; PEER_ID_SIZE],
+        external_addr: String,
+        nat_type: NatType,
+        supports_ipv6: bool,
+        can_relay: bool,
+    ) {
+        self.peers.insert(
+            peer_id,
+            PeerInfo {
+                external_addr,
+                nat_type,
+                supports_ipv6,
+                can_relay,
+                last_seen: Utc::now().timestamp(),
+            },
+        );
     }
 
     pub fn lookup(&self, peer_id: &[u8; PEER_ID_SIZE]) -> Option<PeerInfoSnapshot> {
-        self.peers.get(peer_id).map(|info| {
+        self.peers.get(peer_id).and_then(|info| {
             let now = Utc::now().timestamp();
             if now - info.last_seen > PEER_TABLE_PURGE_SECS as i64 {
                 None
@@ -48,9 +58,11 @@ impl PeerTable {
                 Some(PeerInfoSnapshot {
                     external_addr: info.external_addr.clone(),
                     nat_type: info.nat_type,
+                    supports_ipv6: info.supports_ipv6,
+                    can_relay: info.can_relay,
                 })
             }
-        }).flatten()
+        })
     }
 
     pub fn addr(&self, peer_id: &[u8; PEER_ID_SIZE]) -> Option<std::net::SocketAddr> {
@@ -87,4 +99,6 @@ impl PeerTable {
 pub struct PeerInfoSnapshot {
     pub external_addr: String,
     pub nat_type: NatType,
+    pub supports_ipv6: bool,
+    pub can_relay: bool,
 }
