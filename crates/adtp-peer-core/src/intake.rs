@@ -42,8 +42,7 @@ impl FileIntake {
             });
         }
 
-        let plaintext =
-            decrypt_file_bytes(session_key, &packet.header.nonce, &packet.payload)?;
+        let plaintext = decrypt_file_bytes(session_key, &packet.header.nonce, &packet.payload)?;
         verify_hash(&plaintext, &packet.header.content_hash)?;
 
         fs::create_dir_all(&self.intake_dir).await?;
