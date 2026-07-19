@@ -1,14 +1,14 @@
 use adtp_cli::client::ApiClient;
 use adtp_cli::config::CliConfig;
 use adtp_cli::models::{
-    AuditLogList, ChainVerifyResult, ContextBlock, SessionList, TransferList,
-    TransferSendResponse, TransferStatus, WatchList, WatchResponse,
+    AuditLogList, ChainVerifyResult, ContextBlock, SessionList, TransferList, TransferSendResponse,
+    TransferStatus, WatchList, WatchResponse,
 };
 use adtp_peer_core::agent::permissions::PermissionConfig;
 use tauri::AppHandle;
 use tauri::State;
 
-use crate::agent_manager::AgentManager;
+use crate::agent_manager::{AddAgentRequest, AgentManager};
 use crate::poller::{HealthSnapshot, SharedState};
 use crate::settings;
 
@@ -40,7 +40,10 @@ pub async fn send_file(
         "priority": priority.unwrap_or_else(|| "normal".into()),
         "message": message,
     });
-    client.post("/api/v1/transfers/send", &body).await.map_err(|e| e.to_string())
+    client
+        .post("/api/v1/transfers/send", &body)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -59,25 +62,37 @@ pub async fn list_transfers(
     }
     params.push(("limit", &limit_s));
     params.push(("offset", &offset_s));
-    client.get_with_query("/api/v1/transfers", &params).await.map_err(|e| e.to_string())
+    client
+        .get_with_query("/api/v1/transfers", &params)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_transfer_status(app: AppHandle, id: String) -> Result<TransferStatus, String> {
     let client = make_client(&app)?;
-    client.get(&format!("/api/v1/transfers/{id}/status")).await.map_err(|e| e.to_string())
+    client
+        .get(&format!("/api/v1/transfers/{id}/status"))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_transfer_context(app: AppHandle, id: String) -> Result<ContextBlock, String> {
     let client = make_client(&app)?;
-    client.get(&format!("/api/v1/transfers/{id}/context")).await.map_err(|e| e.to_string())
+    client
+        .get(&format!("/api/v1/transfers/{id}/context"))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn cancel_transfer(app: AppHandle, id: String) -> Result<bool, String> {
     let client = make_client(&app)?;
-    client.delete(&format!("/api/v1/transfers/{id}")).await.map_err(|e| e.to_string())?;
+    client
+        .delete(&format!("/api/v1/transfers/{id}"))
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -94,26 +109,38 @@ pub async fn register_watch(
         "file_pattern": file_pattern,
         "agent_name": agent_name.unwrap_or_else(|| "default".into()),
     });
-    client.post("/api/v1/watchers", &body).await.map_err(|e| e.to_string())
+    client
+        .post("/api/v1/watchers", &body)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn remove_watch(app: AppHandle, id: String) -> Result<bool, String> {
     let client = make_client(&app)?;
-    client.delete(&format!("/api/v1/watchers/{id}")).await.map_err(|e| e.to_string())?;
+    client
+        .delete(&format!("/api/v1/watchers/{id}"))
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(true)
 }
 
 #[tauri::command]
 pub async fn list_watchers(app: AppHandle) -> Result<WatchList, String> {
     let client = make_client(&app)?;
-    client.get("/api/v1/watchers").await.map_err(|e| e.to_string())
+    client
+        .get("/api/v1/watchers")
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_sessions(app: AppHandle) -> Result<SessionList, String> {
     let client = make_client(&app)?;
-    client.get("/api/v1/sessions").await.map_err(|e| e.to_string())
+    client
+        .get("/api/v1/sessions")
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -128,17 +155,27 @@ pub async fn get_audit_log(
     let limit_s = limit.unwrap_or(100).to_string();
     let offset_s = offset.unwrap_or(0).to_string();
     let mut params: Vec<(&str, &str)> = Vec::new();
-    if let Some(ref s) = status { params.push(("status", s)); }
-    if let Some(ref s) = session_id { params.push(("session_id", s)); }
+    if let Some(ref s) = status {
+        params.push(("status", s));
+    }
+    if let Some(ref s) = session_id {
+        params.push(("session_id", s));
+    }
     params.push(("limit", &limit_s));
     params.push(("offset", &offset_s));
-    client.get_with_query("/api/v1/audit/log", &params).await.map_err(|e| e.to_string())
+    client
+        .get_with_query("/api/v1/audit/log", &params)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn verify_chain(app: AppHandle) -> Result<ChainVerifyResult, String> {
     let client = make_client(&app)?;
-    client.post("/api/v1/audit/verify", &serde_json::json!({})).await.map_err(|e| e.to_string())
+    client
+        .post("/api/v1/audit/verify", &serde_json::json!({}))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -150,8 +187,12 @@ pub async fn export_audit(
     let client = make_client(&app)?;
     let mut path = "/api/v1/audit/export".to_string();
     let mut params: Vec<String> = Vec::new();
-    if let Some(ref s) = status { params.push(format!("status={}", s)); }
-    if let Some(ref s) = session_id { params.push(format!("session_id={}", s)); }
+    if let Some(ref s) = status {
+        params.push(format!("status={}", s));
+    }
+    if let Some(ref s) = session_id {
+        params.push(format!("session_id={}", s));
+    }
     if !params.is_empty() {
         path.push_str(&format!("?{}", params.join("&")));
     }
@@ -161,7 +202,8 @@ pub async fn export_audit(
 #[tauri::command]
 pub async fn pick_file(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let file = app.dialog()
+    let file = app
+        .dialog()
         .file()
         .add_filter("All Files", &["*"])
         .blocking_pick_file();
@@ -171,14 +213,15 @@ pub async fn pick_file(app: AppHandle) -> Result<Option<String>, String> {
 #[tauri::command]
 pub async fn pick_save_folder(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let folder = app.dialog()
-        .file()
-        .blocking_pick_folder();
+    let folder = app.dialog().file().blocking_pick_folder();
     Ok(folder.and_then(|p| p.as_path().map(|p| p.to_string_lossy().to_string())))
 }
 
 #[tauri::command]
-pub async fn save_settings(app: AppHandle, new_settings: settings::AppSettings) -> Result<bool, String> {
+pub async fn save_settings(
+    app: AppHandle,
+    new_settings: settings::AppSettings,
+) -> Result<bool, String> {
     settings::write_settings(&app, &new_settings)?;
     Ok(true)
 }
@@ -212,7 +255,9 @@ pub async fn write_file(path: String, content: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn get_app_health(state: tauri::State<'_, SharedState>) -> Result<Option<HealthSnapshot>, String> {
+pub async fn get_app_health(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Option<HealthSnapshot>, String> {
     let s = state.lock().await;
     Ok(s.last_health.clone())
 }
@@ -225,9 +270,9 @@ pub async fn agent_list(
     Ok(mgr.list_agents().await)
 }
 
-#[tauri::command]
-pub async fn agent_add(
-    agent: AgentState<'_>,
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentAddRequest {
     provider: String,
     model: String,
     api_key: String,
@@ -235,16 +280,28 @@ pub async fn agent_add(
     max_tokens: u32,
     permissions: PermissionConfig,
     enabled: bool,
-) -> Result<adtp_peer_core::agent::multi_config::AgentEntry, String> {
-    let mgr = agent.lock().await;
-    mgr.add_agent(provider, model, api_key, ollama_host, max_tokens, permissions, enabled).await
 }
 
 #[tauri::command]
-pub async fn agent_remove(
+pub async fn agent_add(
     agent: AgentState<'_>,
-    id: String,
-) -> Result<bool, String> {
+    request: AgentAddRequest,
+) -> Result<adtp_peer_core::agent::multi_config::AgentEntry, String> {
+    let mgr = agent.lock().await;
+    mgr.add_agent(AddAgentRequest {
+        provider: request.provider,
+        model: request.model,
+        api_key: request.api_key,
+        ollama_host: request.ollama_host,
+        max_tokens: request.max_tokens,
+        permissions: request.permissions,
+        enabled: request.enabled,
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn agent_remove(agent: AgentState<'_>, id: String) -> Result<bool, String> {
     let mgr = agent.lock().await;
     mgr.remove_agent(id).await?;
     Ok(true)
@@ -272,9 +329,7 @@ pub async fn agent_send_message(
 }
 
 #[tauri::command]
-pub async fn agent_get_permissions(
-    _agent: AgentState<'_>,
-) -> Result<PermissionConfig, String> {
+pub async fn agent_get_permissions(_agent: AgentState<'_>) -> Result<PermissionConfig, String> {
     Ok(adtp_peer_core::agent::permissions::load_permissions().unwrap_or_default())
 }
 
@@ -299,15 +354,15 @@ pub async fn agent_clear_conversation(
 
 #[tauri::command]
 pub fn get_home_dir() -> Result<String, String> {
-    dirs::home_dir().map(|p| p.to_string_lossy().to_string()).ok_or("Cannot determine home directory".into())
+    dirs::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .ok_or("Cannot determine home directory".into())
 }
 
 type P2PState<'a> = State<'a, Option<std::sync::Arc<crate::p2p::P2PModule>>>;
 
 #[tauri::command]
-pub async fn get_own_peer_id(
-    p2p: P2PState<'_>,
-) -> Result<String, String> {
+pub async fn get_own_peer_id(p2p: P2PState<'_>) -> Result<String, String> {
     match p2p.as_ref() {
         Some(m) => Ok(m.peer_id()),
         None => Err("P2P module not initialized".into()),
@@ -315,9 +370,7 @@ pub async fn get_own_peer_id(
 }
 
 #[tauri::command]
-pub async fn list_peers(
-    p2p: P2PState<'_>,
-) -> Result<Vec<adtp_core::types::PeerEntry>, String> {
+pub async fn list_peers(p2p: P2PState<'_>) -> Result<Vec<adtp_core::types::PeerEntry>, String> {
     match p2p.as_ref() {
         Some(_module) => {
             let config_dir = dirs::config_dir()
@@ -325,7 +378,8 @@ pub async fn list_peers(
                 .join("adtp");
             let peers_path = config_dir.join("peers.toml");
             let trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
-            let peers: Vec<adtp_core::types::PeerEntry> = trust_store.list_peers().into_iter().cloned().collect();
+            let peers: Vec<adtp_core::types::PeerEntry> =
+                trust_store.list_peers().into_iter().cloned().collect();
             Ok(peers)
         }
         None => Ok(vec![]),
@@ -340,9 +394,7 @@ pub struct ConnectionStatus {
 }
 
 #[tauri::command]
-pub async fn get_connection_status(
-    p2p: P2PState<'_>,
-) -> Result<ConnectionStatus, String> {
+pub async fn get_connection_status(p2p: P2PState<'_>) -> Result<ConnectionStatus, String> {
     match p2p.as_ref() {
         Some(module) => {
             let peers = module.list_connected_peers().await;
@@ -397,7 +449,9 @@ pub async fn add_peer(
         port,
         trust_level: level,
     });
-    trust_store.save().map_err(|e| format!("Failed to save peers: {}", e))?;
+    trust_store
+        .save()
+        .map_err(|e| format!("Failed to save peers: {}", e))?;
     Ok(true)
 }
 
@@ -409,14 +463,14 @@ pub async fn remove_peer(peer_id: String) -> Result<bool, String> {
     let peers_path = config_dir.join("peers.toml");
     let mut trust_store = adtp_peer_core::trust::TrustStore::load(&peers_path);
     trust_store.remove_peer(&peer_id);
-    trust_store.save().map_err(|e| format!("Failed to save peers: {}", e))?;
+    trust_store
+        .save()
+        .map_err(|e| format!("Failed to save peers: {}", e))?;
     Ok(true)
 }
 
 #[tauri::command]
-pub async fn get_own_nat_type(
-    p2p: P2PState<'_>,
-) -> Result<String, String> {
+pub async fn get_own_nat_type(p2p: P2PState<'_>) -> Result<String, String> {
     match p2p.as_ref() {
         Some(m) => {
             let nt = m.nat_type().await;
@@ -434,18 +488,23 @@ pub struct AgentStatusInfo {
 }
 
 #[tauri::command]
-pub async fn get_agent_status(
-    agent: AgentState<'_>,
-) -> Result<AgentStatusInfo, String> {
+pub async fn get_agent_status(agent: AgentState<'_>) -> Result<AgentStatusInfo, String> {
     let mgr = agent.lock().await;
     let agents = mgr.list_agents().await;
     let active_count = agents.iter().filter(|a| a.enabled).count();
     Ok(AgentStatusInfo {
         agent_count: agents.len(),
         active_count,
-        states: agents.iter().map(|a| {
-            if a.enabled { "active".into() } else { "inactive".into() }
-        }).collect(),
+        states: agents
+            .iter()
+            .map(|a| {
+                if a.enabled {
+                    "active".into()
+                } else {
+                    "inactive".into()
+                }
+            })
+            .collect(),
     })
 }
 
