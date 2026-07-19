@@ -87,6 +87,14 @@ jobs:
             libssl-dev libayatana-appindicator3-dev \
             libjavascriptcoregtk-4.1-dev libsoup-3.0-dev \
             libgraphene-1.0-dev libglib2.0-dev
+          # Verify pkg-config can find glib-2.0 (debug)
+          pkg-config --libs --cflags glib-2.0
+
+      - name: Rust cargo cache fix — clear stale glib artifacts
+        if: matrix.tauri-target == 'linux'
+        run: |
+          rm -rf target/debug/build/glib-sys-*
+          rm -rf target/release/build/glib-sys-*
 
       - uses: actions/setup-node@v4
         with:
