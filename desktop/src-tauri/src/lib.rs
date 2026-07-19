@@ -37,18 +37,22 @@ pub fn run() {
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("adtp");
 
-            let p2p_rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime for P2P init");
+            let p2p_rt = tokio::runtime::Runtime::new()
+                .expect("failed to create tokio runtime for P2P init");
             let p2p_option = p2p_rt.block_on(P2PModule::new(config_dir)).ok();
             if let Some(ref p2p) = p2p_option {
                 tracing::info!("P2P module initialized — peer_id: {}", p2p.peer_id());
-                let agent_mgr: Arc<Mutex<AgentManager>> = app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
+                let agent_mgr: Arc<Mutex<AgentManager>> =
+                    app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
                 let exec = p2p.clone() as Arc<dyn ToolExecutor>;
                 p2p_rt.block_on(async {
                     let mgr = agent_mgr.lock().await;
                     mgr.set_tool_executor(exec).await;
                 });
             } else {
-                tracing::warn!("P2P module failed to initialize — agent file transfers will be unavailable");
+                tracing::warn!(
+                    "P2P module failed to initialize — agent file transfers will be unavailable"
+                );
             }
             app.manage::<Option<Arc<P2PModule>>>(p2p_option);
             std::mem::forget(p2p_rt); // keep runtime alive for background tasks (accept loop, etc.)
@@ -60,14 +64,18 @@ pub fn run() {
             let _ = handle.listen("notify", move |event| {
                 use tauri_plugin_notification::NotificationExt;
                 if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
-                    let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("ADTP");
+                    let title = payload
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("ADTP");
                     let body = payload.get("body").and_then(|v| v.as_str()).unwrap_or("");
                     if let Some(window) = handle_clone.get_webview_window("main") {
                         if window.is_visible().unwrap_or(true) {
                             return;
                         }
                     }
-                    let _ = handle_clone.notification()
+                    let _ = handle_clone
+                        .notification()
                         .builder()
                         .title(title)
                         .body(body)
@@ -77,7 +85,9 @@ pub fn run() {
 
             let handle_clone2 = handle.clone();
             let _ = handle.listen("health-update", move |event| {
-                if let Ok(snapshot) = serde_json::from_str::<poller::HealthSnapshot>(event.payload()) {
+                if let Ok(snapshot) =
+                    serde_json::from_str::<poller::HealthSnapshot>(event.payload())
+                {
                     let (state, text) = if snapshot.daemon_connected {
                         if snapshot.queue_pending > 0 || snapshot.queue_in_progress > 0 {
                             ("syncing", "Syncing")
@@ -96,7 +106,8 @@ pub fn run() {
                 let h = handle_clone3.clone();
                 tauri::async_runtime::spawn(async move {
                     use tauri_plugin_dialog::DialogExt;
-                    if let Some(file) = h.dialog()
+                    if let Some(file) = h
+                        .dialog()
                         .file()
                         .add_filter("All Files", &["*"])
                         .blocking_pick_file()
