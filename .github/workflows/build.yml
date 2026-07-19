@@ -1,0 +1,170 @@
+name: Build ADTP
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install Tauri system dependencies (required for clippy on entire workspace)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev librsvg2-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Clear stale glib-sys artifacts (cache may contain failed builds)
+        run: rm -rf target/debug/build/glib-sys-* target/debug/build/glib-*
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets
+
+  test-cli:
+    name: Test CLI
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p adtp-cli --release
+      - run: cargo test -p adtp-cli --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux
+          path: target/release/adtp
+
+  build-desktop:
+    name: Desktop ${{ matrix.suffix }}
+    needs: [lint, test-cli]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suffix: Linux
+            os: ubuntu-24.04
+            bundle: --bundles deb,appimage
+            cli-bin: adtp
+            cli-artifact: cli-linux
+            desktop-artifact: desktop-linux
+          - suffix: Windows
+            os: windows-2025
+            bundle: --bundles msi
+            cli-bin: adtp.exe
+            cli-artifact: cli-windows
+            desktop-artifact: desktop-windows
+          - suffix: macOS
+            os: macos-14
+            bundle: --bundles dmg
+            cli-bin: adtp
+            cli-artifact: cli-macos
+            desktop-artifact: desktop-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Tauri system dependencies (Linux only)
+        if: matrix.suffix == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev \
+            libappindicator3-dev librsvg2-dev libssl-dev patchelf \
+            libayatana-appindicator3-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Clear stale glib artifacts from cache
+        if: matrix.suffix == 'Linux'
+        run: rm -rf target/debug/build/glib-sys-* target/debug/build/glib-* target/release/build/glib-sys-* target/release/build/glib-*
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: desktop/package-lock.json
+      - run: cargo build -p adtp-cli --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.cli-artifact }}
+          path: target/release/${{ matrix.cli-bin }}
+      - run: cargo install tauri-cli --version "^2"
+      - run: npm ci
+        working-directory: desktop
+      - run: cargo tauri build ${{ matrix.bundle }}
+        working-directory: desktop/src-tauri
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.desktop-artifact }}
+          path: |
+            desktop/src-tauri/target/release/bundle/*/*.{deb,AppImage,msi,dmg}
+
+  release:
+    name: Publish Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-desktop]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Organise and compress
+        run: |
+          mkdir -p release
+          # Linux
+          mkdir release/linux
+          cp artifacts/cli-linux/adtp release/linux/
+          cp artifacts/desktop-linux/*.deb release/linux/ 2>/dev/null || true
+          cp artifacts/desktop-linux/*.AppImage release/linux/ 2>/dev/null || true
+          # Windows
+          mkdir release/windows
+          cp artifacts/cli-windows/adtp.exe release/windows/
+          cp artifacts/desktop-windows/*.msi release/windows/ 2>/dev/null || true
+          # macOS
+          mkdir release/macos
+          cp artifacts/cli-macos/adtp release/macos/
+          cp artifacts/desktop-macos/*.dmg release/macos/ 2>/dev/null || true
+          cd release
+          tar czf adtp-linux-x86_64.tar.gz linux/
+          zip -rq adtp-windows-x86_64.zip windows/
+          zip -rq adtp-macos-aarch64.zip macos/
+      - name: Generate release notes
+        run: |
+          cat > notes.md <<'EOF'
+          ## ADTP Desktop & CLI
+
+          **Downloads for this release:**
+
+          | File | Platform | What's inside |
+          |------|----------|---------------|
+          | adtp-linux-x86_64.tar.gz | Linux | CLI binary, .deb (Debian/Ubuntu), .AppImage |
+          | adtp-windows-x86_64.zip | Windows | CLI (adtp.exe), .msi installer |
+          | adtp-macos-aarch64.zip | macOS | CLI binary, .dmg |
+
+          **Quick start:**
+          ```
+          adtp send <file>     # send a file
+          adtp status          # check transfer status
+          adtp peer list       # list peers
+          adtp desktop         # launch desktop GUI
+          adtp                 # enter REPL mode
+          ```
+          EOF
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ADTP ${{ github.ref_name }}
+          body_path: notes.md
+          files: release/*.tar.gz release/*.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
