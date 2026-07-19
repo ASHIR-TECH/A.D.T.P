@@ -1,4 +1,6 @@
-use adtp_core::types::{PeerEntry, TransferRecord, TransferStatus, TransferType, TrustLevel, PEER_ID_SIZE};
+use adtp_core::types::{
+    PeerEntry, TransferRecord, TransferStatus, TransferType, TrustLevel, PEER_ID_SIZE,
+};
 use adtp_peer_core::artifact::Artifact;
 use adtp_peer_core::audit::AuditLog;
 use adtp_peer_core::identity::PeerIdentityKey;
@@ -24,10 +26,7 @@ async fn test_identity_generate_and_load() {
 
     let id2 = PeerIdentityKey::load_or_generate(&path).unwrap();
     assert_eq!(id1.peer_id, id2.peer_id);
-    assert_eq!(
-        id1.verifying_key.to_bytes(),
-        id2.verifying_key.to_bytes()
-    );
+    assert_eq!(id1.verifying_key.to_bytes(), id2.verifying_key.to_bytes());
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -151,7 +150,9 @@ async fn test_audit_log_transfer_and_verify() {
         integrity_verified: true,
     };
 
-    audit.log_session_start(&session_id, "127.0.0.1:40001").unwrap();
+    audit
+        .log_session_start(&session_id, "127.0.0.1:40001")
+        .unwrap();
     audit.log_transfer(&record).unwrap();
     audit.log_session_end(&session_id, 1).unwrap();
 
@@ -169,7 +170,9 @@ async fn test_audit_chain_tamper_detection() {
     let audit = AuditLog::open(&path).unwrap();
 
     let session_id = Uuid::new_v4();
-    audit.log_session_start(&session_id, "127.0.0.1:40001").unwrap();
+    audit
+        .log_session_start(&session_id, "127.0.0.1:40001")
+        .unwrap();
 
     for i in 0..3 {
         let record = TransferRecord {
@@ -309,7 +312,9 @@ async fn test_artifact_links_to_transfer() {
 
 #[tokio::test]
 async fn test_agent_card_sign_verify_integration() {
-    use adtp_peer_core::agent_card::{build_unsigned_card, sign_card, verify_card};
+    use adtp_peer_core::agent_card::{
+        build_unsigned_card, sign_card, verify_card, UnsignedCardInput,
+    };
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
 
@@ -317,18 +322,18 @@ async fn test_agent_card_sign_verify_integration() {
     let verifying_key = signing_key.verifying_key();
     let peer_id = [3u8; PEER_ID_SIZE];
 
-    let unsigned = build_unsigned_card(
-        &peer_id,
-        &verifying_key.to_bytes(),
-        Some("integration-peer".into()),
-        "192.168.1.1",
-        40001,
-        1073741824,
-        vec!["text/plain".into(), "application/json".into()],
-        true,
-        true,
-        vec!["relay_peer_a".into()],
-    );
+    let unsigned = build_unsigned_card(UnsignedCardInput {
+        peer_id: &peer_id,
+        public_key: &verifying_key.to_bytes(),
+        display_name: Some("integration-peer".into()),
+        host: "192.168.1.1",
+        port: 40001,
+        max_file_size: 1073741824,
+        supported_mime_types: vec!["text/plain".into(), "application/json".into()],
+        supports_tasks: true,
+        supports_multihop: true,
+        relay_of: vec!["relay_peer_a".into()],
+    });
 
     let card = sign_card(&unsigned, &signing_key);
     assert!(verify_card(&card).unwrap_or(false));
@@ -460,11 +465,12 @@ fn test_relay_config_can_relay_for() {
 #[test]
 fn test_agent_card_server_serves_json() {
     use adtp_core::types::PEER_ID_SIZE;
-    use adtp_peer_core::agent_card::{build_unsigned_card, sign_card, AgentCard};
+    use adtp_peer_core::agent_card::{
+        build_unsigned_card, sign_card, AgentCard, UnsignedCardInput,
+    };
     use adtp_peer_core::agent_card_server::AgentCardServer;
     use ed25519_dalek::SigningKey;
     use rand::rngs::OsRng;
-
 
     let tokio_rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -473,18 +479,18 @@ fn test_agent_card_server_serves_json() {
         let verifying_key = signing_key.verifying_key();
         let peer_id = [7u8; PEER_ID_SIZE];
 
-        let unsigned = build_unsigned_card(
-            &peer_id,
-            &verifying_key.to_bytes(),
-            Some("server-test".into()),
-            "127.0.0.1",
-            40001,
-            1073741824,
-            vec![],
-            true,
-            true,
-            vec![],
-        );
+        let unsigned = build_unsigned_card(UnsignedCardInput {
+            peer_id: &peer_id,
+            public_key: &verifying_key.to_bytes(),
+            display_name: Some("server-test".into()),
+            host: "127.0.0.1",
+            port: 40001,
+            max_file_size: 1073741824,
+            supported_mime_types: vec![],
+            supports_tasks: true,
+            supports_multihop: true,
+            relay_of: vec![],
+        });
         let card = sign_card(&unsigned, &signing_key);
         let server = AgentCardServer::new(40003, card);
 
