@@ -1,7 +1,7 @@
 use adtp_cli::client::ApiClient;
 use adtp_cli::config::CliConfig;
 use adtp_cli::errors::CliError;
-use adtp_cli::models::{ReadinessResponse, QueueResponse, TransferRecord, SessionInfo};
+use adtp_cli::models::{QueueResponse, ReadinessResponse, SessionInfo, TransferRecord};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -25,7 +25,10 @@ pub struct AppState {
 
 pub type SharedState = Arc<Mutex<AppState>>;
 
-fn make_client(settings: &super::settings::AppSettings, token: &str) -> Result<ApiClient, CliError> {
+fn make_client(
+    settings: &super::settings::AppSettings,
+    token: &str,
+) -> Result<ApiClient, CliError> {
     let cfg = CliConfig {
         api_url: settings.api_url.clone(),
         api_token: token.to_string(),
@@ -59,8 +62,12 @@ async fn poll_transfers(app: AppHandle, state: SharedState) {
     loop {
         ticker.tick().await;
         let settings = super::settings::read_settings(&app);
-        let Some(token) = super::settings::load_api_token(&app) else { continue };
-        let Ok(client) = make_client(&settings, &token) else { continue };
+        let Some(token) = super::settings::load_api_token(&app) else {
+            continue;
+        };
+        let Ok(client) = make_client(&settings, &token) else {
+            continue;
+        };
 
         let entries: Vec<TransferRecord> = match client
             .get_with_query::<adtp_cli::models::TransferList>(
@@ -77,23 +84,33 @@ async fn poll_transfers(app: AppHandle, state: SharedState) {
         let prev = std::mem::replace(&mut s.last_transfers, entries.clone());
 
         for entry in &entries {
-            let was_delivered = !prev.iter().any(|p| p.id == entry.id && p.status == "delivered");
+            let was_delivered = !prev
+                .iter()
+                .any(|p| p.id == entry.id && p.status == "delivered");
             let just_delivered = entry.status == "delivered" && was_delivered;
             let just_failed = entry.status == "failed"
-                && !prev.iter().any(|p| p.id == entry.id && p.status == "failed");
+                && !prev
+                    .iter()
+                    .any(|p| p.id == entry.id && p.status == "failed");
 
             if just_delivered {
                 let _ = app.emit("transfer-update", entry);
-                let _ = app.emit("notify", serde_json::json!({
-                    "title": "Transfer Delivered",
-                    "body": format!("{} delivered successfully", entry.filename)
-                }));
+                let _ = app.emit(
+                    "notify",
+                    serde_json::json!({
+                        "title": "Transfer Delivered",
+                        "body": format!("{} delivered successfully", entry.filename)
+                    }),
+                );
             }
             if just_failed {
-                let _ = app.emit("notify", serde_json::json!({
-                    "title": "Transfer Failed",
-                    "body": format!("{} failed to deliver", entry.filename)
-                }));
+                let _ = app.emit(
+                    "notify",
+                    serde_json::json!({
+                        "title": "Transfer Failed",
+                        "body": format!("{} failed to deliver", entry.filename)
+                    }),
+                );
             }
         }
     }
@@ -104,8 +121,12 @@ async fn poll_health(app: AppHandle, state: SharedState) {
     loop {
         ticker.tick().await;
         let settings = super::settings::read_settings(&app);
-        let Some(token) = super::settings::load_api_token(&app) else { continue };
-        let Ok(client) = make_client(&settings, &token) else { continue };
+        let Some(token) = super::settings::load_api_token(&app) else {
+            continue;
+        };
+        let Ok(client) = make_client(&settings, &token) else {
+            continue;
+        };
 
         let readiness = client
             .get::<ReadinessResponse>("/api/v1/health/ready")
@@ -128,10 +149,13 @@ async fn poll_health(app: AppHandle, state: SharedState) {
             s.last_health = Some(snapshot.clone());
 
             if prev_daemon == Some(true) && !snapshot.daemon_connected {
-                let _ = app.emit("notify", serde_json::json!({
-                    "title": "Connection Lost",
-                    "body": "ADTP daemon disconnected from API"
-                }));
+                let _ = app.emit(
+                    "notify",
+                    serde_json::json!({
+                        "title": "Connection Lost",
+                        "body": "ADTP daemon disconnected from API"
+                    }),
+                );
             }
         }
 
@@ -147,8 +171,12 @@ async fn poll_sessions(app: AppHandle, state: SharedState) {
     loop {
         ticker.tick().await;
         let settings = super::settings::read_settings(&app);
-        let Some(token) = super::settings::load_api_token(&app) else { continue };
-        let Ok(client) = make_client(&settings, &token) else { continue };
+        let Some(token) = super::settings::load_api_token(&app) else {
+            continue;
+        };
+        let Ok(client) = make_client(&settings, &token) else {
+            continue;
+        };
 
         let sessions = match client
             .get::<adtp_cli::models::SessionList>("/api/v1/sessions")
