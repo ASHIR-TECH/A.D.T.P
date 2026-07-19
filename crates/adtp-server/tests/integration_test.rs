@@ -1,7 +1,7 @@
 use adtp_core::{
     encryption::encrypt_file_bytes,
     integrity::hash_bytes,
-    protocol::{AdtpPacket, ContextEnvelope, PacketHeader},
+    protocol::{AdtpPacket, ContextEnvelope, PacketHeader, PacketHeaderParts},
     types::*,
 };
 use adtp_server::{audit::AuditLog, dispatcher::Dispatcher, intake::FileIntake};
@@ -33,17 +33,17 @@ async fn test_intake_and_dispatch_manifest() {
     };
     let context_bytes = serde_json::to_vec(&envelope).unwrap();
     let packet = AdtpPacket {
-        header: PacketHeader::new(
-            TransferType::Transfer,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            [0u8; PEER_ID_SIZE],
-            [0u8; PEER_ID_SIZE],
+        header: PacketHeader::new(PacketHeaderParts {
+            transfer_type: TransferType::Transfer,
+            session_id: Uuid::new_v4(),
+            transfer_id: Uuid::new_v4(),
+            sender_peer_id: [0u8; PEER_ID_SIZE],
+            receiver_peer_id: [0u8; PEER_ID_SIZE],
             nonce,
             content_hash,
-            context_bytes.len() as u32,
-            ciphertext.len() as u64,
-        ),
+            context_len: context_bytes.len() as u32,
+            payload_len: ciphertext.len() as u64,
+        }),
         context: Bytes::from(context_bytes),
         payload: Bytes::from(ciphertext),
         signature: [0u8; ED25519_SIG_SIZE],
