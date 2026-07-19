@@ -1,7 +1,7 @@
-use clap::Args;
-use colored::Colorize;
 use crate::config::CliConfig;
 use crate::errors::CliError;
+use clap::Args;
+use colored::Colorize;
 
 #[derive(Args)]
 pub struct ConnectArgs {
