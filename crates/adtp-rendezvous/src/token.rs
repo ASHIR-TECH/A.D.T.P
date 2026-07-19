@@ -1,5 +1,4 @@
-use adtp_core::types::{PEER_ID_SIZE, TOKEN_VALIDITY_SECS};
-use blake3;
+use adtp_core::types::PEER_ID_SIZE;
 use chrono::Utc;
 use dashmap::DashSet;
 use rand::Rng;
