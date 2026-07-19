@@ -55,19 +55,11 @@ pub fn verify_trust_for_next_hop(
     Ok(())
 }
 
-pub fn build_relay_path(
-    hops: Vec<RelayHop>,
-    hop_limit: u8,
-) -> RelayPath {
+pub fn build_relay_path(hops: Vec<RelayHop>, hop_limit: u8) -> RelayPath {
     RelayPath { hops, hop_limit }
 }
 
-pub fn append_hop(
-    path: &mut RelayPath,
-    peer_id: [u8; PEER_ID_SIZE],
-    host: String,
-    port: u16,
-) {
+pub fn append_hop(path: &mut RelayPath, peer_id: [u8; PEER_ID_SIZE], host: String, port: u16) {
     path.hops.push(RelayHop {
         peer_id,
         host,
@@ -90,7 +82,9 @@ pub fn create_relay_hint(
 }
 
 pub fn target_reached(path: &RelayPath, target_peer_id: &[u8; PEER_ID_SIZE]) -> bool {
-    path.hops.last().map_or(false, |h| h.peer_id == *target_peer_id)
+    path.hops
+        .last()
+        .is_some_and(|h| h.peer_id == *target_peer_id)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -112,16 +106,14 @@ pub struct UriParts {
 }
 
 pub fn parse_adtp_uri(uri: &str) -> AdtpResult<UriParts> {
-    let uri = uri.strip_prefix("adtp://").ok_or_else(|| {
-        AdtpError::Internal {
+    let uri = uri
+        .strip_prefix("adtp://")
+        .ok_or_else(|| AdtpError::Internal {
             reason: format!("Invalid adtp URI scheme: {uri}"),
-        }
-    })?;
+        })?;
 
-    let (userinfo, rest) = uri.split_once('@').ok_or_else(|| {
-        AdtpError::Internal {
-            reason: "Missing @ in adtp URI".to_string(),
-        }
+    let (userinfo, rest) = uri.split_once('@').ok_or_else(|| AdtpError::Internal {
+        reason: "Missing @ in adtp URI".to_string(),
     })?;
 
     let peer_id = userinfo.to_string();
@@ -156,14 +148,12 @@ mod tests {
 
     fn make_path() -> RelayPath {
         RelayPath {
-            hops: vec![
-                RelayHop {
-                    peer_id: [1u8; PEER_ID_SIZE],
-                    host: "10.0.0.1".into(),
-                    port: 40001,
-                    timestamp_ns: 1000,
-                },
-            ],
+            hops: vec![RelayHop {
+                peer_id: [1u8; PEER_ID_SIZE],
+                host: "10.0.0.1".into(),
+                port: 40001,
+                timestamp_ns: 1000,
+            }],
             hop_limit: 4,
         }
     }
