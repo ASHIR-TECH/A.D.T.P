@@ -42,7 +42,9 @@ pub fn load_config() -> Result<Option<AgentConfig>, String> {
         return Ok(None);
     }
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    toml::from_str(&content).map(Some).map_err(|e| e.to_string())
+    toml::from_str(&content)
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 pub fn save_config(config: &AgentConfig) -> Result<(), String> {
