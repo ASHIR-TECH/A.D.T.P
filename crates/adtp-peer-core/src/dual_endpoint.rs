@@ -3,8 +3,8 @@ use adtp_core::transfer::AdtpConnection;
 use quinn::{ClientConfig, Endpoint, ServerConfig};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::net::UdpSocket;
+use std::sync::Arc;
 
 pub struct DualEndpoint {
     endpoint: Endpoint,
@@ -54,11 +54,7 @@ impl DualEndpoint {
         }
     }
 
-    pub async fn connect(
-        &self,
-        addr: SocketAddr,
-        server_name: &str,
-    ) -> AdtpResult<AdtpConnection> {
+    pub async fn connect(&self, addr: SocketAddr, server_name: &str) -> AdtpResult<AdtpConnection> {
         let connection = self
             .endpoint
             .connect(addr, server_name)
@@ -75,19 +71,18 @@ impl DualEndpoint {
     }
 
     pub fn local_addr(&self) -> AdtpResult<SocketAddr> {
-        self.endpoint
-            .local_addr()
-            .map_err(|e| AdtpError::Internal {
-                reason: format!("No local addr: {e}"),
-            })
+        self.endpoint.local_addr().map_err(|e| AdtpError::Internal {
+            reason: format!("No local addr: {e}"),
+        })
     }
 }
 
 fn generate_self_signed_cert() -> AdtpResult<(CertificateDer<'static>, PrivateKeyDer<'static>)> {
-    let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
-        .map_err(|e| AdtpError::TlsError {
+    let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).map_err(|e| {
+        AdtpError::TlsError {
             reason: e.to_string(),
-        })?;
+        }
+    })?;
     let cert_der = CertificateDer::from(cert.cert.der().to_vec());
     let key_der = PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der()).into();
     Ok((cert_der, key_der))
@@ -114,11 +109,11 @@ fn build_client_config_insecure() -> AdtpResult<ClientConfig> {
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(SkipCertVerification))
         .with_no_client_auth();
-    let quic_crypto =
-        quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
-            .map_err(|e| AdtpError::TlsError {
-                reason: e.to_string(),
-            })?;
+    let quic_crypto = quinn::crypto::rustls::QuicClientConfig::try_from(crypto).map_err(|e| {
+        AdtpError::TlsError {
+            reason: e.to_string(),
+        }
+    })?;
     Ok(ClientConfig::new(Arc::new(quic_crypto)))
 }
 
