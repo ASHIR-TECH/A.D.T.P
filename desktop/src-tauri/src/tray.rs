@@ -2,8 +2,8 @@ use std::io::Cursor;
 
 use tauri::{
     image::Image,
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime,
 };
 
@@ -17,7 +17,10 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let sep3 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&open, &send, &sep, &status, &sep2, &cli, &sep3, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&open, &send, &sep, &status, &sep2, &cli, &sep3, &quit],
+    )?;
 
     let idle_img = decode_png(include_bytes!("../icons/tray-idle.png"));
 
@@ -68,7 +71,9 @@ fn decode_png(bytes: &[u8]) -> (Vec<u8>, u32, u32) {
     let (width, height) = reader.info().size();
     let buf_size = reader.output_buffer_size();
     let mut buf = vec![0u8; buf_size];
-    reader.next_frame(&mut buf).expect("Failed to read PNG frame");
+    reader
+        .next_frame(&mut buf)
+        .expect("Failed to read PNG frame");
 
     if reader.info().color_type == png::ColorType::Rgba {
         buf.truncate((width * height * 4) as usize);
@@ -132,8 +137,7 @@ pub fn launch_cli_terminal<R: Runtime>(app: &AppHandle<R>) {
     }
 
     // Last resort: just spawn CLI in the background (no terminal window)
-    let _ = std::process::Command::new(&cli_path)
-        .spawn();
+    let _ = std::process::Command::new(&cli_path).spawn();
 }
 
 /// Find the `adtp` CLI binary.  Checks: 1) next to our own exe
