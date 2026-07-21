@@ -87,14 +87,6 @@ jobs:
           cache: "npm"
           cache-dependency-path: desktop/package-lock.json
 
-      - run: cargo build -p adtp-cli --release
-
-      - name: Upload CLI binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: adtp-cli-${{ matrix.suffix }}
-          path: target/release/${{ matrix.suffix == 'Windows' && 'adtp.exe' || 'adtp' }}
-
       - run: cargo install tauri-cli --version "^2"
       - run: npm ci
         working-directory: desktop
@@ -139,7 +131,7 @@ jobs:
       - name: Generate release notes
         run: |
           cat > notes.md <<'EOF'
-          ## ADTP Desktop & CLI
+          ## ADTP Desktop
 
           ### Downloads
 
@@ -147,51 +139,27 @@ jobs:
           - [ADTP Desktop (.deb)](adtp-linux-x86_64.deb)
           - [ADTP Desktop (.rpm)](adtp-linux-x86_64.rpm)
           - [ADTP Desktop (AppImage)](adtp-linux-x86_64.AppImage)
-          - [ADTP CLI (Linux)](adtp-cli-linux-x86_64)
 
           **Windows**
           - [ADTP Desktop (.msi)](adtp-windows-x86_64.msi)
-          - [ADTP CLI (Windows)](adtp-cli-windows-x86_64.exe)
 
           **macOS**
           - [ADTP Desktop (.dmg)](adtp-macos-aarch64.dmg)
-          - [ADTP CLI (macOS)](adtp-cli-macos-aarch64)
-
-          ### Quick Start
-          ```
-          adtp send <file>     # send a file
-          adtp status          # check transfer status
-          adtp peer list       # list peers
-          adtp desktop         # launch desktop GUI
-          adtp                 # enter REPL mode
-          ```
           EOF
 
       - name: Prepare release files
         run: |
           mkdir -p release
-          # Linux installers
           if [ -d "artifacts/adtp-installers-Linux" ]; then
             find artifacts/adtp-installers-Linux -name "*.deb" -exec cp {} release/adtp-linux-x86_64.deb \;
             find artifacts/adtp-installers-Linux -name "*.rpm" -exec cp {} release/adtp-linux-x86_64.rpm \;
             find artifacts/adtp-installers-Linux -name "*.AppImage" -exec cp {} release/adtp-linux-x86_64.AppImage \;
           fi
-          if [ -f "artifacts/adtp-cli-Linux/adtp" ]; then
-            cp artifacts/adtp-cli-Linux/adtp release/adtp-cli-linux-x86_64
-          fi
-          # Windows
           if [ -d "artifacts/adtp-installer-Windows" ]; then
             find artifacts/adtp-installer-Windows -name "*.msi" -exec cp {} release/adtp-windows-x86_64.msi \;
           fi
-          if [ -f "artifacts/adtp-cli-Windows/adtp.exe" ]; then
-            cp artifacts/adtp-cli-Windows/adtp.exe release/adtp-cli-windows-x86_64.exe
-          fi
-          # macOS
           if [ -d "artifacts/adtp-installer-macOS" ]; then
             find artifacts/adtp-installer-macOS -name "*.dmg" -exec cp {} release/adtp-macos-aarch64.dmg \;
-          fi
-          if [ -f "artifacts/adtp-cli-macOS/adtp" ]; then
-            cp artifacts/adtp-cli-macOS/adtp release/adtp-cli-macos-aarch64
           fi
           ls -lh release/
 
