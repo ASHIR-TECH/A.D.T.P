@@ -135,16 +135,18 @@ jobs:
 
           ### Downloads
 
+          Attached to this release (scroll down):
+
           **Linux**
-          - [ADTP Desktop (.deb)](adtp-linux-x86_64.deb)
-          - [ADTP Desktop (.rpm)](adtp-linux-x86_64.rpm)
-          - [ADTP Desktop (AppImage)](adtp-linux-x86_64.AppImage)
+          - ADTP Desktop (.deb)
+          - ADTP Desktop (.rpm)
+          - ADTP Desktop (AppImage)
 
           **Windows**
-          - [ADTP Desktop (.msi)](adtp-windows-x86_64.msi)
+          - ADTP Desktop (.msi)
 
           **macOS**
-          - [ADTP Desktop (.dmg)](adtp-macos-aarch64.dmg)
+          - ADTP Desktop (.dmg)
           EOF
 
       - name: Prepare release files
