@@ -171,17 +171,28 @@ jobs:
         run: |
           mkdir -p release
           # Linux installers
-          find artifacts/adtp-installers-Linux -name "*.deb" -exec cp {} release/adtp-linux-x86_64.deb \;
-          find artifacts/adtp-installers-Linux -name "*.rpm" -exec cp {} release/adtp-linux-x86_64.rpm \;
-          find artifacts/adtp-installers-Linux -name "*.AppImage" -exec cp {} release/adtp-linux-x86_64.AppImage \;
-          # Linux CLI
-          cp artifacts/adtp-cli-Linux/adtp release/adtp-cli-linux-x86_64
+          if [ -d "artifacts/adtp-installers-Linux" ]; then
+            find artifacts/adtp-installers-Linux -name "*.deb" -exec cp {} release/adtp-linux-x86_64.deb \;
+            find artifacts/adtp-installers-Linux -name "*.rpm" -exec cp {} release/adtp-linux-x86_64.rpm \;
+            find artifacts/adtp-installers-Linux -name "*.AppImage" -exec cp {} release/adtp-linux-x86_64.AppImage \;
+          fi
+          if [ -f "artifacts/adtp-cli-Linux/adtp" ]; then
+            cp artifacts/adtp-cli-Linux/adtp release/adtp-cli-linux-x86_64
+          fi
           # Windows
-          find artifacts/adtp-installer-Windows -name "*.msi" -exec cp {} release/adtp-windows-x86_64.msi \;
-          cp artifacts/adtp-cli-Windows/adtp.exe release/adtp-cli-windows-x86_64.exe
+          if [ -d "artifacts/adtp-installer-Windows" ]; then
+            find artifacts/adtp-installer-Windows -name "*.msi" -exec cp {} release/adtp-windows-x86_64.msi \;
+          fi
+          if [ -f "artifacts/adtp-cli-Windows/adtp.exe" ]; then
+            cp artifacts/adtp-cli-Windows/adtp.exe release/adtp-cli-windows-x86_64.exe
+          fi
           # macOS
-          find artifacts/adtp-installer-macOS -name "*.dmg" -exec cp {} release/adtp-macos-aarch64.dmg \;
-          cp artifacts/adtp-cli-macOS/adtp release/adtp-cli-macos-aarch64
+          if [ -d "artifacts/adtp-installer-macOS" ]; then
+            find artifacts/adtp-installer-macOS -name "*.dmg" -exec cp {} release/adtp-macos-aarch64.dmg \;
+          fi
+          if [ -f "artifacts/adtp-cli-macOS/adtp" ]; then
+            cp artifacts/adtp-cli-macOS/adtp release/adtp-cli-macos-aarch64
+          fi
           ls -lh release/
 
       - uses: softprops/action-gh-release@v2
