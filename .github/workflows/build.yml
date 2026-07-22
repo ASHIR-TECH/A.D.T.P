@@ -152,17 +152,17 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          if [ -d "artifacts/adtp-installers-Linux" ]; then
-            find artifacts/adtp-installers-Linux -name "*.deb" -exec cp {} release/adtp-linux-x86_64.deb \;
-            find artifacts/adtp-installers-Linux -name "*.rpm" -exec cp {} release/adtp-linux-x86_64.rpm \;
-            find artifacts/adtp-installers-Linux -name "*.AppImage" -exec cp {} release/adtp-linux-x86_64.AppImage \;
-          fi
-          if [ -d "artifacts/adtp-installer-Windows" ]; then
-            find artifacts/adtp-installer-Windows -name "*.msi" -exec cp {} release/adtp-windows-x86_64.msi \;
-          fi
-          if [ -d "artifacts/adtp-installer-macOS" ]; then
-            find artifacts/adtp-installer-macOS -name "*.dmg" -exec cp {} release/adtp-macos-aarch64.dmg \;
-          fi
+          echo "=== Downloaded artifacts ==="
+          find artifacts/ -type f 2>/dev/null | head -30
+          # Linux
+          cp artifacts/adtp-installers-Linux/deb/*.deb release/ 2>/dev/null || echo "No .deb found"
+          cp artifacts/adtp-installers-Linux/appimage/*.AppImage release/ 2>/dev/null || echo "No .AppImage found"
+          cp artifacts/adtp-installers-Linux/rpm/*.rpm release/ 2>/dev/null || echo "No .rpm found"
+          # Windows
+          cp artifacts/adtp-installer-Windows/msi/*.msi release/ 2>/dev/null || echo "No .msi found"
+          # macOS
+          cp artifacts/adtp-installer-macOS/dmg/*.dmg release/ 2>/dev/null || echo "No .dmg found"
+          echo "=== Release files ==="
           ls -lh release/
 
       - uses: softprops/action-gh-release@v2
