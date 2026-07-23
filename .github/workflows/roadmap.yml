@@ -1,0 +1,30 @@
+name: Update Roadmap
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"  # weekly on Monday at 9am UTC
+
+permissions:
+  contents: read
+
+env:
+  GITHUB_TOKEN: ${{ secrets.PROJECT_PAT }}
+
+jobs:
+  update-roadmap:
+    name: Sync commits to project timeline
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Update project items
+        run: python3 scripts/populate_roadmap.py --sync --skip-branches
