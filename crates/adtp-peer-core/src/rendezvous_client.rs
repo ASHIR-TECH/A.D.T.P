@@ -36,6 +36,7 @@ impl RendezvousClient {
         nat_type: NatType,
         supports_ipv6: bool,
         can_relay: bool,
+        signing_key: Option<&ed25519_dalek::SigningKey>,
     ) -> AdtpResult<()> {
         let local_addr = self
             .socket
@@ -44,12 +45,34 @@ impl RendezvousClient {
                 reason: format!("local addr: {e}"),
             })?;
 
+        let (public_key_hex, signature_hex, timestamp) = if let Some(key) = signing_key {
+            let now = chrono::Utc::now().timestamp_millis();
+            let verifying_key = key.verifying_key();
+            let pk_hex = hex::encode(verifying_key.to_bytes());
+
+            let mut msg = Vec::new();
+            msg.extend_from_slice(peer_id);
+            msg.extend_from_slice(local_addr.to_string().as_bytes());
+            msg.extend_from_slice(&now.to_le_bytes());
+
+            use ed25519_dalek::Signer;
+            let sig = key.sign(&msg);
+            let sig_hex = hex::encode(sig.to_bytes());
+
+            (Some(pk_hex), Some(sig_hex), Some(now))
+        } else {
+            (None, None, None)
+        };
+
         let payload = PeerRegisterPayload {
             peer_id: *peer_id,
             external_addr: local_addr.to_string(),
             nat_type,
             supports_ipv6,
             can_relay,
+            public_key: public_key_hex,
+            signature: signature_hex,
+            timestamp,
         };
 
         let mut buf = vec![0x20u8];

@@ -238,6 +238,12 @@ pub struct PeerRegisterPayload {
     pub nat_type: NatType,
     pub supports_ipv6: bool,
     pub can_relay: bool,
+    #[serde(default)]
+    pub public_key: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
+    #[serde(default)]
+    pub timestamp: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
