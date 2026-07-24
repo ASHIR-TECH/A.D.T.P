@@ -1,4 +1,3 @@
-target/ 
 target/
 
 # Rust
@@ -8,6 +7,14 @@ target/
 .env
 .env.*
 !.env.example
+
+# Node / JS
+node_modules/
+dist/
+
+# Python
+.venv/
+__pycache__/
 
 # Editor and OS files
 .DS_Store
@@ -19,6 +26,6 @@ Thumbs.db
 
 # Logs
 *.log
-packages/adtp-api/tests/__pycache__/__init__.cpython-313.pyc
 
-__pycache__ 
+# Temp files
+temp/
