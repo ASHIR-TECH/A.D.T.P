@@ -7,9 +7,9 @@ use crate::{
 };
 use adtp_core::{
     errors::{AdtpError, AdtpResult},
-    session::new_session,
+    session::{new_session, server_handshake},
     transfer::{AdtpConnection, AdtpServer},
-    types::{TransferStatus, TransferType, AES_KEY_SIZE},
+    types::{TransferStatus, TransferType},
 };
 use chrono::Utc;
 use std::net::SocketAddr;
@@ -69,7 +69,14 @@ async fn handle_client(
 ) {
     let session = new_session(connection.peer_addr());
     let _ = audit.log_session_start(&session.id, &connection.peer_addr());
-    let session_key = [0u8; AES_KEY_SIZE];
+
+    let session_key = match server_handshake(&connection, &session.id).await {
+        Ok(key) => key,
+        Err(e) => {
+            tracing::error!("Session key exchange failed: {}", e);
+            return;
+        }
+    };
     let mut transfer_count = 0usize;
 
     tracing::info!("Client connected: {}", connection.peer_addr());

@@ -118,3 +118,119 @@ pub fn new_session(peer_addr: impl Into<String>) -> Session {
         symmetric_key: None,
     }
 }
+
+pub async fn client_handshake(
+    connection: &crate::transfer::AdtpConnection,
+    session_id: &Uuid,
+) -> crate::errors::AdtpResult<[u8; AES_KEY_SIZE]> {
+    use crate::transfer::write_raw;
+
+    let keys = SessionKeys::generate();
+    let my_public = keys.public_key_bytes();
+
+    let (mut send, mut recv) = connection
+        .open_bi()
+        .await
+        .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+            reason: e.to_string(),
+        })?;
+
+    write_raw(&mut send, &my_public).await?;
+    send.finish().map_err(|e| crate::errors::AdtpError::QuicStreamError {
+        reason: e.to_string(),
+    })?;
+
+    let mut peer_public = [0u8; 32];
+    recv.read_exact(&mut peer_public)
+        .await
+        .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+            reason: e.to_string(),
+        })?;
+
+    keys.complete_handshake(&peer_public, session_id)
+}
+
+pub async fn server_handshake(
+    connection: &crate::transfer::AdtpConnection,
+    session_id: &Uuid,
+) -> crate::errors::AdtpResult<[u8; AES_KEY_SIZE]> {
+    use crate::transfer::write_raw;
+
+    let keys = SessionKeys::generate();
+    let my_public = keys.public_key_bytes();
+
+    let (mut send, mut recv) = connection
+        .accept_bi()
+        .await
+        .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+            reason: e.to_string(),
+        })?;
+
+    let mut peer_public = [0u8; 32];
+    recv.read_exact(&mut peer_public)
+        .await
+        .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+            reason: e.to_string(),
+        })?;
+
+    write_raw(&mut send, &my_public).await?;
+
+    keys.complete_handshake(&peer_public, session_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_session_keys_generate_unique() {
+        let k1 = SessionKeys::generate();
+        let k2 = SessionKeys::generate();
+        assert_ne!(k1.public_key_bytes(), k2.public_key_bytes());
+    }
+
+    #[test]
+    fn test_ecdh_derives_same_key_both_sides() {
+        let client_keys = SessionKeys::generate();
+        let mut server_keys = SessionKeys::generate();
+        let session_id = Uuid::new_v4();
+
+        let client_pub = client_keys.public_key_bytes();
+        let server_pub = server_keys.public_key_bytes();
+
+        let client_key = client_keys
+            .complete_handshake(&server_pub, &session_id)
+            .unwrap();
+        let server_key = server_keys
+            .complete_handshake(&client_pub, &session_id)
+            .unwrap();
+
+        assert_eq!(client_key, server_key);
+    }
+
+    #[test]
+    fn test_ecdh_wrong_key_yields_different_result() {
+        let client_keys = SessionKeys::generate();
+        let server_keys = SessionKeys::generate();
+        let mut attacker_keys = SessionKeys::generate();
+        let session_id = Uuid::new_v4();
+
+        let client_pub = client_keys.public_key_bytes();
+        let server_pub = server_keys.public_key_bytes();
+        let attacker_pub = attacker_keys.public_key_bytes();
+
+        let real_key = client_keys
+            .complete_handshake(&server_pub, &session_id)
+            .unwrap();
+        let wrong_key = attacker_keys
+            .complete_handshake(&client_pub, &session_id)
+            .unwrap();
+
+        assert_ne!(real_key, wrong_key);
+
+        let _ = real_key;
+        let _ = wrong_key;
+        let _ = client_pub;
+        let _ = attacker_pub;
+    }
+}

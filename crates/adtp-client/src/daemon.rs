@@ -10,7 +10,7 @@ use adtp_core::{
     errors::{AdtpError, AdtpResult},
     integrity::hash_file,
     protocol::{AdtpPacket, ContextEnvelope, PacketHeader, PacketHeaderParts},
-    session::{new_session, SessionKeys},
+    session::{client_handshake, new_session},
     transfer::{AdtpClient, AdtpConnection},
     types::*,
 };
@@ -66,12 +66,11 @@ impl ClientDaemon {
 
         tracing::info!("Connected to agent: {}:{}", agent.host, agent.port);
 
-        let _session_keys = SessionKeys::generate();
         let session = new_session(connection.peer_addr());
         self.audit
             .log_session_start(&session.id, &connection.peer_addr())?;
 
-        let session_key = [0u8; AES_KEY_SIZE];
+        let session_key = client_handshake(&connection, &session.id).await?;
         let session_id = session.id;
         let conn_send = connection.clone();
         let queue_rx = self.queue.receiver();

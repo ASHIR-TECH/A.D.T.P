@@ -1,4 +1,5 @@
 use adtp_core::errors::{AdtpError, AdtpResult};
+use adtp_core::tofu::TofuVerifier;
 use adtp_core::transfer::AdtpConnection;
 use quinn::{ClientConfig, Endpoint, ServerConfig};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
@@ -14,7 +15,7 @@ impl DualEndpoint {
     pub async fn bind(addr: SocketAddr) -> AdtpResult<Self> {
         let (cert, key) = generate_self_signed_cert()?;
         let server_config = build_server_config(cert, key)?;
-        let client_config = build_client_config_insecure()?;
+        let client_config = build_client_config_tofu()?;
 
         let socket = UdpSocket::bind(addr).map_err(|e| AdtpError::BindFailed {
             addr: addr.to_string(),
@@ -104,10 +105,11 @@ fn build_server_config(
     Ok(server_config)
 }
 
-fn build_client_config_insecure() -> AdtpResult<ClientConfig> {
+fn build_client_config_tofu() -> AdtpResult<ClientConfig> {
+    let verifier = Arc::new(TofuVerifier::new());
     let crypto = rustls::ClientConfig::builder()
         .dangerous()
-        .with_custom_certificate_verifier(Arc::new(SkipCertVerification))
+        .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
     let quic_crypto = quinn::crypto::rustls::QuicClientConfig::try_from(crypto).map_err(|e| {
         AdtpError::TlsError {
@@ -115,46 +117,4 @@ fn build_client_config_insecure() -> AdtpResult<ClientConfig> {
         }
     })?;
     Ok(ClientConfig::new(Arc::new(quic_crypto)))
-}
-
-#[derive(Debug)]
-struct SkipCertVerification;
-
-impl rustls::client::danger::ServerCertVerifier for SkipCertVerification {
-    fn verify_server_cert(
-        &self,
-        _: &CertificateDer,
-        _: &[CertificateDer],
-        _: &rustls::pki_types::ServerName,
-        _: &[u8],
-        _: rustls::pki_types::UnixTime,
-    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::danger::ServerCertVerified::assertion())
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer,
-        _: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer,
-        _: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        vec![
-            rustls::SignatureScheme::ED25519,
-            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
-            rustls::SignatureScheme::RSA_PSS_SHA256,
-        ]
-    }
 }
