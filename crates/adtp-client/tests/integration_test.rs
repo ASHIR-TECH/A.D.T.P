@@ -14,6 +14,9 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn test_full_send_receive_cycle() {
+    let trust_dir = tempdir().unwrap();
+    adtp_core::tofu::set_trust_store_path(trust_dir.path().join("trusted_certs.toml"));
+
     let addr = available_local_addr();
     let server = AdtpServer::bind(addr).await.unwrap();
     let server_task = tokio::spawn(async move {
