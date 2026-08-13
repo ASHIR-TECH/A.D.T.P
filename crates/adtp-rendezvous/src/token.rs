@@ -34,8 +34,8 @@ impl TokenIssuer {
         target: &[u8; PEER_ID_SIZE],
         issued_at_ms: i64,
     ) -> String {
-        let mut mac = HmacSha256::new_from_slice(&self.hmac_key)
-            .expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(&self.hmac_key).expect("HMAC can take key of any size");
         mac.update(requester);
         mac.update(target);
         mac.update(&issued_at_ms.to_le_bytes());
@@ -60,7 +60,11 @@ impl TokenIssuer {
             let now_ms = Utc::now().timestamp_millis();
             let age_secs = (now_ms - record.issued_at_ms) / 1000;
             if age_secs > TOKEN_VALIDITY_SECS as i64 {
-                tracing::warn!("Token expired (age={}s, max={}s)", age_secs, TOKEN_VALIDITY_SECS);
+                tracing::warn!(
+                    "Token expired (age={}s, max={}s)",
+                    age_secs,
+                    TOKEN_VALIDITY_SECS
+                );
                 drop(record);
                 self.tokens.remove(token);
                 return false;
