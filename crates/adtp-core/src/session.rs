@@ -128,24 +128,26 @@ pub async fn client_handshake(
     let keys = SessionKeys::generate();
     let my_public = keys.public_key_bytes();
 
-    let (mut send, mut recv) = connection
-        .open_bi()
-        .await
-        .map_err(|e| crate::errors::AdtpError::QuicStreamError {
-            reason: e.to_string(),
-        })?;
+    let (mut send, mut recv) =
+        connection
+            .open_bi()
+            .await
+            .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+                reason: e.to_string(),
+            })?;
 
     write_raw(&mut send, &my_public).await?;
-    send.finish().map_err(|e| crate::errors::AdtpError::QuicStreamError {
-        reason: e.to_string(),
-    })?;
-
-    let mut peer_public = [0u8; 32];
-    recv.read_exact(&mut peer_public)
-        .await
+    send.finish()
         .map_err(|e| crate::errors::AdtpError::QuicStreamError {
             reason: e.to_string(),
         })?;
+
+    let mut peer_public = [0u8; 32];
+    recv.read_exact(&mut peer_public).await.map_err(|e| {
+        crate::errors::AdtpError::QuicStreamError {
+            reason: e.to_string(),
+        }
+    })?;
 
     keys.complete_handshake(&peer_public, session_id)
 }
@@ -159,19 +161,20 @@ pub async fn server_handshake(
     let keys = SessionKeys::generate();
     let my_public = keys.public_key_bytes();
 
-    let (mut send, mut recv) = connection
-        .accept_bi()
-        .await
-        .map_err(|e| crate::errors::AdtpError::QuicStreamError {
-            reason: e.to_string(),
-        })?;
+    let (mut send, mut recv) =
+        connection
+            .accept_bi()
+            .await
+            .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+                reason: e.to_string(),
+            })?;
 
     let mut peer_public = [0u8; 32];
-    recv.read_exact(&mut peer_public)
-        .await
-        .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+    recv.read_exact(&mut peer_public).await.map_err(|e| {
+        crate::errors::AdtpError::QuicStreamError {
             reason: e.to_string(),
-        })?;
+        }
+    })?;
 
     write_raw(&mut send, &my_public).await?;
 
