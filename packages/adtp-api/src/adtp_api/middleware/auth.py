@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -28,7 +29,7 @@ def register_auth_middleware(app: FastAPI) -> None:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
         token = auth_header.removeprefix("Bearer ")
-        expected = settings.api_token
+        expected = os.getenv("ADTP_API_TOKEN", settings.api_token)
 
         if not expected or len(token) != len(expected):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
