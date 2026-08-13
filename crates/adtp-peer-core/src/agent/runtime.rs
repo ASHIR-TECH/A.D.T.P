@@ -348,14 +348,24 @@ impl AgentRuntime {
                     if !d.is_empty() {
                         d
                     } else {
-                        self.permission_store.config().allowed_paths.first()
+                        self.permission_store
+                            .config()
+                            .allowed_paths
+                            .first()
                             .map(|s| s.as_str())
-                            .ok_or("find_file: no allowed paths configured and no directory specified")?
+                            .ok_or(
+                                "find_file: no allowed paths configured and no directory specified",
+                            )?
                     }
                 } else {
-                    self.permission_store.config().allowed_paths.first()
+                    self.permission_store
+                        .config()
+                        .allowed_paths
+                        .first()
                         .map(|s| s.as_str())
-                        .ok_or("find_file: no allowed paths configured and no directory specified")?
+                        .ok_or(
+                            "find_file: no allowed paths configured and no directory specified",
+                        )?
                 };
                 match self
                     .permission_store
@@ -366,7 +376,8 @@ impl AgentRuntime {
                         return Err(format!("Permission denied: {}", reason));
                     }
                 }
-                self.find_file_local(pattern, Some(effective_dir), ext).await
+                self.find_file_local(pattern, Some(effective_dir), ext)
+                    .await
             }
             "read_file" => {
                 let path = call
