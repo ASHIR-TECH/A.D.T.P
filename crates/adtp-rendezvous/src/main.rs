@@ -98,11 +98,9 @@ async fn handle_packet(
     match packet_type {
         0x20 => {
             if let Ok(payload) = serde_json::from_slice::<PeerRegisterPayload>(&data[1..]) {
-                if let (Some(pub_key_hex), Some(sig_hex), Some(ts)) = (
-                    &payload.public_key,
-                    &payload.signature,
-                    &payload.timestamp,
-                ) {
+                if let (Some(pub_key_hex), Some(sig_hex), Some(ts)) =
+                    (&payload.public_key, &payload.signature, &payload.timestamp)
+                {
                     let now = chrono::Utc::now().timestamp_millis();
                     if (now - ts).abs() > 60_000 {
                         tracing::warn!(
@@ -120,11 +118,7 @@ async fn handle_packet(
                             msg.extend_from_slice(&payload.peer_id);
                             msg.extend_from_slice(payload.external_addr.as_bytes());
                             msg.extend_from_slice(&ts.to_le_bytes());
-                            if !peer_registry.verify_signature(
-                                &payload.peer_id,
-                                sig_hex,
-                                &msg,
-                            ) {
+                            if !peer_registry.verify_signature(&payload.peer_id, sig_hex, &msg) {
                                 tracing::warn!(
                                     "Invalid registration signature from {}",
                                     hex::encode(payload.peer_id)
