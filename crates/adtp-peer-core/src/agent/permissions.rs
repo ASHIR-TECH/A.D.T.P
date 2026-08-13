@@ -191,10 +191,7 @@ impl PermissionStore {
     }
 
     pub fn sanitize_command(command: &str) -> Result<(), String> {
-        let dangerous_patterns = [
-            ";", "&&", "||", "|", "`", "$(",
-            "../", "..\\",
-        ];
+        let dangerous_patterns = [";", "&&", "||", "|", "`", "$(", "../", "..\\"];
         for pattern in &dangerous_patterns {
             if command.contains(pattern) {
                 return Err(format!(
