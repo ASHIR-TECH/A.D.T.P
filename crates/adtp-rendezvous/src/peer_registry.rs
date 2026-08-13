@@ -19,11 +19,7 @@ impl PeerRegistry {
         }
     }
 
-    pub fn register(
-        &self,
-        peer_id: &[u8; PEER_ID_SIZE],
-        public_key: &[u8; 32],
-    ) -> bool {
+    pub fn register(&self, peer_id: &[u8; PEER_ID_SIZE], public_key: &[u8; 32]) -> bool {
         let now = chrono::Utc::now().timestamp_millis();
         if let Some(mut existing) = self.peers.get_mut(peer_id) {
             if existing.public_key != *public_key {
@@ -73,7 +69,11 @@ impl PeerRegistry {
                     key.verify_strict(message, &sig).is_ok()
                 }
                 Err(e) => {
-                    tracing::error!("Invalid public key for peer {}: {}", hex::encode(peer_id), e);
+                    tracing::error!(
+                        "Invalid public key for peer {}: {}",
+                        hex::encode(peer_id),
+                        e
+                    );
                     false
                 }
             }
