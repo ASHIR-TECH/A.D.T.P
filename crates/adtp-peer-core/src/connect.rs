@@ -55,7 +55,13 @@ impl ConnectionCoordinator {
             match RendezvousClient::connect(server, config.rendezvous_port).await {
                 Ok(client) => {
                     client
-                        .register(&peer_id, nat.nat_type, false, config.relay_enabled, signing_key)
+                        .register(
+                            &peer_id,
+                            nat.nat_type,
+                            false,
+                            config.relay_enabled,
+                            signing_key,
+                        )
                         .await
                         .ok();
                     Some(client)
