@@ -12,10 +12,12 @@ VALID_TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 
 @pytest.fixture
-def app():
+def app(tmp_path):
     os.environ["ADTP_API_TOKEN"] = VALID_TOKEN
+    os.environ["ADTP_AUDIT_DB"] = str(tmp_path / "audit.db")
     app = create_app()
     yield app
+    os.environ.pop("ADTP_AUDIT_DB", None)
 
 
 @pytest.fixture
