@@ -86,7 +86,13 @@ impl P2PModule {
             Ok(client) => {
                 let peer_id = &self.identity.peer_id;
                 client
-                    .register(peer_id, nat.nat_type, false, true, Some(&self.identity.signing_key))
+                    .register(
+                        peer_id,
+                        nat.nat_type,
+                        false,
+                        true,
+                        Some(&self.identity.signing_key),
+                    )
                     .await
                     .ok();
                 *self.rendezvous.lock().await = Some(client);
@@ -117,7 +123,13 @@ impl P2PModule {
                         external_addr: None,
                     });
                     if client
-                        .register(&self.identity.peer_id, nat.nat_type, false, true, Some(&self.identity.signing_key))
+                        .register(
+                            &self.identity.peer_id,
+                            nat.nat_type,
+                            false,
+                            true,
+                            Some(&self.identity.signing_key),
+                        )
                         .await
                         .is_ok()
                     {
