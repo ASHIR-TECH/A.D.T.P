@@ -1,0 +1,10 @@
+[tool.pytest.ini_options]
+testpaths = [
+    "packages/adtp-api/tests",
+    "packages/adtp-mcp/tests",
+]
+pythonpath = [
+    "packages/adtp-api/src",
+    "packages/adtp-mcp/src",
+]
+asyncio_mode = "auto"
