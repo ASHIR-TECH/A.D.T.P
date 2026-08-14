@@ -27,6 +27,7 @@ pub mod errors;
 pub mod integrity;
 pub mod protocol;
 pub mod session;
+pub mod tofu;
 pub mod transfer;
 pub mod types;
 

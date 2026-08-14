@@ -1,3 +1,4 @@
+mod peer_registry;
 mod peer_table;
 mod stun;
 mod token;
@@ -6,6 +7,7 @@ mod wake;
 use adtp_core::types::{
     PeerRegisterPayload, RendezvousResponsePayload, RENDEZVOUS_DEFAULT_PORT, TOKEN_VALIDITY_SECS,
 };
+use peer_registry::PeerRegistry;
 use peer_table::PeerTable;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -39,6 +41,7 @@ async fn main() {
     let token_issuer = Arc::new(TokenIssuer::new());
     let wake_service = Arc::new(WakeService::new());
     let stun_server = Arc::new(StunServer);
+    let peer_registry = Arc::new(PeerRegistry::new());
 
     let mut buf = [0u8; 4096];
 
@@ -57,6 +60,7 @@ async fn main() {
         let token_issuer = token_issuer.clone();
         let wake_service = wake_service.clone();
         let stun_server = stun_server.clone();
+        let peer_registry = peer_registry.clone();
 
         tokio::spawn(async move {
             handle_packet(
@@ -67,12 +71,14 @@ async fn main() {
                 &token_issuer,
                 &wake_service,
                 &stun_server,
+                &peer_registry,
             )
             .await;
         });
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_packet(
     data: &[u8],
     peer_addr: SocketAddr,
@@ -81,6 +87,7 @@ async fn handle_packet(
     token_issuer: &TokenIssuer,
     wake_service: &WakeService,
     stun_server: &StunServer,
+    peer_registry: &PeerRegistry,
 ) {
     if data.len() < 2 {
         return;
@@ -91,6 +98,38 @@ async fn handle_packet(
     match packet_type {
         0x20 => {
             if let Ok(payload) = serde_json::from_slice::<PeerRegisterPayload>(&data[1..]) {
+                if let (Some(pub_key_hex), Some(sig_hex), Some(ts)) =
+                    (&payload.public_key, &payload.signature, &payload.timestamp)
+                {
+                    let now = chrono::Utc::now().timestamp_millis();
+                    if (now - ts).abs() > 60_000 {
+                        tracing::warn!(
+                            "Registration timestamp too old/future from {}",
+                            hex::encode(payload.peer_id)
+                        );
+                        return;
+                    }
+                    if let Ok(pub_key_bytes) = hex::decode(pub_key_hex) {
+                        if pub_key_bytes.len() == 32 {
+                            let mut pk = [0u8; 32];
+                            pk.copy_from_slice(&pub_key_bytes);
+
+                            let mut msg = Vec::new();
+                            msg.extend_from_slice(&payload.peer_id);
+                            msg.extend_from_slice(payload.external_addr.as_bytes());
+                            msg.extend_from_slice(&ts.to_le_bytes());
+                            if !peer_registry.verify_signature(&payload.peer_id, sig_hex, &msg) {
+                                tracing::warn!(
+                                    "Invalid registration signature from {}",
+                                    hex::encode(payload.peer_id)
+                                );
+                                return;
+                            }
+                            peer_registry.register(&payload.peer_id, &pk);
+                        }
+                    }
+                }
+
                 let reflected_addr = stun_server.reflect_external_addr(&peer_addr);
                 let external_addr = if payload.external_addr.trim().is_empty() {
                     reflected_addr

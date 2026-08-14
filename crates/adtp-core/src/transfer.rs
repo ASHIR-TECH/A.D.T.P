@@ -6,6 +6,7 @@ use std::sync::{Arc, Once};
 
 use crate::errors::{AdtpError, AdtpResult};
 use crate::protocol::AdtpPacket;
+use crate::tofu::TofuVerifier;
 
 const LENGTH_PREFIX_SIZE: usize = 8;
 
@@ -55,7 +56,7 @@ pub struct AdtpClient {
 impl AdtpClient {
     pub async fn new() -> AdtpResult<Self> {
         install_crypto_provider_once();
-        let client_config = build_client_config_insecure()?;
+        let client_config = build_client_config_tofu()?;
         let mut endpoint = Endpoint::client(
             "0.0.0.0:0".parse().expect("valid client bind address"),
         )
@@ -133,6 +134,28 @@ impl AdtpConnection {
     pub async fn close(&self) {
         self.inner.close(0u32.into(), b"goodbye");
     }
+
+    pub async fn open_bi(
+        &self,
+    ) -> Result<(quinn::SendStream, quinn::RecvStream), crate::errors::AdtpError> {
+        self.inner
+            .open_bi()
+            .await
+            .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+                reason: e.to_string(),
+            })
+    }
+
+    pub async fn accept_bi(
+        &self,
+    ) -> Result<(quinn::SendStream, quinn::RecvStream), crate::errors::AdtpError> {
+        self.inner
+            .accept_bi()
+            .await
+            .map_err(|e| crate::errors::AdtpError::QuicStreamError {
+                reason: e.to_string(),
+            })
+    }
 }
 
 async fn write_framed(send: &mut SendStream, data: &[u8]) -> AdtpResult<()> {
@@ -169,6 +192,24 @@ async fn read_framed(recv: &mut RecvStream) -> AdtpResult<Vec<u8>> {
     Ok(data)
 }
 
+pub async fn write_raw(send: &mut SendStream, data: &[u8]) -> AdtpResult<()> {
+    send.write_all(data)
+        .await
+        .map_err(|e| AdtpError::QuicStreamError {
+            reason: e.to_string(),
+        })?;
+    Ok(())
+}
+
+pub async fn read_raw(recv: &mut RecvStream, buf: &mut [u8]) -> AdtpResult<()> {
+    recv.read_exact(buf)
+        .await
+        .map_err(|e| AdtpError::QuicStreamError {
+            reason: e.to_string(),
+        })?;
+    Ok(())
+}
+
 fn generate_self_signed_cert() -> AdtpResult<(CertificateDer<'static>, PrivateKeyDer<'static>)> {
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).map_err(|e| {
         AdtpError::TlsError {
@@ -199,10 +240,11 @@ fn build_server_config(
     Ok(server_config)
 }
 
-fn build_client_config_insecure() -> AdtpResult<ClientConfig> {
+fn build_client_config_tofu() -> AdtpResult<ClientConfig> {
+    let verifier = Arc::new(TofuVerifier::new());
     let crypto = rustls::ClientConfig::builder()
         .dangerous()
-        .with_custom_certificate_verifier(Arc::new(SkipCertVerification))
+        .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
     let quic_crypto = quinn::crypto::rustls::QuicClientConfig::try_from(crypto).map_err(|e| {
         AdtpError::TlsError {
@@ -211,48 +253,6 @@ fn build_client_config_insecure() -> AdtpResult<ClientConfig> {
     })?;
 
     Ok(ClientConfig::new(Arc::new(quic_crypto)))
-}
-
-#[derive(Debug)]
-struct SkipCertVerification;
-
-impl rustls::client::danger::ServerCertVerifier for SkipCertVerification {
-    fn verify_server_cert(
-        &self,
-        _: &CertificateDer,
-        _: &[CertificateDer],
-        _: &rustls::pki_types::ServerName,
-        _: &[u8],
-        _: rustls::pki_types::UnixTime,
-    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::danger::ServerCertVerified::assertion())
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer,
-        _: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer,
-        _: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        vec![
-            rustls::SignatureScheme::ED25519,
-            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
-            rustls::SignatureScheme::RSA_PSS_SHA256,
-        ]
-    }
 }
 
 fn install_crypto_provider_once() {

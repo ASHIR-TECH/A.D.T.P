@@ -189,6 +189,23 @@ impl PermissionStore {
     pub fn is_remote_task_allowed(&self) -> bool {
         self.config.allow_remote_tasks
     }
+
+    pub fn sanitize_command(command: &str) -> Result<(), String> {
+        let dangerous_patterns = [";", "&&", "||", "|", "`", "$(", "../", "..\\"];
+        for pattern in &dangerous_patterns {
+            if command.contains(pattern) {
+                return Err(format!(
+                    "Command injection detected: '{}' is not allowed",
+                    pattern
+                ));
+            }
+        }
+        let cmd_name = command.split_whitespace().next().unwrap_or("");
+        if cmd_name.starts_with('/') {
+            return Err("Absolute paths to executables are not allowed".into());
+        }
+        Ok(())
+    }
 }
 
 pub fn permissions_path() -> Option<std::path::PathBuf> {
@@ -318,11 +335,53 @@ mod tests {
             max_file_read_bytes: 2048,
             ..Default::default()
         };
-        // Test round-trip via JSON (not file, to avoid I/O dependency)
         let json = serde_json::to_string(&config).unwrap();
         let loaded: PermissionConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.allowed_paths, vec!["/tmp/test"]);
         assert_eq!(loaded.allowed_commands, vec!["ls", "echo"]);
         assert_eq!(loaded.max_file_read_bytes, 2048);
+    }
+
+    #[test]
+    fn test_sanitize_command_rejects_semicolons() {
+        assert!(PermissionStore::sanitize_command("ls; rm -rf /").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_command_rejects_pipes() {
+        assert!(PermissionStore::sanitize_command("ls | grep secret").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_command_rejects_backticks() {
+        assert!(PermissionStore::sanitize_command("echo `whoami`").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_command_rejects_command_substitution() {
+        assert!(PermissionStore::sanitize_command("echo $(whoami)").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_command_rejects_absolute_path() {
+        assert!(PermissionStore::sanitize_command("/bin/ls").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_command_rejects_logical_operators() {
+        assert!(PermissionStore::sanitize_command("true && rm -rf /").is_err());
+        assert!(PermissionStore::sanitize_command("false || rm -rf /").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_command_rejects_traversal() {
+        assert!(PermissionStore::sanitize_command("ls ../..").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_command_allows_clean_command() {
+        assert!(PermissionStore::sanitize_command("ls -la /tmp").is_ok());
+        assert!(PermissionStore::sanitize_command("cat /tmp/file.txt").is_ok());
+        assert!(PermissionStore::sanitize_command("echo hello world").is_ok());
     }
 }

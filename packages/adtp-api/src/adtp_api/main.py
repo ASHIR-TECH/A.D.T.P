@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 import aiosqlite
@@ -15,10 +16,15 @@ from adtp_api.routers import audit, health, sessions, tasks, transfers, watchers
 
 
 def create_app() -> FastAPI:
-    if not settings.api_token:
+    api_token = os.getenv("ADTP_API_TOKEN", settings.api_token)
+    audit_db = os.getenv("ADTP_AUDIT_DB", settings.audit_db)
+    client_socket = os.getenv("ADTP_CLIENT_SOCKET", settings.client_socket)
+    server_socket = os.getenv("ADTP_SERVER_SOCKET", settings.server_socket)
+
+    if not api_token:
         print("FATAL: ADTP_API_TOKEN is required", file=sys.stderr)
         sys.exit(1)
-    if len(settings.api_token) < 32:
+    if len(api_token) < 32:
         print("FATAL: ADTP_API_TOKEN must be at least 32 characters", file=sys.stderr)
         sys.exit(1)
 
@@ -38,9 +44,9 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type"],
     )
 
-    app.state.audit_db = settings.audit_db
-    app.state.client_socket = settings.client_socket
-    app.state.server_socket = settings.server_socket
+    app.state.audit_db = audit_db
+    app.state.client_socket = client_socket
+    app.state.server_socket = server_socket
 
     register_error_handlers(app)
     register_auth_middleware(app)
@@ -48,7 +54,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def init_tasks_db():
-        db_path = Path(settings.audit_db)
+        db_path = Path(audit_db)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         db = await aiosqlite.connect(str(db_path))
         await db.execute(

@@ -307,12 +307,14 @@ impl AgentRuntime {
                     .get("peer_id")
                     .and_then(|v| v.as_str())
                     .ok_or("send_file: missing 'peer_id' argument")?;
-                let perm = self.permission_store.config();
-                if !perm.allowed_paths.iter().any(|p| file_path.starts_with(p)) {
-                    return Err(format!(
-                        "Permission denied: '{}' is not in allowed paths",
-                        file_path
-                    ));
+                match self
+                    .permission_store
+                    .check_read_path(std::path::Path::new(file_path))
+                {
+                    crate::agent::permissions::PermissionCheck::Allowed => {}
+                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                        return Err(format!("Permission denied: {}", reason));
+                    }
                 }
                 match executor {
                     Some(exe) => exe.send_file(file_path, peer_id).await,
@@ -342,17 +344,40 @@ impl AgentRuntime {
                     .ok_or("find_file: missing 'pattern' argument")?;
                 let dir = call.arguments.get("directory").and_then(|v| v.as_str());
                 let ext = call.arguments.get("extension").and_then(|v| v.as_str());
-                let perm = self.permission_store.config();
-                let search_dir = dir.unwrap_or("");
-                let search_in_allowed = search_dir.is_empty()
-                    || perm.allowed_paths.iter().any(|p| search_dir.starts_with(p));
-                if !search_in_allowed {
-                    return Err(format!(
-                        "Permission denied: directory '{}' is not in allowed paths",
-                        search_dir
-                    ));
+                let effective_dir = if let Some(d) = dir {
+                    if !d.is_empty() {
+                        d
+                    } else {
+                        self.permission_store
+                            .config()
+                            .allowed_paths
+                            .first()
+                            .map(|s| s.as_str())
+                            .ok_or(
+                                "find_file: no allowed paths configured and no directory specified",
+                            )?
+                    }
+                } else {
+                    self.permission_store
+                        .config()
+                        .allowed_paths
+                        .first()
+                        .map(|s| s.as_str())
+                        .ok_or(
+                            "find_file: no allowed paths configured and no directory specified",
+                        )?
+                };
+                match self
+                    .permission_store
+                    .check_read_path(std::path::Path::new(effective_dir))
+                {
+                    crate::agent::permissions::PermissionCheck::Allowed => {}
+                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                        return Err(format!("Permission denied: {}", reason));
+                    }
                 }
-                self.find_file_local(pattern, dir, ext).await
+                self.find_file_local(pattern, Some(effective_dir), ext)
+                    .await
             }
             "read_file" => {
                 let path = call
@@ -360,12 +385,14 @@ impl AgentRuntime {
                     .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or("read_file: missing 'path' argument")?;
-                let perm = self.permission_store.config();
-                if !perm.allowed_paths.iter().any(|p| path.starts_with(p)) {
-                    return Err(format!(
-                        "Permission denied: '{}' is not in allowed paths",
-                        path
-                    ));
+                match self
+                    .permission_store
+                    .check_read_path(std::path::Path::new(path))
+                {
+                    crate::agent::permissions::PermissionCheck::Allowed => {}
+                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                        return Err(format!("Permission denied: {}", reason));
+                    }
                 }
                 self.read_file_local(path).await
             }
@@ -375,12 +402,14 @@ impl AgentRuntime {
                     .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or("list_directory: missing 'path' argument")?;
-                let perm = self.permission_store.config();
-                if !perm.allowed_paths.iter().any(|p| path.starts_with(p)) {
-                    return Err(format!(
-                        "Permission denied: '{}' is not in allowed paths",
-                        path
-                    ));
+                match self
+                    .permission_store
+                    .check_read_path(std::path::Path::new(path))
+                {
+                    crate::agent::permissions::PermissionCheck::Allowed => {}
+                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                        return Err(format!("Permission denied: {}", reason));
+                    }
                 }
                 self.list_directory_local(path).await
             }
@@ -390,13 +419,12 @@ impl AgentRuntime {
                     .get("command")
                     .and_then(|v| v.as_str())
                     .ok_or("shell_exec: missing 'command' argument")?;
-                let cmd_name = command.split_whitespace().next().unwrap_or("");
-                let perm = self.permission_store.config();
-                if !perm.allowed_commands.contains(&cmd_name.to_string()) {
-                    return Err(format!(
-                        "Permission denied: command '{}' is not in allowed list",
-                        cmd_name
-                    ));
+                PermissionStore::sanitize_command(command)?;
+                match self.permission_store.check_command(command) {
+                    crate::agent::permissions::PermissionCheck::Allowed => {}
+                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                        return Err(format!("Permission denied: {}", reason));
+                    }
                 }
                 self.shell_exec_local(command).await
             }
@@ -410,7 +438,7 @@ impl AgentRuntime {
         directory: Option<&str>,
         extension: Option<&str>,
     ) -> Result<String, String> {
-        let search_dir = directory.unwrap_or(".");
+        let search_dir = directory.ok_or("find_file: no search directory provided")?;
         let mut results = Vec::new();
         let walker = walkdir::WalkDir::new(search_dir).max_depth(5).into_iter();
         for entry in walker.filter_map(|e| e.ok()) {

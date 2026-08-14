@@ -19,3 +19,6 @@ blake3 = { workspace = true }
 dashmap = { workspace = true }
 rand = { workspace = true }
 anyhow = { workspace = true }
+hmac = "0.12"
+sha2 = { workspace = true }
+ed25519-dalek = { workspace = true }
