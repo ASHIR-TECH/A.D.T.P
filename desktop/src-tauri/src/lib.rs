@@ -164,6 +164,7 @@ pub fn run() {
             commands::add_peer,
             commands::remove_peer,
             commands::launch_cli,
+            commands::get_pairing_qr_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ADTP Desktop");
