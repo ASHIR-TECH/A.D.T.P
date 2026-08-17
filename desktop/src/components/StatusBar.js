@@ -1,6 +1,30 @@
+const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 let el = null;
+
+function applyHealth(h) {
+  if (!el) return;
+  const dot = el.querySelector('#status-dot');
+  const text = el.querySelector('#status-text');
+  const pending = el.querySelector('#queue-pending');
+  const inProg = el.querySelector('#queue-in-progress');
+
+  if (h.daemon_connected) {
+    if (h.queue_pending > 0 || h.queue_in_progress > 0) {
+      dot.className = 'status-dot syncing';
+      text.textContent = 'Syncing';
+    } else {
+      dot.className = 'status-dot connected';
+      text.textContent = 'Connected';
+    }
+  } else {
+    dot.className = 'status-dot disconnected';
+    text.textContent = 'Disconnected';
+  }
+  if (pending) pending.textContent = h.queue_pending ?? 0;
+  if (inProg) inProg.textContent = h.queue_in_progress ?? 0;
+}
 
 export function render(container) {
   container.innerHTML = `
@@ -18,23 +42,10 @@ export function render(container) {
 
   el = container.querySelector('#status-bar');
 
-  listen('health-update', (event) => {
-    const h = event.payload;
-    const dot = el.querySelector('#status-dot');
-    const text = el.querySelector('#status-text');
+  invoke('get_app_health').then(h => { if (h) applyHealth(h); }).catch(() => {});
 
-    if (h.daemon_connected) {
-      if (h.queue_pending > 0 || h.queue_in_progress > 0) {
-        dot.className = 'status-dot syncing';
-        text.textContent = 'Syncing';
-      } else {
-        dot.className = 'status-dot connected';
-        text.textContent = 'Connected';
-      }
-    } else {
-      dot.className = 'status-dot disconnected';
-      text.textContent = 'Disconnected';
-    }
+  listen('health-update', (event) => {
+    applyHealth(event.payload);
   });
 
   listen('queue-update', (event) => {
