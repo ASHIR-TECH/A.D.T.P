@@ -1,5 +1,6 @@
 use crate::agent::provider::{LlmMessage, LlmResponse, Provider, ToolCall, ToolDefinition};
 use async_trait::async_trait;
+use std::time::Duration;
 
 pub struct AnthropicProvider {
     api_key: String,
@@ -10,11 +11,16 @@ pub struct AnthropicProvider {
 
 impl AnthropicProvider {
     pub fn new(api_key: String, model: String, max_tokens: u32) -> Self {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(120))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
             api_key,
             model,
             max_tokens,
-            client: reqwest::Client::new(),
+            client,
         }
     }
 
@@ -48,6 +54,10 @@ impl Provider for AnthropicProvider {
         system_prompt: &str,
         tools: &[ToolDefinition],
     ) -> Result<LlmResponse, String> {
+        if self.api_key.is_empty() {
+            return Err("No API key configured — add one in Settings > Agents".to_string());
+        }
+
         let anthropic_messages: Vec<serde_json::Value> = messages
             .iter()
             .map(|m| {
@@ -78,7 +88,15 @@ impl Provider for AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Anthropic request failed: {}", e))?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    format!("Anthropic request timed out — check your internet connection")
+                } else if e.is_connect() {
+                    format!("Anthropic connection failed — check your internet connection and firewall ({}: {})", e.status().map(|s| s.as_u16()).unwrap_or(0), e)
+                } else {
+                    format!("Anthropic request failed: {}", e)
+                }
+            })?;
 
         let status = response.status();
         let response_json: serde_json::Value = response

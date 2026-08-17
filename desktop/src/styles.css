@@ -1528,3 +1528,57 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* QR Pair Panel */
+.qr-pair-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.qr-canvas-wrap {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-5) 0;
+}
+
+#qr-canvas {
+  border-radius: var(--radius-md);
+  background: #0E0E1C;
+}
+
+.qr-peer-id-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.qr-peer-id-row code {
+  flex: 1;
+}
+
+.qr-info {
+  font-size: 13px;
+  color: var(--interactive-muted);
+  margin-top: var(--space-2);
+}
+
+.qr-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-4);
+}
+
+.qr-countdown {
+  font-size: 12px;
+  color: var(--gold);
+  margin-top: var(--space-2);
+  text-align: center;
+}
+
+.qr-expired {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+}
