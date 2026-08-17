@@ -1,5 +1,6 @@
 use crate::agent::provider::{LlmMessage, LlmResponse, Provider, ToolDefinition};
 use async_trait::async_trait;
+use std::time::Duration;
 
 pub struct OllamaProvider {
     host: String,
@@ -11,11 +12,16 @@ pub struct OllamaProvider {
 impl OllamaProvider {
     pub fn new(host: String, model: String, max_tokens: u32) -> Self {
         let host = host.trim_end_matches('/').to_string();
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .read_timeout(Duration::from_secs(300))
+            .build()
+            .expect("failed to build HTTP client");
         Self {
             host,
             model,
             max_tokens,
-            client: reqwest::Client::new(),
+            client,
         }
     }
 
