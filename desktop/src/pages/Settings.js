@@ -55,6 +55,7 @@ export async function render(container) {
           <div class="peer-id-display">
             <code id="own-peer-id">${ownPeerId || 'Initializing...'}</code>
             <button class="btn-toolbar-action" id="copy-peer-id" ${!ownPeerId ? 'disabled' : ''}>Copy</button>
+            <button class="btn btn-sm btn-primary" id="pair-new-device" ${!ownPeerId ? 'disabled' : ''}>Pair (QR)</button>
           </div>
         </div>
         <div class="field-group" style="margin-top:var(--space-3)">
@@ -417,6 +418,11 @@ function setupEventHandlers(container, settings) {
         show('Failed to copy', 'error', 'top-right');
       }
     }
+  });
+
+  container.querySelector('#pair-new-device')?.addEventListener('click', async () => {
+    const { showQRPairModal } = await import('../components/QRPairPanel.js');
+    showQRPairModal(container);
   });
 
   ['poll-transfers', 'poll-health', 'minimize-tray'].forEach(id => {
