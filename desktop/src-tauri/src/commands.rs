@@ -515,6 +515,56 @@ pub fn launch_cli(app: AppHandle) -> Result<String, String> {
     Ok("CLI launched".into())
 }
 
+#[derive(serde::Serialize)]
+pub struct PairingPayload {
+    pub peer_id: String,
+    pub host: String,
+    pub port: u16,
+    pub rendezvous: String,
+    pub nickname: String,
+    pub pubkey: String,
+    pub session_token: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_pairing_qr_data(
+    p2p: P2PState<'_>,
+    session_token: Option<String>,
+) -> Result<PairingPayload, String> {
+    let module = p2p.as_ref().ok_or("P2P module not initialized")?;
+
+    let peer_id = module.peer_id();
+
+    let host = module
+        .external_addr()
+        .await
+        .unwrap_or_else(|| "0.0.0.0".into())
+        .split(':')
+        .next()
+        .unwrap_or("0.0.0.0")
+        .to_string();
+
+    let port = adtp_core::types::ADTP_DEFAULT_PORT;
+
+    let rendezvous = "udp://rendezvous.adtp.network:40004".to_string();
+
+    let nickname = dirs::home_dir()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "adtp-pc".to_string());
+
+    let pubkey = module.verifying_key_b64();
+
+    Ok(PairingPayload {
+        peer_id,
+        host,
+        port,
+        rendezvous,
+        nickname,
+        pubkey,
+        session_token,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use serde::Serialize;
