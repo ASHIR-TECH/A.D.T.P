@@ -140,12 +140,16 @@ async function sendMessage(container) {
   updateChatUI(container);
 
   try {
-    const response = await invoke('agent_send_message', { message: text });
+    const response = await Promise.race([
+      invoke('agent_send_message', { message: text }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Agent timed out after 30s')), 30000)),
+    ]);
     messages.push({ role: 'assistant', content: response, timestamp: Date.now() });
     agentState = 'active';
   } catch (err) {
     messages.push({ role: 'assistant', content: `Error: ${err}`, timestamp: Date.now() });
     agentState = 'error';
+    setTimeout(() => { agentState = 'active'; updateChatUI(container); }, 2000);
   }
   renderMessages(container);
   updateChatUI(container);
