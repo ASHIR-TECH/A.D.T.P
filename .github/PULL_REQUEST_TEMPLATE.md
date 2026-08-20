@@ -1,26 +1,23 @@
 # Pull Request
 
 ## Summary
-
-Explain what changed and why.
+Briefly list what you changed and why.
 
 ## Scope
 
-- [ ] Code
-- [ ] Tests
-- [ ] Documentation
-- [ ] Dependency update
-- [ ] Security-sensitive behavior
+- [ ] Code?
+- [ ] Tests?
+- [ ] Documentation?
+- [ ] Dependency update?
+- [ ] Security-sensitive behavior?
 
 ## Phase
 
-- [ ] Phase 0
-- [ ] Phase 1
-- [ ] Future phase scaffold only
+- [ ] Phase undefined  
 
 ## Validation
 
-Paste commands run:
+Before opening a pull request paste commands run for:
 
 ```bash
 cargo fmt --all
@@ -32,7 +29,7 @@ cargo audit
 
 ## Risk Notes
 
-Describe any risk to protocol compatibility, audit integrity, cryptography, config, or file writes.
+Please Describe any risk to protocol compatibility, or audit integrity, system cryptography, config, or file writes.
 
 ## Checklist
 
