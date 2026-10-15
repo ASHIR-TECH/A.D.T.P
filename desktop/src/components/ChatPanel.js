@@ -3,17 +3,22 @@ const { listen } = window.__TAURI__.event;
 
 let messages = [];
 let agentState = 'inactive';
+let agentLabel = 'Agent';
 
 export async function render(container) {
   try {
     const agents = await invoke('agent_list');
-    agentState = agents.some(a => a.enabled) ? 'active' : 'inactive';
+    const active = agents.find(a => a.enabled);
+    agentState = active ? 'active' : 'inactive';
+    // The auto-installed shared assistant gets its own label so users know
+    // when they're talking to the built-in AI rather than their own provider.
+    agentLabel = active && active.provider === 'base' ? 'ADTP AI' : 'Agent';
   } catch { agentState = 'inactive'; }
 
   container.innerHTML = `
     <div class="chat-panel">
       <div class="chat-header">
-        <span class="chat-title">Agent</span>
+        <span class="chat-title">${agentLabel}</span>
         <span class="chat-status">
           <span class="agent-dot ${agentState === 'active' ? 'active' : agentState === 'processing' ? 'processing motion-pulse' : 'inactive'}"></span>
           <span id="chat-status-text">${agentState === 'active' ? 'Ready' : agentState === 'processing' ? 'Thinking...' : 'Offline'}</span>
