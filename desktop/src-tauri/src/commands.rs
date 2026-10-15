@@ -508,6 +508,36 @@ pub async fn get_agent_status(agent: AgentState<'_>) -> Result<AgentStatusInfo, 
     })
 }
 
+/// Whether the built-in shared assistant ("Base AI") is installed and whether
+/// it has been permanently retired by the user adding their own provider keys.
+#[derive(serde::Serialize)]
+pub struct BaseAiStatusInfo {
+    pub installed: bool,
+    pub retired: bool,
+    pub active: bool,
+    pub name: Option<String>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_base_ai_status(agent: AgentState<'_>) -> Result<BaseAiStatusInfo, String> {
+    let mgr = agent.lock().await;
+    let agents = mgr.list_agents().await;
+    let entry = agents
+        .iter()
+        .find(|a| a.provider == adtp_peer_core::agent::base::BASE_PROVIDER);
+
+    Ok(BaseAiStatusInfo {
+        installed: entry.is_some(),
+        retired: mgr.base_ai_retired().await,
+        active: entry.map(|a| a.enabled).unwrap_or(false),
+        name: entry.map(|a| a.name.clone()),
+        provider: entry.map(|a| a.provider.clone()),
+        model: entry.map(|a| a.model.clone()),
+    })
+}
+
 #[tauri::command]
 pub fn launch_cli(app: AppHandle) -> Result<String, String> {
     // Reuse the tray's launch logic
@@ -515,54 +545,134 @@ pub fn launch_cli(app: AppHandle) -> Result<String, String> {
     Ok("CLI launched".into())
 }
 
+const PAIRING_QR_VALIDITY_SECS: i64 = 120;
+
+const DEFAULT_API_PORT: u16 = 40003;
+const DEFAULT_DESKTOP_NAME: &str = "adtp-pc";
+
+fn primary_non_loopback_ipv4() -> Option<String> {
+    let sock = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    sock.connect("8.8.8.8:53").ok()?;
+    let local = sock.local_addr().ok()?;
+    match local.ip() {
+        std::net::IpAddr::V4(v4) if !v4.is_loopback() => Some(v4.to_string()),
+        _ => None,
+    }
+}
+
+fn agent_api_url_from_env() -> String {
+    if let Ok(override_url) = std::env::var("ADTP_API_URL") {
+        let trimmed = override_url.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    let scheme = match std::env::var("ADTP_API_SCHEME").ok().as_deref() {
+        Some(s) if s.eq_ignore_ascii_case("https") => "https",
+        _ => "http",
+    };
+    let port = std::env::var("ADTP_API_PORT")
+        .ok()
+        .and_then(|p| p.trim().parse::<u16>().ok())
+        .unwrap_or(DEFAULT_API_PORT);
+    let ip = primary_non_loopback_ipv4().unwrap_or_else(|| "127.0.0.1".to_string());
+    format!("{}://{}:{}", scheme, ip, port)
+}
+
+fn agent_api_token_from_env() -> Result<String, String> {
+    match std::env::var("ADTP_API_TOKEN") {
+        Ok(token) if token.trim().len() >= 32 => Ok(token.trim().to_string()),
+        Ok(_) => Err(
+            "ADTP_API_TOKEN is shorter than 32 characters. Set the same token adtp-api runs with."
+                .to_string(),
+        ),
+        Err(_) => Err(
+            "ADTP_API_TOKEN is not set. Set the same token adtp-api runs with.".to_string(),
+        ),
+    }
+}
+
+/// QR bearer token: env `ADTP_API_TOKEN` wins, then the token saved in the
+/// desktop Settings store. The stored token is the same value this app's own
+/// gateway poller authenticates with — so when the desktop UI is working
+/// against adtp-api, the QR is guaranteed to carry a token the gateway accepts
+/// even if the GUI process was launched without the env var exported.
+fn resolve_agent_api_token(stored_token: Option<String>) -> Result<String, String> {
+    match agent_api_token_from_env() {
+        ok @ Ok(_) => ok,
+        Err(env_err) => match stored_token {
+            Some(stored) if stored.trim().len() >= 32 => Ok(stored.trim().to_string()),
+            _ => Err(env_err),
+        },
+    }
+}
+
+fn build_pairing_payload(
+    desktop_id: String,
+    desktop_name: String,
+    stored_token: Option<String>,
+    validity_secs: Option<i64>,
+) -> Result<PairingPayload, String> {
+    let agent_api_url = agent_api_url_from_env();
+    let agent_api_token = resolve_agent_api_token(stored_token)?;
+
+    let now = chrono::Utc::now();
+    let validity = validity_secs
+        .unwrap_or(PAIRING_QR_VALIDITY_SECS)
+        .clamp(10, 3600);
+
+    Ok(PairingPayload {
+        version: 1,
+        desktop_id,
+        desktop_name,
+        pairing_token: settings::generate_token(),
+        // Millisecond `Z` timestamps are the canonical ES date-time format.
+        // MARS runs on Hermes, whose Date.parse is strictly spec-shaped —
+        // nanosecond fractions (`+00:00` with 9 digits) are a known risk
+        // there, and a failed `expiresAt` parse makes every scan look expired.
+        issued_at: now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        expires_at: (now + chrono::Duration::seconds(validity))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        relay_url: "wss://relay.ashir.world:443/adtp".to_string(),
+        agent_api_url,
+        agent_api_token,
+    })
+}
+
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PairingPayload {
-    pub peer_id: String,
-    pub host: String,
-    pub port: u16,
-    pub rendezvous: String,
-    pub nickname: String,
-    pub pubkey: String,
-    pub session_token: Option<String>,
+    pub version: u32,
+    pub desktop_id: String,
+    pub desktop_name: String,
+    pub pairing_token: String,
+    pub issued_at: String,
+    pub expires_at: String,
+    pub relay_url: String,
+    pub agent_api_url: String,
+    pub agent_api_token: String,
 }
 
 #[tauri::command]
 pub async fn get_pairing_qr_data(
+    app: AppHandle,
     p2p: P2PState<'_>,
-    session_token: Option<String>,
+    validity_secs: Option<i64>,
 ) -> Result<PairingPayload, String> {
     let module = p2p.as_ref().ok_or("P2P module not initialized")?;
 
-    let peer_id = module.peer_id();
+    let desktop_name = match hostname::get() {
+        Ok(name) => name.to_string_lossy().to_string(),
+        Err(_) => DEFAULT_DESKTOP_NAME.to_string(),
+    };
 
-    let host = module
-        .external_addr()
-        .await
-        .unwrap_or_else(|| "0.0.0.0".into())
-        .split(':')
-        .next()
-        .unwrap_or("0.0.0.0")
-        .to_string();
-
-    let port = adtp_core::types::ADTP_DEFAULT_PORT;
-
-    let rendezvous = "udp://rendezvous.adtp.network:40004".to_string();
-
-    let nickname = dirs::home_dir()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-        .unwrap_or_else(|| "adtp-pc".to_string());
-
-    let pubkey = module.verifying_key_b64();
-
-    Ok(PairingPayload {
-        peer_id,
-        host,
-        port,
-        rendezvous,
-        nickname,
-        pubkey,
-        session_token,
-    })
+    build_pairing_payload(
+        module.peer_id(),
+        desktop_name,
+        settings::load_api_token(&app),
+        validity_secs,
+    )
 }
 
 #[cfg(test)]
@@ -595,5 +705,198 @@ mod tests {
         let json = serde_json::to_value(&r).unwrap();
         assert!(json["path"].is_null());
         assert_eq!(json["cancelled"], true);
+    }
+
+    fn with_env<K: AsRef<std::ffi::OsStr>>(key: K, value: &str, f: impl FnOnce()) {
+        let key = key.as_ref();
+        let prev = std::env::var_os(key);
+        std::env::set_var(key, value);
+        f();
+        match prev {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
+
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn test_agent_api_url_override() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        with_env("ADTP_API_URL", "http://192.168.1.50:9000", || {
+            assert_eq!(super::agent_api_url_from_env(), "http://192.168.1.50:9000");
+        });
+    }
+
+    #[test]
+    fn test_agent_api_url_scheme_and_port() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_url = std::env::var_os("ADTP_API_URL");
+        std::env::remove_var("ADTP_API_URL");
+        let prev_scheme = std::env::var_os("ADTP_API_SCHEME");
+        let prev_port = std::env::var_os("ADTP_API_PORT");
+        std::env::set_var("ADTP_API_SCHEME", "https");
+        std::env::set_var("ADTP_API_PORT", "40005");
+        let url = super::agent_api_url_from_env();
+        std::env::remove_var("ADTP_API_SCHEME");
+        std::env::remove_var("ADTP_API_PORT");
+        if let Some(v) = prev_scheme {
+            std::env::set_var("ADTP_API_SCHEME", v);
+        }
+        if let Some(v) = prev_port {
+            std::env::set_var("ADTP_API_PORT", v);
+        }
+        if let Some(v) = prev_url {
+            std::env::set_var("ADTP_API_URL", v);
+        }
+        assert!(url.starts_with("https://"), "unexpected url: {url}");
+        assert!(url.ends_with(":40005"), "unexpected url: {url}");
+    }
+
+    #[test]
+    fn test_agent_api_token_validation() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("ADTP_API_TOKEN");
+        std::env::remove_var("ADTP_API_TOKEN");
+        assert!(super::agent_api_token_from_env().is_err());
+        std::env::set_var("ADTP_API_TOKEN", "short");
+        assert!(super::agent_api_token_from_env().is_err());
+        std::env::set_var("ADTP_API_TOKEN", "abcdefghijklmnopqrstuvwxyz0123456789");
+        assert_eq!(
+            super::agent_api_token_from_env().unwrap(),
+            "abcdefghijklmnopqrstuvwxyz0123456789"
+        );
+        if let Some(v) = prev {
+            std::env::set_var("ADTP_API_TOKEN", v);
+        }
+    }
+
+    #[test]
+    fn test_pairing_payload_serializes_agent_fields() {
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Mini {
+            agent_api_url: String,
+            agent_api_token: String,
+        }
+        let v = serde_json::to_value(Mini {
+            agent_api_url: "http://10.0.0.5:40003".into(),
+            agent_api_token: "x".repeat(32),
+        })
+        .unwrap();
+        assert_eq!(v["agentApiUrl"], "http://10.0.0.5:40003");
+        assert_eq!(v["agentApiToken"], "x".repeat(32));
+    }
+
+    #[test]
+    fn test_resolve_agent_api_token_env_wins_then_stored() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("ADTP_API_TOKEN");
+
+        let env_token = format!("env-{}", "e".repeat(36));
+        let stored_token = format!("stored-{}", "s".repeat(36));
+
+        std::env::set_var("ADTP_API_TOKEN", &env_token);
+        assert_eq!(
+            super::resolve_agent_api_token(Some(stored_token.clone())).unwrap(),
+            env_token
+        );
+
+        std::env::remove_var("ADTP_API_TOKEN");
+        assert_eq!(
+            super::resolve_agent_api_token(Some(stored_token.clone())).unwrap(),
+            stored_token
+        );
+
+        // A short/blank stored token never falls through silently.
+        assert!(super::resolve_agent_api_token(Some("short".into())).is_err());
+        assert!(super::resolve_agent_api_token(None).is_err());
+
+        match prev {
+            Some(v) => std::env::set_var("ADTP_API_TOKEN", v),
+            None => std::env::remove_var("ADTP_API_TOKEN"),
+        }
+    }
+
+    /// The payload must match the mobile parser exactly (MARS
+    /// `src/pairing/parsePairingPayload.ts`): exact camelCase key set,
+    /// `version: 1`, and canonical ES timestamps Hermes can parse.
+    #[test]
+    fn test_build_pairing_payload_matches_mobile_schema() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_token = std::env::var_os("ADTP_API_TOKEN");
+        let prev_url = std::env::var_os("ADTP_API_URL");
+        let api_url = std::env::var("ADTP_API_URL")
+            .unwrap_or_else(|_| "http://10.0.0.7:40003".to_string());
+        std::env::set_var("ADTP_API_TOKEN", "z".repeat(40));
+        std::env::set_var("ADTP_API_URL", &api_url);
+
+        let payload = super::build_pairing_payload(
+            "a".repeat(64),
+            "test-pc".into(),
+            Some("unused-stored".into()),
+            Some(3600),
+        )
+        .unwrap();
+        let json = serde_json::to_value(&payload).unwrap();
+
+        let mut keys: Vec<String> = json.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            vec![
+                "agentApiToken",
+                "agentApiUrl",
+                "desktopId",
+                "desktopName",
+                "expiresAt",
+                "issuedAt",
+                "pairingToken",
+                "relayUrl",
+                "version",
+            ]
+        );
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["desktopId"].as_str().unwrap().len(), 64);
+        assert_eq!(json["agentApiUrl"], api_url.as_str());
+        assert_eq!(json["agentApiToken"], "z".repeat(40));
+        assert!(json["relayUrl"].as_str().unwrap().starts_with("wss://"));
+
+        // `YYYY-MM-DDTHH:MM:SS.mmmZ` — exactly 3 fraction digits + Z.
+        for field in ["issuedAt", "expiresAt"] {
+            let s = json[field].as_str().unwrap();
+            assert_eq!(s.len(), 24, "{field} not canonical ES format: {s}");
+            assert!(s.ends_with('Z'), "{field} must end in Z: {s}");
+            assert_eq!(s.as_bytes()[19], b'.', "{field} must have .mmm: {s}");
+            assert!(
+                s.chars()
+                    .all(|c| c.is_ascii_digit() || matches!(c, 'T' | ':' | '.' | 'Z' | '-')),
+                "{field} has unexpected chars: {s}"
+            );
+        }
+
+        // Expiry must be in the future and honour the requested validity.
+        let issued = chrono::DateTime::parse_from_rfc3339(json["issuedAt"].as_str().unwrap())
+            .unwrap()
+            .timestamp();
+        let expires = chrono::DateTime::parse_from_rfc3339(json["expiresAt"].as_str().unwrap())
+            .unwrap()
+            .timestamp();
+        assert_eq!(expires - issued, 3600);
+
+        // E2E harness hook: print the real serialized payload so the MARS
+        // parser + a live adtp-api can be exercised against it (node harness).
+        if std::env::var("ADTP_E2E_EMIT").is_ok() {
+            println!("ADTP_QR_PAYLOAD={}", serde_json::to_string(&payload).unwrap());
+        }
+
+        match prev_token {
+            Some(v) => std::env::set_var("ADTP_API_TOKEN", v),
+            None => std::env::remove_var("ADTP_API_TOKEN"),
+        }
+        match prev_url {
+            Some(v) => std::env::set_var("ADTP_API_URL", v),
+            None => std::env::remove_var("ADTP_API_URL"),
+        }
     }
 }

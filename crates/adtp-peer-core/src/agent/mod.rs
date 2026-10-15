@@ -1,5 +1,6 @@
 pub mod anthropic;
 pub mod artifact_writer;
+pub mod base;
 pub mod config;
 pub mod multi_config;
 pub mod ollama;
@@ -11,6 +12,7 @@ pub mod runtime;
 pub mod task_router;
 
 pub use artifact_writer::ArtifactWriter;
+pub use base::BaseProvider;
 pub use config::AgentConfig;
 pub use permissions::PermissionStore;
 pub use provider::Provider;

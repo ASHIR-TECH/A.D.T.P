@@ -131,21 +131,21 @@ jobs:
       - name: Generate release notes
         run: |
           cat > notes.md <<'EOF'
-          ## ADTP Desktop
+          ## Packages for ATDP Desktop.
 
-          ### Downloads
+          ### Main Downloads Section
 
-          Attached to this release (scroll down):
+          Attached to this release is the packages for various OS. Note most builds are untested and the developer would need to run additional tests before releasing it to the general public via the main download page or releases.
 
-          **Linux**
+          **For Linux**
           - ADTP Desktop (.deb)
           - ADTP Desktop (.rpm)
           - ADTP Desktop (AppImage)
 
-          **Windows**
+          **For Windows**
           - ADTP Desktop (.msi)
 
-          **macOS**
+          **For macOS**
           - ADTP Desktop (.dmg)
           EOF
 

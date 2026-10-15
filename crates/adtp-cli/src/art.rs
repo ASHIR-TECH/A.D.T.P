@@ -9,7 +9,7 @@ pub const ASCII_ART: &str = r"
 ░░░░░   ░░░░░ ░░ ░░░░░░░░░░   ░░    ░░░░░    ░░ ░░░░░       
 ";
 
-pub const VERSION: &str = "v0.1.0";
+pub const VERSION: &str = "v0.1.3";
 
 pub fn print_art() {
     let gold = if supports_color::on_cached(supports_color::Stream::Stdout)

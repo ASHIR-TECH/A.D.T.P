@@ -32,7 +32,6 @@ pub struct P2PModule {
     peer_id_hex: String,
     transfer_history: Arc<Mutex<Vec<TransferRecord>>>,
     nat_type: Arc<Mutex<NatType>>,
-    external_addr: Arc<Mutex<Option<String>>>,
 }
 
 impl P2PModule {
@@ -63,7 +62,6 @@ impl P2PModule {
             peer_id_hex,
             transfer_history: Arc::new(Mutex::new(Vec::new())),
             nat_type: Arc::new(Mutex::new(NatType::Unknown)),
-            external_addr: Arc::new(Mutex::new(None)),
         });
 
         module.register_with_rendezvous().await;
@@ -83,7 +81,6 @@ impl P2PModule {
             external_addr: None,
         });
         *self.nat_type.lock().await = nat.nat_type;
-        *self.external_addr.lock().await = nat.external_addr.clone();
 
         match RendezvousClient::connect("rendezvous.adtp.network", 40004).await {
             Ok(client) => {
@@ -125,7 +122,6 @@ impl P2PModule {
                         nat_type: NatType::Unknown,
                         external_addr: None,
                     });
-                    *self.external_addr.lock().await = nat.external_addr.clone();
                     if client
                         .register(
                             &self.identity.peer_id,
@@ -293,15 +289,6 @@ impl P2PModule {
     pub async fn list_connected_peers(&self) -> Vec<String> {
         let conns = self.connections.lock().await;
         conns.keys().cloned().collect()
-    }
-
-    pub fn verifying_key_b64(&self) -> String {
-        use base64::Engine;
-        base64::engine::general_purpose::STANDARD.encode(self.identity.verifying_key.to_bytes())
-    }
-
-    pub async fn external_addr(&self) -> Option<String> {
-        self.external_addr.lock().await.clone()
     }
 
     pub async fn list_peers_text(&self) -> Result<String, String> {

@@ -12,7 +12,7 @@ from adtp_api.config import settings
 from adtp_api.errors import register_error_handlers
 from adtp_api.middleware.auth import register_auth_middleware
 from adtp_api.middleware.ratelimit import register_rate_limit
-from adtp_api.routers import audit, health, sessions, tasks, transfers, watchers
+from adtp_api.routers import agent, audit, health, sessions, tasks, transfers, watchers
 
 
 def create_app() -> FastAPI:
@@ -47,6 +47,7 @@ def create_app() -> FastAPI:
     app.state.audit_db = audit_db
     app.state.client_socket = client_socket
     app.state.server_socket = server_socket
+    app.state.agent_socket = os.getenv("ADTP_AGENT_SOCKET", settings.agent_socket)
 
     register_error_handlers(app)
     register_auth_middleware(app)
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(watchers.router)
     app.include_router(audit.router)
     app.include_router(tasks.router)
+    app.include_router(agent.router)
 
     return app
 
