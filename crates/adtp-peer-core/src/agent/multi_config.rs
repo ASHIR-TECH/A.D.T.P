@@ -31,6 +31,11 @@ impl AgentEntry {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentsConfig {
     pub agents: Vec<AgentEntry>,
+    /// Set once the user configures a provider of their own. The shared Base AI
+    /// is then retired for good — matching the "once you add your keys you
+    /// can't use mine again" rule.
+    #[serde(default)]
+    pub base_ai_retired: bool,
 }
 
 impl AgentsConfig {
@@ -41,7 +46,10 @@ impl AgentsConfig {
     pub fn load() -> Result<Self, String> {
         let path = Self::path().ok_or("Cannot determine config directory")?;
         if !path.exists() {
-            return Ok(Self { agents: vec![] });
+            return Ok(Self {
+                agents: vec![],
+                ..Default::default()
+            });
         }
         let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
         toml::from_str(&content).map_err(|e| e.to_string())
@@ -67,7 +75,10 @@ impl AgentsConfig {
         }
 
         if !old_path.exists() {
-            return Ok(Self { agents: vec![] });
+            return Ok(Self {
+                agents: vec![],
+                ..Default::default()
+            });
         }
 
         let content = std::fs::read_to_string(&old_path).map_err(|e| e.to_string())?;
@@ -87,6 +98,7 @@ impl AgentsConfig {
 
         let config = Self {
             agents: vec![entry],
+            ..Default::default()
         };
         config.save()?;
         let _ = std::fs::remove_file(&old_path);
