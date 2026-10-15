@@ -100,7 +100,7 @@ Phase 4 exposes the ADTP transfer system as a FastAPI REST API. It reads from th
 | Env Variable | Default | Description |
 |---|---|---|
 | `ADTP_API_PORT` | `40003` | Server port |
-| `ADTP_API_HOST` | `127.0.0.1` | Bind address |
+| `ADTP_API_HOST` | `127.0.0.1` | Bind address. Set `0.0.0.0` to expose the gateway on the LAN (required for QR mobile pairing) |
 | `ADTP_API_TOKEN` | _(required)_ | Bearer token (≥ 32 chars) |
 | `ADTP_CLIENT_SOCKET` | `/tmp/adtp-client.sock` | Phase 2 client socket path |
 | `ADTP_SERVER_SOCKET` | `/tmp/adtp-server.sock` | Phase 2 server socket path |
@@ -164,6 +164,11 @@ FastAPI (Uvicorn)
 ```bash
 # Set required token
 export ADTP_API_TOKEN="your-32-char-minimum-token-here"
+
+# Bind to all interfaces so the MARS mobile companion (which reads the QR
+# pairing payload) can reach the gateway over the LAN. Keep 127.0.0.1 for
+# loopback-only setups.
+export ADTP_API_HOST="0.0.0.0"
 
 # Run with uvicorn (from package root)
 uv run --directory packages/adtp-api adtp-api
