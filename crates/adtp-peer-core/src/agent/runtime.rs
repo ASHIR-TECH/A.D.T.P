@@ -1,4 +1,5 @@
 use crate::agent::anthropic::AnthropicProvider;
+use crate::agent::base::BaseProvider;
 use crate::agent::config::AgentConfig;
 use crate::agent::ollama::OllamaProvider;
 use crate::agent::openai::OpenAiProvider;
@@ -39,6 +40,23 @@ pub struct ConversationEntry {
     pub content: String,
     pub timestamp: i64,
     pub tool_calls: Vec<String>,
+    /// Full detail of every tool invocation the assistant made in this turn
+    /// (id, name, status, arguments, result). Names-only `tool_calls` is kept
+    /// for the desktop UI; this lets the mobile companion render file tiles
+    /// (send_file params) and per-step results.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_details: Vec<ToolCallDetail>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolCallDetail {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    #[serde(default)]
+    pub params: serde_json::Value,
+    #[serde(default)]
+    pub result: Option<String>,
 }
 
 impl AgentRuntime {
@@ -188,6 +206,7 @@ impl AgentRuntime {
                 }
                 Box::new(provider)
             }
+            "base" => Box::new(BaseProvider::new()),
             other => return Err(format!("Unknown provider: {}", other)),
         };
 
@@ -207,6 +226,14 @@ impl AgentRuntime {
 
     pub async fn state(&self) -> AgentState {
         self.state.lock().await.clone()
+    }
+
+    /// Test-only: install a provider without going through `activate()`, so the
+    /// tool loop can be exercised without live API credentials.
+    #[cfg(test)]
+    pub async fn set_provider_for_test(&self, provider: Box<dyn Provider>) {
+        *self.provider.lock().await = Some(provider);
+        *self.state.lock().await = AgentState::Active;
     }
 
     pub fn config(&self) -> &AgentConfig {
@@ -232,6 +259,7 @@ impl AgentRuntime {
             content: content.to_string(),
             timestamp: chrono::Utc::now().timestamp(),
             tool_calls: vec![],
+            tool_details: vec![],
         });
 
         let executor = self.executor.clone();
@@ -261,28 +289,52 @@ impl AgentRuntime {
             let has_tool_calls = !response.tool_calls.is_empty();
 
             let mut hist = self.conversation.lock().await;
+            let tool_details: Vec<ToolCallDetail> = response
+                .tool_calls
+                .iter()
+                .map(|t| ToolCallDetail {
+                    id: t.id.clone(),
+                    name: t.name.clone(),
+                    status: "running".into(),
+                    params: t.arguments.clone(),
+                    result: None,
+                })
+                .collect();
             hist.push(ConversationEntry {
                 role: "assistant".into(),
                 content: response.content.clone(),
                 timestamp: chrono::Utc::now().timestamp(),
                 tool_calls: response.tool_calls.iter().map(|t| t.name.clone()).collect(),
+                tool_details,
             });
 
             if !has_tool_calls {
                 return Ok(response.content);
             }
 
-            for tc in &response.tool_calls {
+            let assistant_idx = hist.len() - 1;
+            for (detail_idx, tc) in response.tool_calls.iter().enumerate() {
                 let result = self.execute_tool(tc, &executor).await;
                 let result_str = match &result {
                     Ok(s) => s.clone(),
                     Err(e) => format!("Error: {}", e),
                 };
+                if let Some(entry) = hist.get_mut(assistant_idx) {
+                    if let Some(detail) = entry.tool_details.get_mut(detail_idx) {
+                        detail.status = if result.is_ok() {
+                            "completed".into()
+                        } else {
+                            "failed".into()
+                        };
+                        detail.result = Some(result_str.clone());
+                    }
+                }
                 hist.push(ConversationEntry {
                     role: "user".into(),
                     content: format!("Tool '{}' returned:\n{}", tc.name, result_str),
                     timestamp: chrono::Utc::now().timestamp(),
                     tool_calls: vec![],
+                    tool_details: vec![],
                 });
             }
         }
@@ -604,4 +656,198 @@ fn glob_match(pattern: &str, name: &str) -> bool {
         return name.ends_with(suffix);
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    /// Returns pre-scripted responses in order; lets us drive the tool loop
+    /// (tool call, then final answer) without any live provider.
+    struct ScriptedProvider {
+        responses: StdMutex<Vec<LlmResponse>>,
+    }
+
+    #[async_trait]
+    impl Provider for ScriptedProvider {
+        async fn send_message(
+            &self,
+            _messages: &[LlmMessage],
+            _system_prompt: &str,
+            _tools: &[ToolDefinition],
+        ) -> Result<LlmResponse, String> {
+            let mut responses = self.responses.lock().unwrap();
+            if responses.is_empty() {
+                return Err("no more scripted responses".into());
+            }
+            Ok(responses.remove(0))
+        }
+
+        fn provider_name(&self) -> &str {
+            "scripted"
+        }
+
+        fn model_name(&self) -> &str {
+            "scripted-1"
+        }
+    }
+
+    struct RecordingExecutor {
+        sent: StdMutex<Vec<(String, String)>>,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl ToolExecutor for RecordingExecutor {
+        async fn send_file(&self, file_path: &str, peer_id: &str) -> Result<String, String> {
+            self.sent
+                .lock()
+                .unwrap()
+                .push((file_path.to_string(), peer_id.to_string()));
+            if self.fail {
+                Err("peer offline".into())
+            } else {
+                Ok(format!("queued {file_path} -> {peer_id}"))
+            }
+        }
+
+        async fn list_peers(&self) -> Result<String, String> {
+            Ok("[\"peer-a\"]".into())
+        }
+
+        async fn get_own_peer_id(&self) -> Result<String, String> {
+            Ok("self-peer-id".into())
+        }
+
+        async fn list_transfers(&self, _status: Option<&str>) -> Result<String, String> {
+            Ok("[]".into())
+        }
+    }
+
+    fn response(content: &str, tool_calls: Vec<ToolCall>) -> LlmResponse {
+        LlmResponse {
+            content: content.into(),
+            tool_calls,
+            stop_reason: "end_turn".into(),
+        }
+    }
+
+    fn send_file_call(path: &str, peer: &str) -> ToolCall {
+        ToolCall {
+            id: "call-1".into(),
+            name: "send_file".into(),
+            arguments: serde_json::json!({"file_path": path, "peer_id": peer}),
+        }
+    }
+
+    /// Builds a runtime whose permissions allow exactly `allowed_dir`, with the
+    /// given executor.
+    fn runtime_with(
+        responses: Vec<LlmResponse>,
+        allowed_dir: &std::path::Path,
+        executor: Arc<RecordingExecutor>,
+    ) -> AgentRuntime {
+        let mut runtime = AgentRuntime::new(
+            AgentConfig::default(),
+            PermissionConfig {
+                allowed_paths: vec![allowed_dir.to_string_lossy().into_owned()],
+                ..Default::default()
+            },
+        );
+        runtime.set_tool_executor(executor);
+        runtime.provider = Arc::new(Mutex::new(Some(Box::new(ScriptedProvider {
+            responses: StdMutex::new(responses),
+        }))));
+        runtime
+    }
+
+    fn temp_file(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "adtp-agent-runtime-test-{}-{}",
+            std::process::id(),
+            name
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("report.txt");
+        std::fs::write(&file, b"hello").unwrap();
+        (dir, file)
+    }
+
+    #[tokio::test]
+    async fn test_send_message_records_tool_call_params_and_result() {
+        let (dir, file) = temp_file("ok");
+        let executor = Arc::new(RecordingExecutor {
+            sent: StdMutex::new(vec![]),
+            fail: false,
+        });
+        let path = file.to_string_lossy().into_owned();
+        let runtime = runtime_with(
+            vec![
+                response("Sending the file.", vec![send_file_call(&path, "peer-42")]),
+                response("Done — file is on its way.", vec![]),
+            ],
+            &dir,
+            executor.clone(),
+        );
+
+        let text = runtime.send_message("send report.txt to peer-42").await.unwrap();
+        assert_eq!(text, "Done — file is on its way.");
+
+        // The executor really ran with the model's arguments.
+        let sent = executor.sent.lock().unwrap().clone();
+        assert_eq!(sent, vec![(path.clone(), "peer-42".to_string())]);
+
+        // The assistant turn carries full detail for the mobile companion.
+        let conversation = runtime.conversation().await;
+        let assistant = conversation
+            .iter()
+            .find(|e| e.role == "assistant" && !e.tool_details.is_empty())
+            .expect("assistant entry with tool details");
+        assert_eq!(assistant.tool_calls, vec!["send_file".to_string()]);
+        let detail = &assistant.tool_details[0];
+        assert_eq!(detail.id, "call-1");
+        assert_eq!(detail.name, "send_file");
+        assert_eq!(detail.status, "completed");
+        assert_eq!(detail.params["file_path"], path.as_str());
+        assert_eq!(detail.params["peer_id"], "peer-42");
+        assert!(detail
+            .result
+            .as_deref()
+            .unwrap()
+            .contains("queued"));
+
+        // Tool details survive the JSON round-trip used by the IPC socket.
+        let json = serde_json::to_value(&conversation).unwrap();
+        assert_eq!(json[1]["tool_details"][0]["params"]["peer_id"], "peer-42");
+    }
+
+    #[tokio::test]
+    async fn test_send_message_marks_failed_tool_call() {
+        let (dir, file) = temp_file("fail");
+        let executor = Arc::new(RecordingExecutor {
+            sent: StdMutex::new(vec![]),
+            fail: true,
+        });
+        let path = file.to_string_lossy().into_owned();
+        let runtime = runtime_with(
+            vec![
+                response("", vec![send_file_call(&path, "peer-42")]),
+                response("Sorry, that failed.", vec![]),
+            ],
+            &dir,
+            executor,
+        );
+
+        runtime.send_message("send report.txt").await.unwrap();
+
+        let conversation = runtime.conversation().await;
+        let detail = conversation
+            .iter()
+            .flat_map(|e| e.tool_details.iter())
+            .next()
+            .expect("tool detail");
+        assert_eq!(detail.status, "failed");
+        assert!(detail.result.as_deref().unwrap().contains("peer offline"));
+    }
 }
