@@ -1,3 +1,4 @@
+mod agent_ipc;
 mod agent_manager;
 mod commands;
 mod p2p;
@@ -55,7 +56,33 @@ pub fn run() {
                 );
             }
             app.manage::<Option<Arc<P2PModule>>>(p2p_option);
+
+            // Restore enabled agents so chat works immediately after a restart
+            // (this process is the only host of the embedded agent).
+            let agent_mgr_restore: Arc<Mutex<AgentManager>> =
+                app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
+            p2p_rt.block_on(async {
+                let mgr = agent_mgr_restore.lock().await;
+                // Install the built-in shared assistant for users without keys,
+                // or retire it for good if they have their own.
+                if let Err(error) = mgr.ensure_base_ai().await {
+                    tracing::warn!("base AI setup failed: {error}");
+                }
+                mgr.activate_enabled().await;
+            });
+
             std::mem::forget(p2p_rt); // keep runtime alive for background tasks (accept loop, etc.)
+
+            // Expose the embedded agent to the co-located adtp-api gateway on
+            // its own local socket (the agent lives in this process, not in
+            // the adtp-client daemon).
+            let agent_mgr_ipc: Arc<Mutex<AgentManager>> =
+                app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = agent_ipc::start_agent_ipc_listener(agent_mgr_ipc).await {
+                    tracing::warn!("agent IPC listener stopped: {error}");
+                }
+            });
 
             let state: SharedState = app.state::<SharedState>().inner().clone();
             let handle = app.handle().clone();
@@ -159,6 +186,7 @@ pub fn run() {
             commands::get_connection_status,
             commands::get_own_nat_type,
             commands::get_agent_status,
+            commands::get_base_ai_status,
             commands::list_peers,
             commands::send_file_to_peer,
             commands::add_peer,
