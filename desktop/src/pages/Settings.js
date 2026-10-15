@@ -38,6 +38,11 @@ export async function render(container) {
     agentStatus = await invoke('get_agent_status');
   } catch {}
 
+  let baseAiStatus = null;
+  try {
+    baseAiStatus = await invoke('get_base_ai_status');
+  } catch {}
+
   let peers = [];
   try {
     peers = await invoke('list_peers');
@@ -187,6 +192,7 @@ adtp                     &mdash; enter REPL mode
           <h3>Agents</h3>
           <button class="btn btn-sm btn-primary" id="add-agent">+ Add Agent</button>
         </div>
+        <p class="settings-hint">${sharedAiHint(baseAiStatus)}</p>
         <div id="agent-list">
           ${agents.length === 0 ? `
           <div class="settings-empty">
@@ -194,20 +200,25 @@ adtp                     &mdash; enter REPL mode
             <div class="settings-empty-title">No agents configured</div>
             <div class="settings-empty-text">Click 'Add Agent' to add your first one</div>
           </div>
-          ` : agents.map(a => `
-          <div class="agent-item" data-id="${a.id}">
+          ` : agents.map(a => {
+            const isBase = a.provider === 'base';
+            return `
+          <div class="agent-item${isBase ? ' agent-item-shared' : ''}" data-id="${a.id}">
             <img class="agent-item-icon" src="${providerIcon(a.provider)}" alt="${escHtml(a.provider)}" />
             <div class="agent-item-info">
-              <div class="agent-item-name">${escHtml(a.name)}</div>
-              <div class="agent-item-detail">${escHtml(a.provider)} · ${escHtml(a.model)}${a.ollama_host ? ' · ' + escHtml(a.ollama_host) : ''}</div>
+              <div class="agent-item-name">${escHtml(a.name)}${isBase ? ' <span class="agent-shared-badge">Shared</span>' : ''}</div>
+              <div class="agent-item-detail">${isBase
+                ? 'Built-in assistant · no key needed'
+                : `${escHtml(a.provider)} · ${escHtml(a.model)}${a.ollama_host ? ' · ' + escHtml(a.ollama_host) : ''}`}</div>
             </div>
             <label class="agent-toggle">
               <input type="checkbox" class="agent-toggle-input" ${a.enabled ? 'checked' : ''} />
               <span class="toggle-slider"></span>
             </label>
-            <button class="agent-remove-btn" title="Remove agent">&times;</button>
+            ${isBase ? '' : '<button class="agent-remove-btn" title="Remove agent">&times;</button>'}
           </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       </div>
 
@@ -256,7 +267,23 @@ function providerIcon(provider) {
   if (p.includes('openai') || p.includes('gpt')) return 'icons/chatgpt.jpg';
   if (p.includes('anthropic') || p.includes('claude')) return 'icons/claude-color.svg';
   if (p.includes('ollama')) return 'icons/ollama.svg';
+  if (p === 'base') return 'icons/Icon.png';
   return 'icons/openai-color.svg';
+}
+
+/**
+ * Explains the shared "Base AI" / bring-your-own-key rule in the Agents card.
+ * The shared assistant is on out of the box; adding your own provider keys
+ * retires it permanently.
+ */
+function sharedAiHint(status) {
+  if (status && status.installed) {
+    return 'The shared assistant is on. Add your own agent to use your own API keys — doing so retires the shared assistant for good.';
+  }
+  if (status && status.retired) {
+    return "The shared assistant is retired because you added your own API keys. You're using your own providers.";
+  }
+  return 'Add an agent (OpenAI, Claude, or Ollama) to chat with the AI.';
 }
 
 function setupEventHandlers(container, settings) {
