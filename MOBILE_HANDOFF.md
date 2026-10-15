@@ -169,6 +169,7 @@ NAT types detected: `open`, `full_cone`, `port_restricted`, `symmetric`, `cgnat`
 
 ### 7.1 Providers (`crates/adtp-peer-core/src/agent/`)
 - `openai.rs`, `anthropic.rs`, `ollama.rs` (local models), behind a common `provider.rs` trait.
+- `base.rs` — the built-in **shared assistant** ("Base AI"): the same Groq-backed `qwen-chat` Supabase edge function the MARS mobile app uses as its quick-response fallback. It needs no user key (the desktop self-provisions an anonymous Supabase session; the real provider key stays server-side) and is text-only (no tool calls). It is auto-installed as an agent entry (`id` `base-ai`, `provider` `base`, `model` `mars-base`) **only when the user has no provider of their own**; adding any own provider retires it permanently (`agents.toml` → `base_ai_retired = true`). So `GET /agent/status` and `completed` agent messages can report `provider: "base"` / `model: "mars-base"` — phones should label it generically (e.g. "Shared AI") and must not assume tool support for it. Endpoint/keys overridable via `ADTP_BASE_AI_URL`, `ADTP_BASE_AI_SUPABASE_URL`, `ADTP_BASE_AI_KEY`.
 
 ### 7.2 Tool loop
 `AgentRuntime` runs the agent loop capped at **max 10 iterations** (`runtime.rs`). Each iteration: observe tool results -> decide next tool call -> execute -> return, until final answer.
@@ -217,11 +218,14 @@ Owns the QUIC endpoint, transfer queue (`queue.rs`), file receiver (`receiver.rs
 
 ## 9. REST API (`packages/adtp-api`, Python FastAPI)
 
-- Routes: `/api/v1/{health, ready, queue, transfers, audit, watchers, sessions, tasks}`.
+- Routes: `/api/v1/{health, ready, queue, transfers, audit, watchers, sessions, tasks, agent/*}`.
+- Agent routes (used by the mobile pairing flow): `GET /api/v1/agent/status`, `POST /api/v1/agent/message` (body `{"message","conversation_id"?}` → `{"id"}`), `GET /api/v1/agent/messages/{id}` (status `pending|running|completed|failed`).
 - **Bearer HMAC token auth**; health/ready paths exempt. Token must be >= 32 chars; configurable via `ADTP_API_*` env vars.
 - Rate limiting via slowapi.
 - aiosqlite persistence. Config example: `config/`; guide: `docs/guides/mcp-integration.md`, `docs/guides/agent-setup.md`.
+- **LAN reachability:** bind the gateway to `ADTP_API_HOST="0.0.0.0"` (default stays `127.0.0.1`). The QR pairing payload advertises the non-loopback IP + port `40003`, so the phone can reach these endpoints directly.
 - **Mobile frontend can call this REST API directly** — prefer this over unix-socket bridging on device.
+- **Agent dispatch:** the embedded agent lives in the **desktop (Tauri) process**, not the `adtp-client` daemon, so `POST /agent/message` and `GET /agent/status` dispatch to the desktop's local socket `ADTP_AGENT_SOCKET` (default `/tmp/adtp-agent.sock`), falling back to `ADTP_CLIENT_SOCKET`. Start the desktop app for phone→desktop agent chat; `completed` responses carry `text`, `provider`, `model` and `tool_calls` (`[{id,name,status,params,result}]`) so the phone can render file tiles from `send_file` params and per-step results.
 
 ---
 
