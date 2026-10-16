@@ -128,15 +128,21 @@ jobs:
           cache: "npm"
           cache-dependency-path: desktop/package-lock.json
 
-      - name: Install Tauri CLI
+      - name: Install Tauri CLI (Linux)
+        if: runner.os == 'Linux'
         run: |
-          cargo install tauri-cli --version "^2" 2>/dev/null || \
           cargo install tauri-cli --version "^2" --no-default-features 2>/dev/null || \
           curl -Lsf https://github.com/tauri-apps/tauri/releases/download/tauri-v2.0.0/tauri-cli-2.0.0-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin || \
           echo "::warning::Could not install tauri-cli"
+      - name: Install Tauri CLI (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cargo install tauri-cli --version "^2" --no-default-features ; `
+          if ($LASTEXITCODE -ne 0) { Invoke-WebRequest -Uri https://github.com/tauri-apps/tauri/releases/download/tauri-v2.0.0/tauri-cli-2.0.0-x86_64-pc-windows-msvc.zip -OutFile tauri-cli.zip ; Expand-Archive tauri-cli.zip -DestinationPath ~/.cargo/bin } ; `
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Could not install tauri-cli" }
       - run: npm ci
         working-directory: desktop
-      - run: cargo tauri build --bundles deb,appimage,rpm
+      - run: tauri build --bundles deb,appimage,rpm
         working-directory: desktop/src-tauri
 
       - name: Upload Linux installers
@@ -165,16 +171,21 @@ jobs:
           cache: "npm"
           cache-dependency-path: desktop/package-lock.json
 
-      - name: Install Tauri CLI
+      - name: Install Tauri CLI (Linux)
+        if: runner.os == 'Linux'
         run: |
-          cargo install tauri-cli --version "^2" 2>/dev/null || \
           cargo install tauri-cli --version "^2" --no-default-features 2>/dev/null || \
-          curl -Lsf https://github.com/tauri-apps/tauri/releases/download/tauri-v2.0.0/tauri-cli-2.0.0-x86_64-pc-windows-msvc.zip -o tauri-cli.zip && \
-          Expand-Archive tauri-cli.zip -DestinationPath ~/.cargo/bin || \
+          curl -Lsf https://github.com/tauri-apps/tauri/releases/download/tauri-v2.0.0/tauri-cli-2.0.0-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin || \
           echo "::warning::Could not install tauri-cli"
+      - name: Install Tauri CLI (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cargo install tauri-cli --version "^2" --no-default-features ; `
+          if ($LASTEXITCODE -ne 0) { Invoke-WebRequest -Uri https://github.com/tauri-apps/tauri/releases/download/tauri-v2.0.0/tauri-cli-2.0.0-x86_64-pc-windows-msvc.zip -OutFile tauri-cli.zip ; Expand-Archive tauri-cli.zip -DestinationPath ~/.cargo/bin } ; `
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Could not install tauri-cli" }
       - run: npm ci
         working-directory: desktop
-      - run: cargo tauri build --bundles msi
+      - run: tauri build --bundles msi
         working-directory: desktop/src-tauri
 
       - name: Upload Windows installer
