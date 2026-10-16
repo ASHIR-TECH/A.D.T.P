@@ -26,6 +26,7 @@ pub fn agent_socket_path() -> PathBuf {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct IpcRequest {
     cmd: String,
     #[serde(default)]
