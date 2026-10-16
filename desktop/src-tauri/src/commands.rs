@@ -6,6 +6,7 @@ use adtp_cli::models::{
 };
 use adtp_peer_core::agent::permissions::PermissionConfig;
 use tauri::AppHandle;
+use tauri::Manager;
 use tauri::State;
 
 use crate::agent_manager::{AddAgentRequest, AgentManager};
@@ -23,6 +24,18 @@ fn make_client(app: &AppHandle) -> Result<ApiClient, String> {
         ..CliConfig::default()
     };
     ApiClient::new(&cfg).map_err(|e| e.to_string())
+}
+
+/// Reveals the main window once the frontend has painted its first frame. The
+/// window starts hidden (`tauri.conf.json` → `visible: false`) so the orb, the
+/// rings and the interface appear together instead of assembling in view.
+#[tauri::command]
+pub fn show_main_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
