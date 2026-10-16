@@ -1,10 +1,7 @@
-name: CI — ADTP
+name: Build & Release ADTP
 
 on:
   push:
-    branches: [main, Phase-*]
-    tags: ["v*"]
-  pull_request:
     branches: [main, Phase-*]
   workflow_dispatch:
 
@@ -13,12 +10,14 @@ env:
   RUSTFLAGS: "-D warnings"
 
 permissions:
-  contents: read
+  contents: write
   security-events: write
 
+# One build+release run per ref at a time; do not cancel so in-flight commits
+# still ship their own release.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   # ── 1. Lint & type-check ──────────────────────────────────────────────
@@ -77,33 +76,18 @@ jobs:
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
 
-  # ── 4. Build desktop installers ───────────────────────────────────────
-  build-desktop:
-    name: Build desktop ${{ matrix.suffix }}
-    runs-on: ${{ matrix.os }}
+  # ── 4. Build Linux installers ─────────────────────────────────────────
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     needs: [lint, test, audit]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suffix: Linux
-            os: ubuntu-24.04
-            bundle: --bundles deb,appimage,rpm
-          - suffix: Windows
-            os: windows-2025
-            bundle: --bundles msi
-          - suffix: macOS
-            os: macos-14
-            bundle: --bundles dmg
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Tauri system deps (Linux)
-        if: matrix.suffix == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -114,7 +98,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Clear stale glib cache
-        if: matrix.suffix == 'Linux'
         run: rm -rf target/debug/build/glib-sys-* target/debug/build/glib-* target/release/build/glib-sys-* target/release/build/glib-*
 
       - uses: actions/setup-node@v4
@@ -126,113 +109,141 @@ jobs:
       - run: cargo install tauri-cli --version "^2"
       - run: npm ci
         working-directory: desktop
-      - run: cargo tauri build ${{ matrix.bundle }}
+      - run: cargo tauri build --bundles deb,appimage,rpm
         working-directory: desktop/src-tauri
 
-      - name: Upload installers (Linux)
-        if: matrix.suffix == 'Linux'
+      - name: Upload Linux installers
         uses: actions/upload-artifact@v4
         with:
-          name: adtp-installers-${{ matrix.suffix }}
+          name: adtp-installers-Linux
           path: desktop/src-tauri/target/release/bundle/
-          if-no-files-found: warn
+          if-no-files-found: error
 
-      - name: Upload installer (Windows)
-        if: matrix.suffix == 'Windows'
+  # ── 5. Build Windows installer ────────────────────────────────────────
+  build-windows:
+    name: Build Windows
+    runs-on: windows-2025
+    timeout-minutes: 60
+    needs: [lint, test, audit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: desktop/package-lock.json
+
+      - run: cargo install tauri-cli --version "^2"
+      - run: npm ci
+        working-directory: desktop
+      - run: cargo tauri build --bundles msi
+        working-directory: desktop/src-tauri
+
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: adtp-installer-${{ matrix.suffix }}
+          name: adtp-installer-Windows
           path: desktop/src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: warn
+          if-no-files-found: error
 
-      - name: Upload installer (macOS)
-        if: matrix.suffix == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: adtp-installer-${{ matrix.suffix }}
-          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: warn
-
-  # ── 5. Smoke-test built CLI binary ────────────────────────────────────
+  # ── 6. Smoke-test the built CLI binary ────────────────────────────────
   smoke-test:
     name: Smoke-test CLI binary
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: build-desktop
+    needs: [build-linux, build-windows]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
       - name: List downloaded artifacts
         run: find artifacts -type f | sort
 
-      - name: Verify CLI binary runs (--help)
+      - name: Verify Linux CLI binary runs (--help)
         run: |
-          # The Linux build job uploads the full bundle dir; find the binary.
           BIN=$(find artifacts/adtp-installers-Linux -name adtp -type f 2>/dev/null | head -1)
           if [ -z "$BIN" ]; then
-            echo "::warning::No CLI binary found in artifacts; skipping execution test."
+            echo "::warning::No CLI binary found in Linux artifacts; skipping execution test."
             exit 0
           fi
           "$BIN" --help
 
-  # ── 6. Publish GitHub release (tags only) ─────────────────────────────
+  # ── 7. Create a GitHub Release for this commit (Windows + Linux) ──────
   release:
-    name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-desktop, smoke-test]
+    name: Create release
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
+    timeout-minutes: 15
+    needs: smoke-test
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
-      - name: Prepare release files
+      - name: Stage release files
         run: |
           mkdir -p release
-          # Linux
           cp artifacts/adtp-installers-Linux/deb/*.deb release/ 2>/dev/null || true
           cp artifacts/adtp-installers-Linux/appimage/*.AppImage release/ 2>/dev/null || true
           cp artifacts/adtp-installers-Linux/rpm/*.rpm release/ 2>/dev/null || true
-          # Windows
-          cp artifacts/adtp-installer-Windows/msi/*.msi release/ 2>/dev/null || true
-          # macOS
-          cp artifacts/adtp-installer-macOS/dmg/*.dmg release/ 2>/dev/null || true
+          cp artifacts/adtp-installer-Windows/*.msi release/ 2>/dev/null || true
+          echo "=== Release files ==="
           ls -lh release/
+
+      - name: Create release tag for this commit
+        id: tag
+        run: |
+          TAG="build-${{ github.sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Generate release notes
         run: |
           cat > notes.md <<'EOF'
-          ## ADTP Desktop ${{ github.ref_name }}
+          # ADTP Build — ${{ github.sha }}
 
-          Attached are the installers for various OS. Most builds are untested
-          and should be validated before releasing to the general public.
+          Built from branch **${{ github.ref_name }}**.
 
-          **For Linux**
+          ## Commit
+          ${{ github.event.head_commit.message }}
+
+          Author: ${{ github.event.head_commit.author.name }}
+
+          ## Assets
+
+          **Linux**
           - ADTP Desktop (.deb)
           - ADTP Desktop (.rpm)
           - ADTP Desktop (AppImage)
 
-          **For Windows**
+          **Windows**
           - ADTP Desktop (.msi)
 
-          **For macOS**
-          - ADTP Desktop (.dmg)
+          > Automated release created by the Build & Release workflow on every push.
           EOF
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ADTP ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ADTP Build ${{ github.sha }}
           body_path: notes.md
           files: release/*
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: true
+          generate_release_notes: false
