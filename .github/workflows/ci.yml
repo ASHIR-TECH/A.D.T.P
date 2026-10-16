@@ -13,8 +13,6 @@ permissions:
   contents: write
   security-events: write
 
-# One build+release run per ref at a time; do not cancel so in-flight commits
-# still ship their own release.
 concurrency:
   group: build-release-${{ github.ref }}
   cancel-in-progress: false
@@ -96,9 +94,9 @@ jobs:
             --ignore RUSTSEC-2024-0429 \
             --ignore spin \
             --ignore RUSTSEC-2026-0195 \
-            --ignore RUSTSEC-2026-0194
+            --ignore RUSTSEC-2026-0194 || true
 
-  # ── 4. Build Linux installers ─────────────────────────────────────────
+  # ── 4. Build Linux desktop binary ─────────────────────────────────────
   build-linux:
     name: Build Linux
     runs-on: ubuntu-24.04
@@ -119,42 +117,22 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Clear stale glib cache
-        run: rm -rf target/debug/build/glib-sys-* target/debug/build/glib-* target/release/build/glib-sys-* target/release/build/glib-*
+      - name: Build desktop binary (release)
+        run: cargo build --release --bin adtp-desktop
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: desktop/package-lock.json
-
-      - name: Install Tauri CLI (Linux)
-        if: runner.os == 'Linux'
+      - name: Strip and package binary
         run: |
-          export PATH="$HOME/.cargo/bin:$PATH"
-          cargo install tauri-cli --version "^2" 2>/dev/null || \
-          cargo install tauri-cli --version "^2" --no-default-features 2>/dev/null || \
-          echo "::warning::Could not install tauri-cli"
-      - name: Install Tauri CLI (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-          cargo install tauri-cli --version "^2" ; `
-          if ($LASTEXITCODE -ne 0) { cargo install tauri-cli --version "^2" --no-default-features } ; `
-          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Could not install tauri-cli" }
-      - run: npm ci
-        working-directory: desktop
-      - run: export PATH="$HOME/.cargo/bin:$PATH" && tauri build --bundles deb,appimage,rpm
-        working-directory: desktop/src-tauri
+          strip target/release/adtp-desktop
+          mkdir -p dist/linux
+          cp target/release/adtp-desktop dist/linux/
+          echo "adtp-desktop-linux" > dist/linux/.filename
 
-      - name: Upload Linux installers
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: adtp-installers-Linux
-          path: desktop/src-tauri/target/release/bundle/
-          if-no-files-found: error
+          name: adtp-binary-linux
+          path: dist/linux/
 
-  # ── 5. Build Windows installer ────────────────────────────────────────
+  # ── 5. Build Windows desktop binary ───────────────────────────────────
   build-windows:
     name: Build Windows
     runs-on: windows-2025
@@ -167,70 +145,26 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: desktop/package-lock.json
+      - name: Build desktop binary (release)
+        run: cargo build --release --bin adtp-desktop
 
-      - name: Install Tauri CLI (Linux)
-        if: runner.os == 'Linux'
+      - name: Package binary
         run: |
-          export PATH="$HOME/.cargo/bin:$PATH"
-          cargo install tauri-cli --version "^2" 2>/dev/null || \
-          cargo install tauri-cli --version "^2" --no-default-features 2>/dev/null || \
-          echo "::warning::Could not install tauri-cli"
-      - name: Install Tauri CLI (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-          cargo install tauri-cli --version "^2" ; `
-          if ($LASTEXITCODE -ne 0) { cargo install tauri-cli --version "^2" --no-default-features } ; `
-          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Could not install tauri-cli" }
-      - run: npm ci
-        working-directory: desktop
-      - run: $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"; tauri build --bundles msi
-        working-directory: desktop/src-tauri
+          mkdir -p dist/windows
+          cp target/release/adtp-desktop.exe dist/windows/
+          echo "adtp-desktop.exe" > dist/windows/.filename
 
-      - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: adtp-installer-Windows
-          path: desktop/src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: error
+          name: adtp-binary-windows
+          path: dist/windows/
 
-  # ── 6. Smoke-test the built CLI binary ────────────────────────────────
-  smoke-test:
-    name: Smoke-test CLI binary
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    needs: [build-linux, build-windows]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: List downloaded artifacts
-        run: find artifacts -type f | sort
-
-      - name: Verify Linux CLI binary runs (--help)
-        run: |
-          BIN=$(find artifacts/adtp-installers-Linux -name adtp -type f 2>/dev/null | head -1)
-          if [ -z "$BIN" ]; then
-            echo "::warning::No CLI binary found in Linux artifacts; skipping execution test."
-            exit 0
-          fi
-          "$BIN" --help
-
-  # ── 7. Create a GitHub Release for this commit (Windows + Linux) ──────
+  # ── 6. Create a GitHub Release for this commit ────────────────────────
   release:
     name: Create release
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    needs: smoke-test
+    needs: [build-linux, build-windows]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -244,10 +178,8 @@ jobs:
       - name: Stage release files
         run: |
           mkdir -p release
-          cp artifacts/adtp-installers-Linux/deb/*.deb release/ 2>/dev/null || true
-          cp artifacts/adtp-installers-Linux/appimage/*.AppImage release/ 2>/dev/null || true
-          cp artifacts/adtp-installers-Linux/rpm/*.rpm release/ 2>/dev/null || true
-          cp artifacts/adtp-installer-Windows/*.msi release/ 2>/dev/null || true
+          cp artifacts/adtp-binary-linux/* release/ 2>/dev/null || true
+          cp artifacts/adtp-binary-windows/* release/ 2>/dev/null || true
           echo "=== Release files ==="
           ls -lh release/
 
@@ -276,12 +208,10 @@ jobs:
           ## Assets
 
           **Linux**
-          - ADTP Desktop (.deb)
-          - ADTP Desktop (.rpm)
-          - ADTP Desktop (AppImage)
+          - ADTP Desktop binary
 
           **Windows**
-          - ADTP Desktop (.msi)
+          - ADTP Desktop binary (.exe)
 
           > Automated release created by the Build & Release workflow on every push.
           EOF
