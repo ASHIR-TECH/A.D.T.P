@@ -65,9 +65,10 @@ pub fn path_badge(path_type: &str) -> colored::ColoredString {
 
 // ── Helpers ──
 
+#[allow(clippy::useless_borrows_in_formatting)]
 pub fn truncate_id(id: &str) -> String {
     if id.len() > 8 {
-        format!("{}…", id[..8])
+        format!("{}…", &id[..8])
     } else {
         id.to_string()
     }

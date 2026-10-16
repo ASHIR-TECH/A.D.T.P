@@ -8,6 +8,7 @@ use colored::Colorize;
 
 const MAX_DISPLAY_LEN: usize = 160;
 
+#[allow(clippy::useless_borrows_in_formatting)]
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         return s.to_string();
@@ -16,7 +17,7 @@ fn truncate(s: &str, max: usize) -> String {
     while !s.is_char_boundary(idx) {
         idx -= 1;
     }
-    format!("{}… ({} more chars)", s[..idx], s.len() - idx)
+    format!("{}… ({} more chars)", &s[..idx], s.len() - idx)
 }
 
 #[derive(Subcommand, Debug)]
