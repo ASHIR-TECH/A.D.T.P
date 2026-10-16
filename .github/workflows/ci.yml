@@ -128,7 +128,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: desktop/package-lock.json
 
-      - run: cargo install tauri-cli --version "^2"
+      - run: cargo install tauri-cli --version "=2.11.0"
       - run: npm ci
         working-directory: desktop
       - run: cargo tauri build --bundles deb,appimage,rpm
@@ -160,7 +160,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: desktop/package-lock.json
 
-      - run: cargo install tauri-cli --version "^2"
+      - run: cargo install tauri-cli --version "=2.11.0"
       - run: npm ci
         working-directory: desktop
       - run: cargo tauri build --bundles msi
