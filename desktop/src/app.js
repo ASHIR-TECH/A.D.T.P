@@ -16,7 +16,7 @@ function getPageTitle(tab) {
 function activateTab(tab) {
   currentTab = tab;
   renderTopBar(document.getElementById('topbar') || document.createElement('div'), getPageTitle(tab), notificationCount, agentState);
-  loadPage(tab);
+  return loadPage(tab);
 }
 
 async function loadPage(tab) {
@@ -180,7 +180,30 @@ function update(){
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+/** Resolves when web fonts are ready, but never waits longer than `ms`, so a
+ *  slow or offline font fetch can't hold the window back. */
+function waitForFonts(ms) {
+  const timeout = new Promise((resolve) => setTimeout(resolve, ms));
+  const ready = document.fonts && document.fonts.ready
+    ? document.fonts.ready.catch(() => {})
+    : Promise.resolve();
+  return Promise.race([ready, timeout]);
+}
+
+/** Shows the main window and fades the orb + interface in together. The window
+ *  starts hidden (Rust side, `visible: false`) so this is the single moment the
+ *  whole UI becomes visible. */
+async function revealUI() {
+  try {
+    await invoke('show_main_window');
+  } catch {
+    // Command unavailable — the Rust-side safety timeout will still show the
+    // window, so just fade the content in.
+  }
+  requestAnimationFrame(() => document.body.classList.remove('booting'));
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar(document.getElementById('sidebar'), currentTab, activateTab);
 
   const topbar = document.createElement('div');
@@ -201,8 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (topbar) renderTopBar(topbar, getPageTitle(currentTab), notificationCount, agentState);
   });
 
-  activateTab('dashboard');
-
   let lastT = null;
   let frameCount = 0;
   function tick(t){
@@ -215,4 +236,12 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+  // Draw the rings once up front so they exist before the window is revealed.
+  update();
+
+  // Render the first page BEFORE revealing, so the orb, the rings and the
+  // interface all appear together instead of assembling in view.
+  await activateTab('dashboard');
+  await waitForFonts(1200);
+  await revealUI();
 });

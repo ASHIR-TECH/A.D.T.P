@@ -25,7 +25,6 @@ rustyline = "14"
 keyring = { version = "2", features = ["linux-secret-service-rt-tokio-crypto-rust"] }
 crossterm = "0.28"
 supports-color = "3"
-atty = "0.2"
 
 [dev-dependencies]
 wiremock = "0.6"

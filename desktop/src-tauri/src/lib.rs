@@ -29,9 +29,22 @@ pub fn run() {
         .setup(|app| {
             tray::build_tray(app.handle())?;
 
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+            // Keep the window hidden (`tauri.conf.json` → `visible: false`) until
+            // the frontend signals it has painted the orb, rings and first page
+            // (`commands::show_main_window`), so the whole UI appears as one
+            // instead of assembling in view. This timeout is a safety net in
+            // case the frontend never signals (e.g. a JS error before the call).
+            {
+                let handle_show = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+                    if let Some(window) = handle_show.get_webview_window("main") {
+                        if !window.is_visible().unwrap_or(false) {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                });
             }
 
             let config_dir = dirs::config_dir()
@@ -193,6 +206,7 @@ pub fn run() {
             commands::remove_peer,
             commands::launch_cli,
             commands::get_pairing_qr_data,
+            commands::show_main_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ADTP Desktop");

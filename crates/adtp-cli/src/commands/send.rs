@@ -5,6 +5,7 @@ use crate::errors::CliError;
 use crate::models::{TransferSendResponse, TransferStatus};
 use clap::Args;
 use colored::Colorize;
+use std::io::IsTerminal;
 use std::time::Duration;
 
 #[derive(Args)]
@@ -37,7 +38,7 @@ pub async fn execute(cfg: &CliConfig, args: &SendArgs) -> Result<i32, CliError> 
             Some(p) => p.clone(),
             None => {
                 // Try to get interactive peer list
-                if atty::is(atty::Stream::Stdin) {
+                if std::io::stdin().is_terminal() {
                     let list: crate::models::PeerList = client.get("/api/v1/peers").await?;
                     if list.peers.len() == 1 {
                         list.peers[0].peer_id.clone()

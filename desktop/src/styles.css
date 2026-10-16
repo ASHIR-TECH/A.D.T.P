@@ -32,6 +32,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ===== Boot / unified reveal =====
+   The window is shown only after the frontend is fully painted, and these
+   rules keep the orb and the interface hidden until then so they fade in
+   together rather than assembling in view. */
+body.booting .orb-stage,
+body.booting #app {
+  opacity: 0;
+}
+
+.orb-stage,
+#app {
+  transition: opacity 320ms var(--ease-out);
+}
+
 .orb-stage {
   position: fixed;
   inset: 0;
