@@ -124,13 +124,12 @@ jobs:
         run: |
           strip target/release/adtp-desktop
           mkdir -p dist/linux
-          cp target/release/adtp-desktop dist/linux/
-          echo "adtp-desktop-linux" > dist/linux/.filename
+          cp target/release/adtp-desktop dist/linux/adtp-desktop
 
       - uses: actions/upload-artifact@v4
         with:
           name: adtp-binary-linux
-          path: dist/linux/
+          path: dist/linux/adtp-desktop
 
   # ── 5. Build Windows desktop binary ───────────────────────────────────
   build-windows:
@@ -151,13 +150,12 @@ jobs:
       - name: Package binary
         run: |
           mkdir -p dist/windows
-          cp target/release/adtp-desktop.exe dist/windows/
-          echo "adtp-desktop.exe" > dist/windows/.filename
+          cp target/release/adtp-desktop.exe dist/windows/adtp-desktop.exe
 
       - uses: actions/upload-artifact@v4
         with:
           name: adtp-binary-windows
-          path: dist/windows/
+          path: dist/windows/adtp-desktop.exe
 
   # ── 6. Create a GitHub Release for this commit ────────────────────────
   release:
