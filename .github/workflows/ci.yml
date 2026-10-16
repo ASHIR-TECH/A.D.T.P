@@ -178,8 +178,8 @@ jobs:
           echo "=== Artifacts directory ==="
           find artifacts -type f 2>/dev/null || echo "No artifacts found"
           mkdir -p release
-          cp artifacts/adtp-binary-linux/* release/ 2>/dev/null || true
-          cp artifacts/adtp-binary-windows/* release/ 2>/dev/null || true
+          cp artifacts/adtp-desktop release/ 2>/dev/null || true
+          cp artifacts/adtp-desktop.exe release/ 2>/dev/null || true
           echo "=== Release files ==="
           ls -lh release/
 
