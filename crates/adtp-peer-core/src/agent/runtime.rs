@@ -16,6 +16,7 @@ pub enum AgentState {
     Error(String),
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
     async fn send_file(&self, file_path: &str, peer_id: &str) -> Result<String, String>;
