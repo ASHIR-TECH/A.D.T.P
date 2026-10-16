@@ -320,6 +320,10 @@ async fn test_export_to_file() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!("export stderr: {}", String::from_utf8_lossy(&output.stderr));
+        eprintln!("export stdout: {}", String::from_utf8_lossy(&output.stdout));
+    }
     assert!(output.status.success());
     let written = std::fs::read_to_string(&out_path).expect("failed to read exported file");
     assert!(written.contains("report.pdf"));
@@ -430,6 +434,10 @@ async fn test_context_empty() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!("context stderr: {}", String::from_utf8_lossy(&output.stderr));
+        eprintln!("context stdout: {}", String::from_utf8_lossy(&output.stdout));
+    }
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("null") || stdout.contains("No context"));
