@@ -16,7 +16,7 @@ fn truncate(s: &str, max: usize) -> String {
     while !s.is_char_boundary(idx) {
         idx -= 1;
     }
-    format!("{}… ({} more chars)", &s[..idx], s.len() - idx)
+    format!("{}… ({} more chars)", s[..idx], s.len() - idx)
 }
 
 #[derive(Subcommand, Debug)]

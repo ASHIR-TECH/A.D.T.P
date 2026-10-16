@@ -236,7 +236,7 @@ impl AgentManager {
 
     pub async fn add_agent(&self, request: AddAgentRequest) -> Result<AgentEntry, String> {
         let id = uuid::Uuid::new_v4().to_string();
-        let name = format!("{} ({})", &request.provider, &request.model);
+        let name = format!("{} ({})", request.provider, request.model);
         let is_byo = request.provider != BASE_PROVIDER;
 
         let entry = AgentEntry {
