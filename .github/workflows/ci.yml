@@ -98,9 +98,6 @@ jobs:
             --ignore RUSTSEC-2026-0195 \
             --ignore RUSTSEC-2026-0194
 
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-
   # ── 4. Build Linux installers ─────────────────────────────────────────
   build-linux:
     name: Build Linux

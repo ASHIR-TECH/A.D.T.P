@@ -217,6 +217,16 @@ async fn test_verify_valid_chain() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!(
+            "verify valid stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        eprintln!(
+            "verify valid stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\"valid\": true"));
@@ -244,6 +254,17 @@ async fn test_verify_tampered_chain() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!(
+            "verify tampered stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        eprintln!(
+            "verify tampered stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+    assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\"valid\": false"));
 }
