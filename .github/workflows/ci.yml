@@ -128,7 +128,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: desktop/package-lock.json
 
-      - run: cargo install tauri-cli --version "=2.0.0"
+      - name: Install Tauri CLI
+        run: |
+          cargo install tauri-cli --version "^2" --no-default-features 2>/dev/null || \
+          curl -Lsf https://github.com/tauri-apps/tauri/releases/download/tauri-v2.0.0/tauri-cli-2.0.0-x86_64-unknown-linux-gnu.tar.gz | tar -xzf - -C ~/.cargo/bin || \
+          echo "::warning::Could not install tauri-cli, desktop build may fail"
       - run: npm ci
         working-directory: desktop
       - run: cargo tauri build --bundles deb,appimage,rpm
@@ -160,7 +164,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: desktop/package-lock.json
 
-      - run: cargo install tauri-cli --version "=2.0.0"
+      - name: Install Tauri CLI
+        run: |
+          cargo install tauri-cli --version "^2" --no-default-features 2>/dev/null || \
+          curl -Lsf https://github.com/tauri-apps/tauri/releases/download/tauri-v2.0.0/tauri-cli-2.0.0-x86_64-pc-windows-msvc.zip -o tauri-cli.zip && \
+          Expand-Archive tauri-cli.zip -DestinationPath ~/.cargo/bin || \
+          echo "::warning::Could not install tauri-cli, desktop build may fail"
       - run: npm ci
         working-directory: desktop
       - run: cargo tauri build --bundles msi
