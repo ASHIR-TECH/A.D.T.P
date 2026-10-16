@@ -175,6 +175,8 @@ jobs:
 
       - name: Stage release files
         run: |
+          echo "=== Artifacts directory ==="
+          find artifacts -type f 2>/dev/null || echo "No artifacts found"
           mkdir -p release
           cp artifacts/adtp-binary-linux/* release/ 2>/dev/null || true
           cp artifacts/adtp-binary-windows/* release/ 2>/dev/null || true
