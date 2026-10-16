@@ -41,6 +41,7 @@ struct IpcResponse {
     error: Option<String>,
 }
 
+#[allow(dead_code)]
 fn ok(data: Value) -> IpcResponse {
     IpcResponse {
         ok: true,
@@ -49,6 +50,7 @@ fn ok(data: Value) -> IpcResponse {
     }
 }
 
+#[allow(dead_code)]
 fn err(message: impl Into<String>) -> IpcResponse {
     IpcResponse {
         ok: false,
@@ -125,6 +127,7 @@ async fn handle_stream(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn dispatch(cmd: &str, params: &Value, mgr: &Arc<Mutex<AgentManager>>) -> IpcResponse {
     match cmd {
         "agent_status" => {
@@ -160,6 +163,7 @@ async fn dispatch(cmd: &str, params: &Value, mgr: &Arc<Mutex<AgentManager>>) -> 
 
 /// Flattens the tool invocations recorded since `from` into the shape the
 /// gateway persists and MARS renders (id/name/status/params/result).
+#[allow(dead_code)]
 fn collect_tool_calls(conversation: &[ConversationEntry], from: usize) -> Value {
     let calls: Vec<Value> = conversation
         .iter()
@@ -170,6 +174,7 @@ fn collect_tool_calls(conversation: &[ConversationEntry], from: usize) -> Value 
     Value::Array(calls)
 }
 
+#[allow(dead_code)]
 fn tool_call_json(detail: &ToolCallDetail) -> Value {
     json!({
         "id": detail.id,

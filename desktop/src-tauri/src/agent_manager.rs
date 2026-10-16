@@ -196,6 +196,7 @@ impl AgentManager {
 
     /// Coarse status for the mobile companion: whether any runtime is actually
     /// activated, plus the provider/model of the first enabled agent.
+    #[allow(dead_code)]
     pub async fn status(&self) -> (bool, Option<String>, Option<String>) {
         let runtimes = self.runtimes.lock().await;
         let mut active = false;
