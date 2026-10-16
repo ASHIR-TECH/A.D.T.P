@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 import aiosqlite
 
 from adtp_api.dependencies import get_db
-from adtp_api.models.transfer import TransferRequest, TransferList
+from adtp_api.models.transfer import TransferRequest, TransferList, UploadResponse
 from adtp_api.services import transfer_service
 
 router = APIRouter(prefix="/api/v1/transfers", tags=["transfers"])
@@ -23,6 +23,23 @@ async def send_file(
         body.file_path, body.agent_name, body.priority, body.message
     )
     return result
+
+
+@router.post("/upload", status_code=201, response_model=UploadResponse)
+@limiter.limit("60/minute")
+async def upload_file(
+    request: Request,
+    file: UploadFile = File(...),
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """Accept a file from the paired phone and persist it to the intake dir.
+
+    Unlike /send (which only forwards a file already on this machine), this is
+    the inbound path for the phone's attachment. The response carries the
+    absolute desktop path, which the phone appends to the agent chat so the
+    desktop AI can act on the uploaded file.
+    """
+    return await transfer_service.receive_upload(file)
 
 
 @router.post("/push", status_code=201)

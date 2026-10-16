@@ -12,7 +12,17 @@ from adtp_api.config import settings
 from adtp_api.errors import register_error_handlers
 from adtp_api.middleware.auth import register_auth_middleware
 from adtp_api.middleware.ratelimit import register_rate_limit
-from adtp_api.routers import agent, audit, health, sessions, tasks, transfers, watchers
+from adtp_api.relay import register_relay
+from adtp_api.routers import (
+    agent,
+    audit,
+    health,
+    sessions,
+    system,
+    tasks,
+    transfers,
+    watchers,
+)
 
 
 def create_app() -> FastAPI:
@@ -84,6 +94,9 @@ def create_app() -> FastAPI:
     app.include_router(audit.router)
     app.include_router(tasks.router)
     app.include_router(agent.router)
+    app.include_router(system.router)
+
+    register_relay(app)
 
     return app
 

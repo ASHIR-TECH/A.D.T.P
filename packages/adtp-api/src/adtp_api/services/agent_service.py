@@ -39,6 +39,15 @@ async def ensure_agent_messages_table(db: aiosqlite.Connection) -> None:
 
 
 async def _connect(db_path: str) -> aiosqlite.Connection:
+    return await open_db(db_path)
+
+
+async def open_db(db_path: str) -> aiosqlite.Connection:
+    """Open the audit DB with the agent_messages table guaranteed to exist.
+
+    Used by both the request-scoped dependency and the /relay WebSocket, which
+    outlives any single HTTP request.
+    """
     import aiosqlite
 
     db = await aiosqlite.connect(str(db_path))

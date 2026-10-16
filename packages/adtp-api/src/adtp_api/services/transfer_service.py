@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
@@ -8,6 +11,7 @@ import aiosqlite
 from adtp_api.errors import FileNotFoundError_, FileTooLargeError, TransferNotFoundError
 from adtp_api.models.transfer import TransferRecord, TransferList, TransferStatus
 from adtp_api.config import settings
+from adtp_api.services.system_service import resolved_intake_dir
 
 
 async def send_file(
@@ -33,6 +37,71 @@ async def push_file(
     from adtp_mcp.bridge import server as bridge_server
 
     return await bridge_server.push_file(file_path, destination)
+
+
+def _safe_filename(name: str | None) -> str:
+    """Strip any client-supplied path components (never trust the phone)."""
+    cleaned = Path(name or "").name.strip()
+    if not cleaned or cleaned in {".", ".."}:
+        return "upload.bin"
+    return cleaned
+
+
+def _unique_destination(directory: Path, filename: str) -> Path:
+    """Avoid clobbering an existing intake file by suffixing `-1`, `-2`, …"""
+    candidate = directory / filename
+    if not candidate.exists():
+        return candidate
+    stem, suffix = candidate.stem, candidate.suffix
+    for index in range(1, 10_000):
+        alternate = directory / f"{stem}-{index}{suffix}"
+        if not alternate.exists():
+            return alternate
+    return directory / f"{uuid.uuid4().hex}-{filename}"
+
+
+async def receive_upload(upload) -> dict:
+    """Stream a multipart upload into the intake dir and hash it.
+
+    The phone sends the file bytes; the desktop agent then works with the
+    returned absolute `path` (read_file/list_directory/send_file), which is why
+    we persist to disk rather than forwarding anywhere.
+    """
+    intake = resolved_intake_dir()
+    intake.mkdir(parents=True, exist_ok=True)
+
+    destination = _unique_destination(intake, _safe_filename(upload.filename))
+    hasher = hashlib.sha256()
+    size = 0
+    try:
+        with destination.open("wb") as out:
+            while True:
+                chunk = await upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > settings.max_file_size:
+                    raise FileTooLargeError(settings.max_file_size)
+                hasher.update(chunk)
+                out.write(chunk)
+    except FileTooLargeError:
+        destination.unlink(missing_ok=True)
+        raise
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    finally:
+        await upload.close()
+
+    return {
+        "id": uuid.uuid4().hex,
+        "filename": destination.name,
+        "path": str(destination),
+        "size": size,
+        "sha256": hasher.hexdigest(),
+        "content_type": upload.content_type,
+        "received_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 async def list_transfers(

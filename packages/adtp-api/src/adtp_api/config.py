@@ -1,9 +1,38 @@
 from __future__ import annotations
 
+import os
+import platform
 from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings
+
+
+def default_data_dir() -> Path:
+    """Per-user data dir, mirroring Rust's `dirs::data_dir()`.
+
+    Keeps gateway-written files (upload intake) beside the files the Rust
+    daemon writes, so `FileIntake` and phone uploads share one folder.
+    """
+    override = os.getenv("ADTP_DATA_DIR")
+    if override:
+        return Path(override)
+    system = platform.system()
+    if system == "Windows":
+        base = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
+        if base:
+            return Path(base)
+    elif system == "Darwin":
+        return Path.home() / "Library" / "Application Support"
+    xdg = os.getenv("XDG_DATA_HOME")
+    if xdg:
+        return Path(xdg)
+    return Path.home() / ".local" / "share"
+
+
+def default_intake_dir() -> Path:
+    """Where phone→desktop uploads land (`<data_dir>/adtp/intake`)."""
+    return default_data_dir() / "adtp" / "intake"
 
 
 class Settings(BaseSettings):
@@ -28,6 +57,12 @@ class Settings(BaseSettings):
     api_docs: bool = True
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     max_file_size: int = 10 * 1024 * 1024 * 1024
+    # Where phone→desktop uploads (POST /api/v1/transfers/upload) are written.
+    # Empty means the shared ADTP data dir (`<data_dir>/adtp/intake`), matching
+    # the Rust server's FileIntake so both land in the same folder.
+    intake_dir: str = ""
+    # Seconds between `state_update` frames pushed over the /relay WebSocket.
+    relay_state_interval: float = 5.0
 
     model_config = {
         "env_prefix": "ADTP_",
