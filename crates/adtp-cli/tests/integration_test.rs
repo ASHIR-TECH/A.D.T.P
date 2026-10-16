@@ -7,6 +7,7 @@ use wiremock::{
 
 static SERVER: OnceLock<MockServer> = OnceLock::new();
 
+#[allow(dead_code)]
 fn api_url() -> String {
     let server = SERVER.get_or_init(|| {
         tokio::runtime::Runtime::new()
@@ -16,18 +17,19 @@ fn api_url() -> String {
     format!("http://{}", server.address())
 }
 
-async fn setup() -> MockServer {
-    MockServer::start().await
-}
-
+#[allow(dead_code)]
 fn build_cli_args(extra_args: &[&str]) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_adtp"));
-    cmd.env("ADTP_API_URL", &api_url());
+    cmd.env("ADTP_API_URL", api_url());
     cmd.env("ADTP_API_TOKEN", "test-token-abcdef1234567890");
     cmd.env("ADTP_OUTPUT_FORMAT", "json");
     cmd.env("ADTP_DEFAULT_PEER", "test-peer");
     cmd.args(extra_args);
     cmd
+}
+
+async fn setup() -> MockServer {
+    MockServer::start().await
 }
 
 fn base_envs() -> Vec<(&'static str, String)> {

@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_ecdh_derives_same_key_both_sides() {
         let client_keys = SessionKeys::generate();
-        let mut server_keys = SessionKeys::generate();
+        let server_keys = SessionKeys::generate();
         let session_id = Uuid::new_v4();
 
         let client_pub = client_keys.public_key_bytes();
@@ -215,7 +215,7 @@ mod tests {
     fn test_ecdh_wrong_key_yields_different_result() {
         let client_keys = SessionKeys::generate();
         let server_keys = SessionKeys::generate();
-        let mut attacker_keys = SessionKeys::generate();
+        let attacker_keys = SessionKeys::generate();
         let session_id = Uuid::new_v4();
 
         let client_pub = client_keys.public_key_bytes();

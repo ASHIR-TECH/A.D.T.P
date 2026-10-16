@@ -90,7 +90,7 @@ impl Provider for AnthropicProvider {
             .await
             .map_err(|e| {
                 if e.is_timeout() {
-                    format!("Anthropic request timed out — check your internet connection")
+                    "Anthropic request timed out — check your internet connection".to_string()
                 } else if e.is_connect() {
                     format!("Anthropic connection failed — check your internet connection and firewall ({}: {})", e.status().map(|s| s.as_u16()).unwrap_or(0), e)
                 } else {

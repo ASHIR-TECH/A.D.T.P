@@ -95,7 +95,7 @@ impl Provider for OpenAiProvider {
             .await
             .map_err(|e| {
                 if e.is_timeout() {
-                    format!("OpenAI request timed out — check your internet connection")
+                    "OpenAI request timed out — check your internet connection".to_string()
                 } else if e.is_connect() {
                     format!("OpenAI connection failed — check your internet connection and firewall ({}: {})", e.status().map(|s| s.as_u16()).unwrap_or(0), e)
                 } else {

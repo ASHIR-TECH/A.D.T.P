@@ -105,7 +105,10 @@ async fn handle_stream(
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    reader.read_line(&mut line).await.map_err(|e| e.to_string())?;
+    reader
+        .read_line(&mut line)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let response = match serde_json::from_str::<IpcRequest>(&line) {
         Ok(request) => dispatch(&request.cmd, &request.params, &mgr).await,
@@ -114,7 +117,10 @@ async fn handle_stream(
 
     let mut encoded = serde_json::to_vec(&response).map_err(|e| e.to_string())?;
     encoded.push(b'\n');
-    writer.write_all(&encoded).await.map_err(|e| e.to_string())?;
+    writer
+        .write_all(&encoded)
+        .await
+        .map_err(|e| e.to_string())?;
     writer.flush().await.map_err(|e| e.to_string())?;
     Ok(())
 }
