@@ -6,6 +6,23 @@ All notable changes to ADTP are documented here.
 
 ### Added
 
+- **Mobile companion surfaces on the REST gateway** (`packages/adtp-api`):
+  - `GET /api/v1/system/info` — host telemetry (hostname, OS/arch, CPU/RAM/disk,
+    uptime, primary IP, agent status). Dependency-light: uses `psutil` when the
+    `metrics` extra is installed, otherwise native `/proc`, `sysctl` and
+    `ctypes` fallbacks, degrading missing metrics to `null`.
+  - `POST /api/v1/transfers/upload` — multipart intake for phone→desktop files.
+    Streams to `<data_dir>/adtp/intake` (override `ADTP_INTAKE_DIR`), hashes with
+    SHA-256 and returns the absolute path so the desktop agent can act on it.
+    Rejects traversal, dedupes filenames and enforces `ADTP_MAX_FILE_SIZE`.
+  - `WS /relay` — LAN WebSocket speaking the MARS protocol the mobile app's
+    `RelayClient` already uses: `authenticate` → `auth_ack`, periodic
+    `state_update`, and `chat_message` → `chat_response` (dispatched to the
+    desktop's embedded agent). Paths the desktop advertises via its QR
+    `agentApiUrl` host, so the phone talks to the desktop directly rather than
+    the public QoWT relay (which carries QUIC frames, not MARS messages).
+  - `agent_service.open_db()` — shared audit-DB opener for the long-lived relay.
+
 - Phase 0 `adtp-core` foundation:
   - Shared protocol types and constants.
   - Typed error model.

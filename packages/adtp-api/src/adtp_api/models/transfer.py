@@ -20,6 +20,18 @@ class TransferResponse(BaseModel):
     estimated_ms: int = 0
 
 
+class UploadResponse(BaseModel):
+    """Result of POST /api/v1/transfers/upload (phone → desktop)."""
+
+    id: str
+    filename: str
+    path: str
+    size: int
+    sha256: str
+    content_type: str | None = None
+    received_at: str
+
+
 class TransferRecord(BaseModel):
     id: str
     session_id: str

@@ -22,6 +22,12 @@ test = [
     "pytest-asyncio>=0.21",
     "httpx>=0.27",
 ]
+# Real CPU/RAM/battery readings for /api/v1/system/info. Everything degrades to
+# null without it (the service falls back to /proc, ctypes and sysctl), so this
+# is an enhancement, not a requirement.
+metrics = [
+    "psutil>=5.9",
+]
 
 [project.scripts]
 adtp-api = "adtp_api.main:main"
