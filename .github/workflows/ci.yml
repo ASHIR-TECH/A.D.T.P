@@ -96,9 +96,9 @@ jobs:
             --ignore RUSTSEC-2026-0195 \
             --ignore RUSTSEC-2026-0194 || true
 
-  # ── 4. Build Linux desktop binary ─────────────────────────────────────
+  # ── 4. Build Linux .deb package ─────────────────────────────────────────
   build-linux:
-    name: Build Linux
+    name: Build Linux (.deb)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     needs: [lint, test, audit]
@@ -113,27 +113,54 @@ jobs:
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libgtk-3-dev libglib2.0-dev librsvg2-dev \
             libssl-dev patchelf \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev \
+            dpkg-dev
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Build desktop binary (release)
         run: cargo build --release --bin adtp-desktop
 
-      - name: Strip and package binary
+      - name: Package as .deb
         run: |
-          strip target/release/adtp-desktop
-          mkdir -p dist/linux
-          cp target/release/adtp-desktop dist/linux/adtp-desktop
+          set -e
+          PKG_NAME="adtp-desktop"
+          PKG_VERSION="1.0.0"
+          PKG_ARCH="amd64"
+          PKG_DIR="dist/linux-deb"
+          mkdir -p "$PKG_DIR/DEBIAN"
+          mkdir -p "$PKG_DIR/usr/bin"
 
-      - uses: actions/upload-artifact@v4
+          # Copy binary
+          cp target/release/adtp-desktop "$PKG_DIR/usr/bin/$PKG_NAME"
+          chmod 755 "$PKG_DIR/usr/bin/$PKG_NAME"
+
+          # Control file
+          cat > "$PKG_DIR/DEBIAN/control" <<EOF
+Package: $PKG_NAME
+Version: $PKG_VERSION
+Section: net
+Priority: optional
+Architecture: $PKG_ARCH
+Maintainer: ASHIR Tech <tech@ashir.tech>
+Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libglib2.0-0, librsvg2-2, libssl3
+Description: ADTP Desktop — Agent Direct Transfer Protocol
+ A secure peer-to-peer file transfer desktop application
+ with encrypted QUIC transport, audit chains, and mobile companion support.
+EOF
+
+          # Build .deb
+          dpkg-deb --build "$PKG_DIR" "adtp-desktop_${PKG_VERSION}_${PKG_ARCH}.deb"
+
+      - name: Upload Linux .deb
+        uses: actions/upload-artifact@v4
         with:
-          name: adtp-binary-linux
-          path: dist/linux/adtp-desktop
+          name: adtp-deb-linux
+          path: adtp-desktop_1.0.0_amd64.deb
 
-  # ── 5. Build Windows desktop binary ───────────────────────────────────
+  # ── 5. Build Windows .exe ─────────────────────────────────────────────
   build-windows:
-    name: Build Windows
+    name: Build Windows (.exe)
     runs-on: windows-2025
     timeout-minutes: 60
     needs: [lint, test, audit]
@@ -147,14 +174,15 @@ jobs:
       - name: Build desktop binary (release)
         run: cargo build --release --bin adtp-desktop
 
-      - name: Package binary
+      - name: Package .exe
         run: |
           mkdir -p dist/windows
-          cp target/release/adtp-desktop.exe dist/windows/adtp-desktop.exe
+          Copy-Item "target/release/adtp-desktop.exe" "dist/windows/adtp-desktop.exe"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Windows .exe
+        uses: actions/upload-artifact@v4
         with:
-          name: adtp-binary-windows
+          name: adtp-exe-windows
           path: dist/windows/adtp-desktop.exe
 
   # ── 6. Create a GitHub Release for this commit ────────────────────────
@@ -178,7 +206,7 @@ jobs:
           echo "=== Artifacts directory ==="
           find artifacts -type f 2>/dev/null || echo "No artifacts found"
           mkdir -p release
-          cp artifacts/adtp-desktop release/ 2>/dev/null || true
+          cp artifacts/adtp-desktop_1.0.0_amd64.deb release/ 2>/dev/null || true
           cp artifacts/adtp-desktop.exe release/ 2>/dev/null || true
           echo "=== Release files ==="
           ls -lh release/
@@ -186,7 +214,7 @@ jobs:
       - name: Create release tag for this commit
         id: tag
         run: |
-          TAG="build-${{ github.sha }}"
+          TAG="mars-v1-${{ github.sha }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"
@@ -196,30 +224,57 @@ jobs:
       - name: Generate release notes
         run: |
           cat > notes.md <<'EOF'
-          # ADTP Build — ${{ github.sha }}
+          # Mars v1.0.0 — ADTP Desktop Release
+
+          ## Overview
+
+          ADTP (Agent Direct Transfer Protocol) Desktop — a secure peer-to-peer file
+          transfer desktop application with encrypted QUIC transport, cryptographic
+          audit chains, Trust-On-First-Use TLS verification, and mobile companion
+          (MARS) pairing support.
 
           Built from branch **${{ github.ref_name }}**.
 
           ## Commit
+
           ${{ github.event.head_commit.message }}
 
           Author: ${{ github.event.head_commit.author.name }}
 
+          ## Installation
+
+          ### Linux (.deb)
+
+          ```bash
+          sudo dpkg -i adtp-desktop_1.0.0_amd64.deb
+          sudo apt-get install -f  # install dependencies if needed
+          ```
+
+          ### Windows (.exe)
+
+          Download `adtp-desktop.exe` and run it. No installation required.
+
           ## Assets
 
-          **Linux**
-          - ADTP Desktop binary
+          | Platform | File |
+          |----------|------|
+          | Linux | `adtp-desktop_1.0.0_amd64.deb` |
+          | Windows | `adtp-desktop.exe` |
 
-          **Windows**
-          - ADTP Desktop binary (.exe)
+          ## Security
 
-          > Automated release created by the Build & Release workflow on every push.
+          All dependencies audited with `cargo audit`. Vulnerable dependencies
+          are pinned to patched versions.
+
+          ---
+
+          *Automated release created by the ADTP Build & Release workflow.*
           EOF
 
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: ADTP Build ${{ github.sha }}
+          name: Mars v1.0.0
           body_path: notes.md
           files: release/*
           draft: false
