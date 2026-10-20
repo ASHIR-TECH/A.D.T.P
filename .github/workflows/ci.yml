@@ -94,14 +94,39 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build desktop binary (release)
         run: cargo build --release --bin adtp-desktop
-      - name: Package as .deb
+      - name: Package as .deb with desktop entry and icons
         run: |
           PKG_DIR="dist/linux-deb"
           rm -rf "$PKG_DIR"
           mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin"
+          mkdir -p "$PKG_DIR/usr/share/applications"
+          mkdir -p "$PKG_DIR/usr/share/icons/hicolor/32x32/apps"
+          mkdir -p "$PKG_DIR/usr/share/icons/hicolor/64x64/apps"
+          mkdir -p "$PKG_DIR/usr/share/icons/hicolor/128x128/apps"
+          mkdir -p "$PKG_DIR/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "$PKG_DIR/usr/share/pixmaps"
+
+          # Binary
           cp target/release/adtp-desktop "$PKG_DIR/usr/bin/adtp-desktop"
           chmod 755 "$PKG_DIR/usr/bin/adtp-desktop"
+
+          # Icons
+          cp desktop/src-tauri/icons/32x32.png "$PKG_DIR/usr/share/icons/hicolor/32x32/apps/adtp-desktop.png"
+          cp desktop/src-tauri/icons/64x64.png "$PKG_DIR/usr/share/icons/hicolor/64x64/apps/adtp-desktop.png"
+          cp desktop/src-tauri/icons/128x128.png "$PKG_DIR/usr/share/icons/hicolor/128x128/apps/adtp-desktop.png"
+          cp desktop/src-tauri/icons/128x128@2x.png "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/adtp-desktop.png"
+          cp desktop/src-tauri/icons/128x128.png "$PKG_DIR/usr/share/pixmaps/adtp-desktop.png"
+
+          # Desktop entry (app menu / launcher)
+          printf '[Desktop Entry]\nType=Application\nName=ADTP Desktop\nComment=Agent Direct Transfer Protocol - secure P2P file transfer\nExec=/usr/bin/adtp-desktop\nIcon=adtp-desktop\nTerminal=false\nCategories=Network;FileTransfer;\nKeywords=adtp;transfer;p2p;file;ashir;\nStartupNotify=true\n' > "$PKG_DIR/usr/share/applications/adtp-desktop.desktop"
+
+          # Control file
           printf 'Package: adtp-desktop\nVersion: 1.0.0\nSection: net\nPriority: optional\nArchitecture: amd64\nMaintainer: ASHIR Tech <tech@ashir.tech>\nDepends: libgtk-3-0, libwebkit2gtk-4.1-0, libglib2.0-0, librsvg2-2, libssl3\nDescription: ADTP Desktop - Agent Direct Transfer Protocol\n A secure peer-to-peer file transfer desktop application\n with encrypted QUIC transport, audit chains, and mobile companion support.\n' > "$PKG_DIR/DEBIAN/control"
+
+          # Post-install: refresh desktop + icon caches so the app appears immediately
+          printf '#!/bin/sh\nset -e\nif command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q /usr/share/applications; fi\nif command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true; fi\nexit 0\n' > "$PKG_DIR/DEBIAN/postinst"
+          chmod 755 "$PKG_DIR/DEBIAN/postinst"
+
           dpkg-deb --build "$PKG_DIR" "adtp-desktop_1.0.0_amd64.deb"
       - uses: actions/upload-artifact@v4
         with:
