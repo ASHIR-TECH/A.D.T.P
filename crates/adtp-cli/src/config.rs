@@ -95,7 +95,17 @@ impl CliConfig {
         let path = Self::config_path();
         let mut cfg = if path.exists() {
             let content = std::fs::read_to_string(&path)?;
-            toml::from_str(&content)?
+            match toml::from_str(&content) {
+                Ok(cfg) => cfg,
+                Err(_) => {
+                    // Config file is empty or missing required fields (e.g.
+                    // created by a previous run or truncated on disk). Fall
+                    // back to defaults; env overrides are applied below.
+                    let cfg = Self::default();
+                    let _ = cfg.save();
+                    cfg
+                }
+            }
         } else {
             let cfg = Self::default();
             let _ = cfg.save();

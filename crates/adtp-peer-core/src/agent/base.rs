@@ -403,10 +403,7 @@ mod tests {
 
     #[test]
     fn test_last_user_text_none_without_user_turn() {
-        assert_eq!(
-            last_user_text(&[msg("assistant", "hi")]),
-            None
-        );
+        assert_eq!(last_user_text(&[msg("assistant", "hi")]), None);
     }
 
     #[test]
@@ -476,7 +473,9 @@ mod tests {
     #[test]
     fn test_build_chat_body_omits_blank_or_missing_persona() {
         assert!(build_chat_body("hello", None).get("context").is_none());
-        assert!(build_chat_body("hello", Some("   ")).get("context").is_none());
+        assert!(build_chat_body("hello", Some("   "))
+            .get("context")
+            .is_none());
     }
 
     #[test]

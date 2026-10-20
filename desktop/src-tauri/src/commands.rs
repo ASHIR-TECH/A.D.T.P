@@ -600,9 +600,9 @@ fn agent_api_token_from_env() -> Result<String, String> {
             "ADTP_API_TOKEN is shorter than 32 characters. Set the same token adtp-api runs with."
                 .to_string(),
         ),
-        Err(_) => Err(
-            "ADTP_API_TOKEN is not set. Set the same token adtp-api runs with.".to_string(),
-        ),
+        Err(_) => {
+            Err("ADTP_API_TOKEN is not set. Set the same token adtp-api runs with.".to_string())
+        }
     }
 }
 
@@ -839,8 +839,8 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev_token = std::env::var_os("ADTP_API_TOKEN");
         let prev_url = std::env::var_os("ADTP_API_URL");
-        let api_url = std::env::var("ADTP_API_URL")
-            .unwrap_or_else(|_| "http://10.0.0.7:40003".to_string());
+        let api_url =
+            std::env::var("ADTP_API_URL").unwrap_or_else(|_| "http://10.0.0.7:40003".to_string());
         std::env::set_var("ADTP_API_TOKEN", "z".repeat(40));
         std::env::set_var("ADTP_API_URL", &api_url);
 
@@ -900,7 +900,10 @@ mod tests {
         // E2E harness hook: print the real serialized payload so the MARS
         // parser + a live adtp-api can be exercised against it (node harness).
         if std::env::var("ADTP_E2E_EMIT").is_ok() {
-            println!("ADTP_QR_PAYLOAD={}", serde_json::to_string(&payload).unwrap());
+            println!(
+                "ADTP_QR_PAYLOAD={}",
+                serde_json::to_string(&payload).unwrap()
+            );
         }
 
         match prev_token {

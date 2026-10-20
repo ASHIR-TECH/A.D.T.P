@@ -16,6 +16,7 @@ pub enum AgentState {
     Error(String),
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
     async fn send_file(&self, file_path: &str, peer_id: &str) -> Result<String, String>;
@@ -791,7 +792,10 @@ mod tests {
             executor.clone(),
         );
 
-        let text = runtime.send_message("send report.txt to peer-42").await.unwrap();
+        let text = runtime
+            .send_message("send report.txt to peer-42")
+            .await
+            .unwrap();
         assert_eq!(text, "Done — file is on its way.");
 
         // The executor really ran with the model's arguments.
@@ -811,11 +815,7 @@ mod tests {
         assert_eq!(detail.status, "completed");
         assert_eq!(detail.params["file_path"], path.as_str());
         assert_eq!(detail.params["peer_id"], "peer-42");
-        assert!(detail
-            .result
-            .as_deref()
-            .unwrap()
-            .contains("queued"));
+        assert!(detail.result.as_deref().unwrap().contains("queued"));
 
         // Tool details survive the JSON round-trip used by the IPC socket.
         let json = serde_json::to_value(&conversation).unwrap();

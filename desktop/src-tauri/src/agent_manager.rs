@@ -196,6 +196,7 @@ impl AgentManager {
 
     /// Coarse status for the mobile companion: whether any runtime is actually
     /// activated, plus the provider/model of the first enabled agent.
+    #[allow(dead_code)]
     pub async fn status(&self) -> (bool, Option<String>, Option<String>) {
         let runtimes = self.runtimes.lock().await;
         let mut active = false;
@@ -211,7 +212,10 @@ impl AgentManager {
         drop(runtimes);
 
         let entries = self.entries.lock().await;
-        let entry = entries.iter().find(|e| e.enabled).or_else(|| entries.first());
+        let entry = entries
+            .iter()
+            .find(|e| e.enabled)
+            .or_else(|| entries.first());
         (
             active,
             entry.map(|e| e.provider.clone()),
@@ -233,7 +237,7 @@ impl AgentManager {
 
     pub async fn add_agent(&self, request: AddAgentRequest) -> Result<AgentEntry, String> {
         let id = uuid::Uuid::new_v4().to_string();
-        let name = format!("{} ({})", &request.provider, &request.model);
+        let name = format!("{} ({})", request.provider, request.model);
         let is_byo = request.provider != BASE_PROVIDER;
 
         let entry = AgentEntry {
@@ -431,12 +435,18 @@ mod tests {
     #[test]
     fn plan_ensures_shared_ai_when_no_user_keys() {
         assert_eq!(plan_base_ai(&[], false), BaseAiPlan::Ensure);
-        assert_eq!(plan_base_ai(&[entry(BASE_PROVIDER)], false), BaseAiPlan::Ensure);
+        assert_eq!(
+            plan_base_ai(&[entry(BASE_PROVIDER)], false),
+            BaseAiPlan::Ensure
+        );
     }
 
     #[test]
     fn plan_retires_once_user_adds_own_provider() {
-        assert_eq!(plan_base_ai(&[entry("anthropic")], false), BaseAiPlan::Retire);
+        assert_eq!(
+            plan_base_ai(&[entry("anthropic")], false),
+            BaseAiPlan::Retire
+        );
         assert_eq!(
             plan_base_ai(&[entry(BASE_PROVIDER), entry("openai")], false),
             BaseAiPlan::Retire
@@ -448,7 +458,10 @@ mod tests {
     #[test]
     fn plan_never_reinstalls_after_retirement() {
         assert_eq!(plan_base_ai(&[], true), BaseAiPlan::Retire);
-        assert_eq!(plan_base_ai(&[entry(BASE_PROVIDER)], true), BaseAiPlan::Retire);
+        assert_eq!(
+            plan_base_ai(&[entry(BASE_PROVIDER)], true),
+            BaseAiPlan::Retire
+        );
     }
 
     #[test]

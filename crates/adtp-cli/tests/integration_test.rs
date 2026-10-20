@@ -7,6 +7,7 @@ use wiremock::{
 
 static SERVER: OnceLock<MockServer> = OnceLock::new();
 
+#[allow(dead_code)]
 fn api_url() -> String {
     let server = SERVER.get_or_init(|| {
         tokio::runtime::Runtime::new()
@@ -16,18 +17,19 @@ fn api_url() -> String {
     format!("http://{}", server.address())
 }
 
-async fn setup() -> MockServer {
-    MockServer::start().await
-}
-
+#[allow(dead_code)]
 fn build_cli_args(extra_args: &[&str]) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_adtp"));
-    cmd.env("ADTP_API_URL", &api_url());
+    cmd.env("ADTP_API_URL", api_url());
     cmd.env("ADTP_API_TOKEN", "test-token-abcdef1234567890");
     cmd.env("ADTP_OUTPUT_FORMAT", "json");
     cmd.env("ADTP_DEFAULT_PEER", "test-peer");
     cmd.args(extra_args);
     cmd
+}
+
+async fn setup() -> MockServer {
+    MockServer::start().await
 }
 
 fn base_envs() -> Vec<(&'static str, String)> {
@@ -215,6 +217,16 @@ async fn test_verify_valid_chain() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!(
+            "verify valid stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        eprintln!(
+            "verify valid stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\"valid\": true"));
@@ -242,6 +254,17 @@ async fn test_verify_tampered_chain() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!(
+            "verify tampered stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        eprintln!(
+            "verify tampered stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+    assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\"valid\": false"));
 }
@@ -318,6 +341,10 @@ async fn test_export_to_file() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!("export stderr: {}", String::from_utf8_lossy(&output.stderr));
+        eprintln!("export stdout: {}", String::from_utf8_lossy(&output.stdout));
+    }
     assert!(output.status.success());
     let written = std::fs::read_to_string(&out_path).expect("failed to read exported file");
     assert!(written.contains("report.pdf"));
@@ -428,6 +455,16 @@ async fn test_context_empty() {
         .output()
         .expect("failed to execute process");
 
+    if !output.status.success() {
+        eprintln!(
+            "context stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        eprintln!(
+            "context stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("null") || stdout.contains("No context"));

@@ -28,6 +28,7 @@ pub struct LlmResponse {
     pub stop_reason: String,
 }
 
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Provider: Send + Sync {
     async fn send_message(

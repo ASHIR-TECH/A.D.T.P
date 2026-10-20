@@ -26,6 +26,7 @@ pub fn agent_socket_path() -> PathBuf {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct IpcRequest {
     cmd: String,
     #[serde(default)]
@@ -41,6 +42,7 @@ struct IpcResponse {
     error: Option<String>,
 }
 
+#[allow(dead_code)]
 fn ok(data: Value) -> IpcResponse {
     IpcResponse {
         ok: true,
@@ -49,6 +51,7 @@ fn ok(data: Value) -> IpcResponse {
     }
 }
 
+#[allow(dead_code)]
 fn err(message: impl Into<String>) -> IpcResponse {
     IpcResponse {
         ok: false,
@@ -105,7 +108,10 @@ async fn handle_stream(
     let (reader, mut writer) = stream.into_split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    reader.read_line(&mut line).await.map_err(|e| e.to_string())?;
+    reader
+        .read_line(&mut line)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let response = match serde_json::from_str::<IpcRequest>(&line) {
         Ok(request) => dispatch(&request.cmd, &request.params, &mgr).await,
@@ -114,11 +120,15 @@ async fn handle_stream(
 
     let mut encoded = serde_json::to_vec(&response).map_err(|e| e.to_string())?;
     encoded.push(b'\n');
-    writer.write_all(&encoded).await.map_err(|e| e.to_string())?;
+    writer
+        .write_all(&encoded)
+        .await
+        .map_err(|e| e.to_string())?;
     writer.flush().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn dispatch(cmd: &str, params: &Value, mgr: &Arc<Mutex<AgentManager>>) -> IpcResponse {
     match cmd {
         "agent_status" => {
@@ -154,6 +164,7 @@ async fn dispatch(cmd: &str, params: &Value, mgr: &Arc<Mutex<AgentManager>>) -> 
 
 /// Flattens the tool invocations recorded since `from` into the shape the
 /// gateway persists and MARS renders (id/name/status/params/result).
+#[allow(dead_code)]
 fn collect_tool_calls(conversation: &[ConversationEntry], from: usize) -> Value {
     let calls: Vec<Value> = conversation
         .iter()
@@ -164,6 +175,7 @@ fn collect_tool_calls(conversation: &[ConversationEntry], from: usize) -> Value 
     Value::Array(calls)
 }
 
+#[allow(dead_code)]
 fn tool_call_json(detail: &ToolCallDetail) -> Value {
     json!({
         "id": detail.id,

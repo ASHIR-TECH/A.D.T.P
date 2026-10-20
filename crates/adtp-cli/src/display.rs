@@ -65,6 +65,7 @@ pub fn path_badge(path_type: &str) -> colored::ColoredString {
 
 // ── Helpers ──
 
+#[allow(clippy::useless_borrows_in_formatting)]
 pub fn truncate_id(id: &str) -> String {
     if id.len() > 8 {
         format!("{}…", &id[..8])
@@ -428,14 +429,8 @@ pub fn render_agent_permissions(perms: &AgentPermissions) -> String {
     for c in &perms.allowed_commands {
         lines.push(format!("{:<20} {:<30} {}", "Allowed commands", c, "—"));
     }
-    lines.push(format!(
-        "{:<20} {:<30}",
-        "Hidden files", &perms.hidden_files
-    ));
-    lines.push(format!(
-        "{:<20} {:<30}",
-        "Remote tasks", &perms.remote_tasks
-    ));
+    lines.push(format!("{:<20} {:<30}", "Hidden files", perms.hidden_files));
+    lines.push(format!("{:<20} {:<30}", "Remote tasks", perms.remote_tasks));
     lines.push(format!(
         "{:<20} {} MB",
         "File size limit", perms.file_size_limit_mb

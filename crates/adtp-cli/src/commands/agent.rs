@@ -8,6 +8,7 @@ use colored::Colorize;
 
 const MAX_DISPLAY_LEN: usize = 160;
 
+#[allow(clippy::useless_borrows_in_formatting)]
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         return s.to_string();
