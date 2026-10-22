@@ -3,6 +3,7 @@ mod agent_manager;
 mod commands;
 mod p2p;
 mod poller;
+mod relay_listener;
 mod settings;
 mod tray;
 
@@ -10,6 +11,7 @@ use adtp_peer_core::agent::ToolExecutor;
 use agent_manager::AgentManager;
 use p2p::P2PModule;
 use poller::SharedState;
+use relay_listener::auto_start_on_launch;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 use tokio::sync::Mutex;
@@ -83,6 +85,9 @@ pub fn run() {
                 }
                 mgr.activate_enabled().await;
             });
+
+            // Auto-start relay listener if paired
+            let _ = auto_start_on_launch(app.handle());
 
             std::mem::forget(p2p_rt); // keep runtime alive for background tasks (accept loop, etc.)
 
@@ -207,6 +212,9 @@ pub fn run() {
             commands::launch_cli,
             commands::get_pairing_qr_data,
             commands::show_main_window,
+            relay_listener::start_relay_listener,
+            relay_listener::stop_relay_listener,
+            relay_listener::relay_listener_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ADTP Desktop");

@@ -13,8 +13,10 @@ Runs 24/7 as a daemon on the desktop to:
 
 Usage:
   python relay_listener.py --gateway-url ws://localhost:40003/relay --token <pairing-token> --desktop-id <desktop-id>
+  python relay_listener.py --daemon --gateway-url ... --token ... --desktop-id ...
 
-Can be installed as a systemd user service for auto-start.
+Can be installed as a systemd user service for auto-start (see relay_listener.service).
+Or run with --daemon to fork into background and detach from terminal.
 """
 
 import asyncio
@@ -30,6 +32,45 @@ import websockets
 from websockets.client import WebSocketClientProtocol
 
 # Minimal deps: websockets (pip install websockets)
+
+
+def daemonize(pid_file: Optional[str] = None):
+    """Double-fork to daemonize. Optionally write PID to file."""
+    # First fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)  # Exit parent
+    except OSError as e:
+        sys.stderr.write(f"fork #1 failed: {e}\n")
+        sys.exit(1)
+
+    # Decouple from parent environment
+    os.chdir("/")
+    os.setsid()
+    os.umask(0)
+
+    # Second fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)
+    except OSError as e:
+        sys.stderr.write(f"fork #2 failed: {e}\n")
+        sys.exit(1)
+
+    # Redirect std streams
+    sys.stdout.flush()
+    sys.stderr.flush()
+    devnull = os.open(os.devnull, os.O_RDWR)
+    os.dup2(devnull, sys.stdin.fileno())
+    os.dup2(devnull, sys.stdout.fileno())
+    os.dup2(devnull, sys.stderr.fileno())
+    os.close(devnull)
+
+    if pid_file:
+        with open(pid_file, "w") as f:
+            f.write(str(os.getpid()))
 
 
 class RelayListener:
@@ -97,7 +138,6 @@ class RelayListener:
 
         if msg_type == "auth_ack":
             print("[relay] Authenticated successfully")
-            # Send initial state
             await self.send_state_update()
         elif msg_type == "auth_rejected":
             reason = msg.get("reason", "unknown")
@@ -108,7 +148,6 @@ class RelayListener:
             text = msg.get("text", "")
             await self.handle_chat_message(session_id, text)
         elif msg_type == "ping":
-            # Respond to ping so phone knows we're alive
             await self.send({"type": "pong", "timestamp": msg.get("timestamp")})
         else:
             print(f"[relay] Unknown message type: {msg_type}")
@@ -116,7 +155,6 @@ class RelayListener:
     async def handle_chat_message(self, session_id: str, text: str):
         """Forward to local agent via Unix socket, return response."""
         try:
-            # Connect to agent socket
             reader, writer = await asyncio.open_unix_connection(self.agent_socket)
             request = {
                 "jsonrpc": "2.0",
@@ -127,7 +165,6 @@ class RelayListener:
             writer.write((json.dumps(request) + "\n").encode())
             await writer.drain()
 
-            # Read response (newline-delimited JSON)
             line = await reader.readline()
             writer.close()
             await writer.wait_closed()
@@ -168,11 +205,9 @@ class RelayListener:
                 await self.connect()
                 backoff = 1
 
-                # Background tasks
                 state_task = asyncio.create_task(self.state_loop())
                 ping_task = asyncio.create_task(self.ping_loop())
 
-                # Message receive loop
                 async for raw in self.ws:
                     await self.handle_message(raw)
 
@@ -212,11 +247,15 @@ async def main():
     parser.add_argument("--token", required=True, help="Pairing token")
     parser.add_argument("--desktop-id", required=True, help="Desktop ID (from QR)")
     parser.add_argument("--agent-socket", default="/tmp/adtp-agent.sock", help="Agent Unix socket path")
+    parser.add_argument("--daemon", action="store_true", help="Fork into background as daemon")
+    parser.add_argument("--pid-file", default="/tmp/adtp-relay-listener.pid", help="PID file for daemon mode")
     args = parser.parse_args()
+
+    if args.daemon:
+        daemonize(args.pid_file)
 
     listener = RelayListener(args.gateway_url, args.token, args.desktop_id, args.agent_socket)
 
-    # Handle signals for graceful shutdown
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, listener.stop)

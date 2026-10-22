@@ -112,6 +112,7 @@ dependencies = [
  "dirs 5.0.1",
  "hex",
  "hostname",
+ "libc",
  "png 0.17.16",
  "rustls",
  "serde",
