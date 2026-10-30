@@ -120,6 +120,26 @@ def _uptime_seconds() -> float | None:
     return None
 
 
+def _battery() -> dict[str, bool | float | None]:
+    """Return portable-power data without making telemetry a hard dependency."""
+    try:
+        import psutil  # type: ignore[import-not-found]
+
+        battery = psutil.sensors_battery()
+        if battery is not None:
+            return {
+                "present": True,
+                "percent": round(float(battery.percent), 1),
+                "charging": bool(battery.power_plugged),
+                "seconds_remaining": (
+                    float(battery.secsleft) if battery.secsleft >= 0 else None
+                ),
+            }
+    except Exception:
+        pass
+    return {"present": False, "percent": None, "charging": None, "seconds_remaining": None}
+
+
 def _primary_ip() -> str | None:
     """Best-effort LAN address. Opens a UDP socket — sends no packets."""
     try:
@@ -174,6 +194,7 @@ async def gather(
         "ram_percent": (
             round(used_ram / total_ram * 100, 1) if total_ram and used_ram else None
         ),
+        "battery": _battery(),
         "disk_total": disk_total,
         "disk_used": disk_used,
         "disk_percent": disk_percent,
