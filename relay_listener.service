@@ -1,0 +1,30 @@
+# ADTP Relay Listener - systemd user service
+# Install: cp relay_listener.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now relay_listener
+# Logs: journalctl --user -u relay_listener -f
+
+[Unit]
+Description=ADTP Relay Listener (persistent WebSocket to gateway)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust paths to your environment
+ExecStart=/usr/bin/python3 /path/to/relay_listener.py \
+  --gateway-url ws://localhost:40003/relay \
+  --token ${ADTP_PAIRING_TOKEN} \
+  --desktop-id ${ADTP_DESKTOP_ID} \
+  --agent-socket /tmp/adtp-agent.sock
+Environment=ADTP_PAIRING_TOKEN=your-pairing-token-here
+Environment=ADTP_DESKTOP_ID=your-desktop-id-here
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits (keeps it under 5MB RSS)
+MemoryMax=16M
+MemorySwapMax=0
+
+[Install]
+WantedBy=default.target

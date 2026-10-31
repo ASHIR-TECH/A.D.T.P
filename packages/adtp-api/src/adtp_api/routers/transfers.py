@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 import aiosqlite
+from pathlib import Path
 
 from adtp_api.dependencies import get_db
 from adtp_api.models.transfer import TransferRequest, TransferList, UploadResponse
 from adtp_api.services import transfer_service
+from adtp_api.services.system_service import resolved_intake_dir
 
 router = APIRouter(prefix="/api/v1/transfers", tags=["transfers"])
 limiter = Limiter(key_func=get_remote_address)
@@ -40,6 +43,37 @@ async def upload_file(
     desktop AI can act on the uploaded file.
     """
     return await transfer_service.receive_upload(file)
+
+
+@router.get("/{transfer_id}/download")
+async def download_file(
+    transfer_id: str,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """Download a transferred file by transfer ID.
+
+    For uploads (phone → desktop), the file is in the intake directory.
+    For incoming transfers (desktop ← desktop), the file is in a watch folder.
+    This endpoint attempts to locate and serve the file.
+    """
+    # Look up the transfer to get filename
+    transfer = await transfer_service.get_transfer(db, transfer_id)
+    filename = transfer.filename
+
+    # Try intake directory first (uploads from phone)
+    intake_dir = resolved_intake_dir()
+    intake_path = intake_dir / filename
+    if intake_path.exists():
+        return FileResponse(
+            path=str(intake_path),
+            filename=filename,
+            media_type=transfer.mime_type or "application/octet-stream",
+        )
+
+    # TODO: For incoming QUIC transfers, check watch folders
+    # This would require tracking file_path in transfer_audit or querying watchers
+
+    raise HTTPException(status_code=404, detail="File not found on this desktop")
 
 
 @router.post("/push", status_code=201)

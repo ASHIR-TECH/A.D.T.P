@@ -71,3 +71,12 @@ async def test_system_info_percentages_are_bounded(client):
         value = data[key]
         if value is not None:
             assert 0.0 <= value <= 100.0
+
+
+@pytest.mark.asyncio
+async def test_system_info_always_has_a_safe_battery_shape(client):
+    resp = await client.get("/api/v1/system/info", headers=_auth())
+    battery = resp.json()["battery"]
+    assert battery["present"] in (True, False)
+    if battery["percent"] is not None:
+        assert 0.0 <= battery["percent"] <= 100.0

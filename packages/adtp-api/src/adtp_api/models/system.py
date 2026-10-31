@@ -11,6 +11,15 @@ class SystemAgentInfo(BaseModel):
     model: str | None = None
 
 
+class SystemBatteryInfo(BaseModel):
+    """Best-effort battery state for portable paired devices."""
+
+    present: bool = False
+    percent: float | None = None
+    charging: bool | None = None
+    seconds_remaining: float | None = None
+
+
 class SystemInfo(BaseModel):
     """Host telemetry for the paired desktop.
 
@@ -29,6 +38,7 @@ class SystemInfo(BaseModel):
     ram_total: int | None = None
     ram_used: int | None = None
     ram_percent: float | None = None
+    battery: SystemBatteryInfo = SystemBatteryInfo()
     disk_total: int | None = None
     disk_used: int | None = None
     disk_percent: float | None = None
