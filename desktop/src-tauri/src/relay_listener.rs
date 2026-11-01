@@ -2,10 +2,9 @@
 // Place in: desktop/src-tauri/src/relay_listener.rs
 // Add to lib.rs: mod relay_listener;
 
-use dirs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 /// Manages the Python relay listener as a background daemon.
 /// Starts it on app launch, stops on app exit (optional — daemon survives if --daemon used).
@@ -57,11 +56,9 @@ impl RelayListenerManager {
             Some(PathBuf::from("/usr/local/share/adtp/relay_listener.py")),
         ];
 
-        for c in candidates {
-            if let Some(path) = c {
-                if path.exists() {
-                    return path;
-                }
+        for path in candidates.into_iter().flatten() {
+            if path.exists() {
+                return path;
             }
         }
         // Default fallback
@@ -154,7 +151,7 @@ impl RelayListenerManager {
 
     /// Check if daemon is running (PID file exists and process alive).
     pub fn is_running(&self) -> bool {
-        self.read_pid().map_or(false, |pid| Self::pid_alive(pid))
+        self.read_pid().is_some_and(Self::pid_alive)
     }
 
     fn read_pid(&self) -> Option<u32> {
