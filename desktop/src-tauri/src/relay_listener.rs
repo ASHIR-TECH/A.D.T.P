@@ -2,10 +2,10 @@
 // Place in: desktop/src-tauri/src/relay_listener.rs
 // Add to lib.rs: mod relay_listener;
 
+use dirs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::{AppHandle, Manager, Runtime};
-use dirs;
 
 /// Manages the Python relay listener as a background daemon.
 /// Starts it on app launch, stops on app exit (optional — daemon survives if --daemon used).
