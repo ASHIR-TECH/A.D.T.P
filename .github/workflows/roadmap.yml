@@ -26,5 +26,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      # The roadmap sync helper is optional. When it is not present in the
+      # repository the job skips instead of failing the workflow run.
       - name: Update project items
+        if: ${{ hashFiles('scripts/populate_roadmap.py') != '' }}
         run: python3 scripts/populate_roadmap.py --sync --skip-branches
+
+      - name: Roadmap sync script not present - skipping
+        if: ${{ hashFiles('scripts/populate_roadmap.py') == '' }}
+        run: echo "scripts/populate_roadmap.py is not in this repository; nothing to sync."
