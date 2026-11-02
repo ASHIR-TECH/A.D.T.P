@@ -37,12 +37,13 @@ def default_intake_dir() -> Path:
 
 class Settings(BaseSettings):
     # Bind address for the REST gateway. Set ADTP_API_HOST="0.0.0.0" so the
-    # mobile companion can reach the desktop gateway over the LAN. The default
-    # stays 127.0.0.1 (loopback only) for safety — the QR pairing payload,
-    # however, advertises the non-loopback IP and assumes the gateway binds
-    # 0.0.0.0. Env vars use the ADTP_ prefix: api_host -> ADTP_API_HOST,
+    # mobile companion can reach the desktop gateway over the LAN. The QR
+    # pairing payload advertises a LAN address, therefore the bundled gateway
+    # must listen on LAN interfaces by default. Every non-health route still
+    # requires the high-entropy ADTP_API_TOKEN. Env vars use the ADTP_ prefix:
+    # api_host -> ADTP_API_HOST,
     # api_port -> ADTP_API_PORT, api_token -> ADTP_API_TOKEN.
-    api_host: str = "127.0.0.1"
+    api_host: str = "0.0.0.0"
     api_port: int = 40003
     api_token: str = ""
     client_socket: str = "/tmp/adtp-client.sock"
