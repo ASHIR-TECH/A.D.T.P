@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # Empty means the shared ADTP data dir (`<data_dir>/adtp/intake`), matching
     # the Rust server's FileIntake so both land in the same folder.
     intake_dir: str = ""
+    # Where desktop → phone files are staged (POST /api/v1/devices/{id}/files).
+    # Empty means `<data_dir>/adtp/outbox`.
+    outbox_dir: str = ""
     # Seconds between `state_update` frames pushed over the /relay WebSocket.
     relay_state_interval: float = 5.0
 

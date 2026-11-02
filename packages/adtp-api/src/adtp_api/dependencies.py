@@ -8,12 +8,16 @@ from fastapi import Request
 
 async def get_db(request: Request) -> aiosqlite.Connection:
     from adtp_api.services.agent_service import ensure_agent_messages_table
+    from adtp_api.services.audit_service import ensure_transfer_audit_table
+    from adtp_api.services.device_service import ensure_device_tables
 
     db_path = Path(request.app.state.audit_db)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = await aiosqlite.connect(str(db_path))
     db.row_factory = aiosqlite.Row
     await ensure_agent_messages_table(db)
+    await ensure_transfer_audit_table(db)
+    await ensure_device_tables(db)
     try:
         yield db
     finally:

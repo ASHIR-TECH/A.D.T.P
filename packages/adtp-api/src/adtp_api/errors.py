@@ -20,6 +20,11 @@ class TransferNotFoundError(AdtpError):
         super().__init__(f"Warning! Transfer not found: {transfer_id}", 404)
 
 
+class DeviceNotFoundError(AdtpError):
+    def __init__(self, device_id: str):
+        super().__init__(f"Warning! Paired device not found: {device_id}", 404)
+
+
 class SessionNotFoundError(AdtpError):
     def __init__(self, session_id: str):
         super().__init__(f"Be Warned! Session not found: {session_id}", 404)
