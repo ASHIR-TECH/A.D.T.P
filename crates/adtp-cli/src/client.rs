@@ -179,6 +179,76 @@ impl ApiClient {
 
         Ok(())
     }
+
+    /// Upload one local file as multipart/form-data under `field`.
+    pub async fn post_multipart_file<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        field: &str,
+        file_path: &str,
+    ) -> Result<T, CliError> {
+        let bytes = tokio::fs::read(file_path)
+            .await
+            .map_err(|e| CliError::Http {
+                message: format!("Cannot read {file_path}: {e}"),
+            })?;
+        let filename = std::path::Path::new(file_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file.bin".into());
+        let part = reqwest::multipart::Part::bytes(bytes).file_name(filename);
+        let form = reqwest::multipart::Form::new().part(field.to_string(), part);
+
+        let resp = self
+            .client
+            .post(self.url(path))
+            .headers(self.auth_headers())
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| map_http_error(e, &self.base_url))?;
+
+        let status = resp.status().as_u16();
+        if status >= 400 {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(map_api_error(status, &body));
+        }
+
+        resp.json::<T>().await.map_err(|e| CliError::Http {
+            message: format!("Failed to parse response: {}", e),
+        })
+    }
+
+    /// Auth-only header map: multipart sets its own Content-Type boundary.
+    fn auth_headers(&self) -> reqwest::header::HeaderMap {
+        let mut h = reqwest::header::HeaderMap::new();
+        h.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", self.token).parse().unwrap(),
+        );
+        h
+    }
+
+    pub async fn list_devices(&self) -> Result<crate::models::PairedDeviceList, CliError> {
+        self.get("/api/v1/devices").await
+    }
+
+    pub async fn remove_device(&self, device_id: &str) -> Result<(), CliError> {
+        self.delete(&format!("/api/v1/devices/{device_id}")).await
+    }
+
+    pub async fn queue_device_file(
+        &self,
+        device_id: &str,
+        file_path: &str,
+    ) -> Result<crate::models::DeviceFileQueued, CliError> {
+        self.post_multipart_file(
+            &format!("/api/v1/devices/{device_id}/files"),
+            "file",
+            file_path,
+        )
+        .await
+    }
 }
 
 fn map_http_error(e: reqwest::Error, base_url: &str) -> CliError {

@@ -230,3 +230,53 @@ pub struct PeerList {
 pub struct ScanResult {
     pub peers: Vec<PeerInfo>,
 }
+
+// ── Paired mobile devices ──
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairedDevice {
+    pub device_id: String,
+    pub name: String,
+    pub platform: String,
+    #[serde(default)]
+    pub os_name: String,
+    #[serde(default)]
+    pub os_version: String,
+    #[serde(default)]
+    pub app_version: String,
+    #[serde(default)]
+    pub model: String,
+    pub battery_percent: Option<f64>,
+    pub battery_charging: Option<bool>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    pub paired_at: String,
+    pub last_seen: String,
+    #[serde(default)]
+    pub online: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairedDeviceList {
+    pub devices: Vec<PairedDevice>,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceFile {
+    pub id: String,
+    pub device_id: String,
+    pub filename: String,
+    pub file_size: i64,
+    #[serde(default)]
+    pub mime_type: String,
+    #[serde(default)]
+    pub sha256: String,
+    pub created_at: String,
+    pub delivered_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceFileQueued {
+    pub file: DeviceFile,
+}
