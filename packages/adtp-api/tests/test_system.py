@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from adtp_api.main import create_app
+from adtp_api.config import Settings
 
 VALID_TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -39,6 +40,10 @@ async def client(app):
 
 def _auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {VALID_TOKEN}"}
+
+
+def test_gateway_listens_on_lan_by_default():
+    assert Settings(api_token=VALID_TOKEN).api_host == "0.0.0.0"
 
 
 @pytest.mark.asyncio
