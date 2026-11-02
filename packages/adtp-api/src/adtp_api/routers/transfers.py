@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -33,6 +42,7 @@ async def send_file(
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
+    device_id: str | None = Form(None),
     db: aiosqlite.Connection = Depends(get_db),
 ):
     """Accept a file from the paired phone and persist it to the intake dir.
@@ -40,9 +50,10 @@ async def upload_file(
     Unlike /send (which only forwards a file already on this machine), this is
     the inbound path for the phone's attachment. The response carries the
     absolute desktop path, which the phone appends to the agent chat so the
-    desktop AI can act on the uploaded file.
+    desktop AI can act on the uploaded file. The optional `device_id` links the
+    upload to the phone that sent it (and to its audit entry).
     """
-    return await transfer_service.receive_upload(file)
+    return await transfer_service.receive_upload(file, db, device_id)
 
 
 @router.get("/{transfer_id}/download")

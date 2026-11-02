@@ -60,12 +60,16 @@ def _unique_destination(directory: Path, filename: str) -> Path:
     return directory / f"{uuid.uuid4().hex}-{filename}"
 
 
-async def receive_upload(upload) -> dict:
-    """Stream a multipart upload into the intake dir and hash it.
+async def receive_upload(
+    upload, db: aiosqlite.Connection | None = None, device_id: str | None = None
+) -> dict:
+    """Stream a multipart upload into the intake dir, hash it and audit it.
 
     The phone sends the file bytes; the desktop agent then works with the
     returned absolute `path` (read_file/list_directory/send_file), which is why
-    we persist to disk rather than forwarding anywhere.
+    we persist to disk rather than forwarding anywhere. Recording the upload in
+    `transfer_audit` is what makes it appear in the desktop History and makes
+    `/transfers/{id}/download` able to find it again.
     """
     intake = resolved_intake_dir()
     intake.mkdir(parents=True, exist_ok=True)
@@ -93,14 +97,40 @@ async def receive_upload(upload) -> dict:
     finally:
         await upload.close()
 
+    transfer_id = uuid.uuid4().hex
+    received_at = datetime.now(timezone.utc).isoformat()
+    if db is not None:
+        from adtp_api.services.audit_service import append_transfer_audit
+
+        await append_transfer_audit(
+            db,
+            {
+                "id": transfer_id,
+                "session_id": f"device-{device_id}" if device_id else "phone-upload",
+                "transfer_type": "push",
+                "filename": destination.name,
+                "mime_type": upload.content_type or "",
+                "file_size": size,
+                "status": "delivered",
+                "integrity_verified": True,
+                "initiated_at": received_at,
+                "completed_at": received_at,
+                "sender_peer_id": device_id or "mars-mobile",
+                "receiver_peer_id": "",
+                "context": json.dumps({"path": str(destination), "direction": "inbound"}),
+                "timestamp": received_at,
+                "agent_action": "received",
+            },
+        )
+
     return {
-        "id": uuid.uuid4().hex,
+        "id": transfer_id,
         "filename": destination.name,
         "path": str(destination),
         "size": size,
         "sha256": hasher.hexdigest(),
         "content_type": upload.content_type,
-        "received_at": datetime.now(timezone.utc).isoformat(),
+        "received_at": received_at,
     }
 
 

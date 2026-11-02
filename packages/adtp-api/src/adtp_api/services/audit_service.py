@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
 from datetime import datetime, timezone
 
@@ -9,6 +8,82 @@ import aiosqlite
 
 from adtp_api.errors import TransferNotFoundError
 from adtp_api.models.audit import AuditEntry, AuditLogList, ChainVerifyResult
+
+# The Rust client writes its local `transfers` table; this is the gateway's
+# own audit log, which also records files the phone uploads. It is created on
+# demand so History/Downloads work on a fresh install (previously the table was
+# only assumed to exist and every audit query failed with "no such table").
+TRANSFER_AUDIT_SCHEMA = """CREATE TABLE IF NOT EXISTS transfer_audit (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL DEFAULT '',
+    transfer_type TEXT NOT NULL DEFAULT 'send',
+    filename TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    file_size INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    integrity_verified INTEGER NOT NULL DEFAULT 0,
+    signature TEXT NOT NULL DEFAULT '',
+    chain_hash TEXT NOT NULL DEFAULT '',
+    initiated_at TEXT NOT NULL,
+    completed_at TEXT,
+    sender_peer_id TEXT NOT NULL DEFAULT '',
+    receiver_peer_id TEXT NOT NULL DEFAULT '',
+    context TEXT,
+    timestamp TEXT NOT NULL DEFAULT '',
+    agent_action TEXT NOT NULL DEFAULT ''
+)"""
+
+
+async def ensure_transfer_audit_table(db: aiosqlite.Connection) -> None:
+    await db.execute(TRANSFER_AUDIT_SCHEMA)
+    await db.commit()
+
+
+def chain_digest(previous_hash: str, transfer_id: str) -> str:
+    """Hash used for a gateway audit row, matching `verify_chain` below."""
+    data = f"{previous_hash}{transfer_id}".encode()
+    try:
+        import blake3  # type: ignore[import-not-found]
+
+        return blake3.blake3(data).hexdigest()
+    except ImportError:  # pragma: no cover - only when optional wheel missing
+        return hashlib.sha256(data).hexdigest()
+
+
+async def append_transfer_audit(db: aiosqlite.Connection, row: dict) -> None:
+    """Insert an audit row, chaining it to the previous gateway entry."""
+    previous = await db.execute_fetchall(
+        "SELECT chain_hash FROM transfer_audit ORDER BY rowid DESC LIMIT 1"
+    )
+    previous_hash = str(previous[0][0]) if previous else ""
+    transfer_id = str(row["id"])
+    await db.execute(
+        "INSERT INTO transfer_audit (id, session_id, transfer_type, filename, "
+        "mime_type, file_size, status, integrity_verified, signature, "
+        "chain_hash, initiated_at, completed_at, sender_peer_id, "
+        "receiver_peer_id, context, timestamp, agent_action) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            transfer_id,
+            row.get("session_id", ""),
+            row.get("transfer_type", "send"),
+            row.get("filename", ""),
+            row.get("mime_type", ""),
+            int(row.get("file_size", 0)),
+            row.get("status", "delivered"),
+            int(bool(row.get("integrity_verified", True))),
+            row.get("signature", ""),
+            chain_digest(previous_hash, transfer_id),
+            row.get("initiated_at", ""),
+            row.get("completed_at"),
+            row.get("sender_peer_id", ""),
+            row.get("receiver_peer_id", ""),
+            row.get("context"),
+            row.get("timestamp", row.get("initiated_at", "")),
+            row.get("agent_action", "received"),
+        ),
+    )
+    await db.commit()
 
 
 async def query_log(
@@ -118,7 +193,7 @@ async def verify_chain(db: aiosqlite.Connection) -> ChainVerifyResult:
         transfer_id = str(r["id"])
         chain_hash = str(r["chain_hash"])
 
-        expected = hashlib.blake3(f"{prev_hash}{transfer_id}".encode()).hexdigest()
+        expected = chain_digest(prev_hash, transfer_id)
         if chain_hash != expected:
             first_failure_id = transfer_id
             break
