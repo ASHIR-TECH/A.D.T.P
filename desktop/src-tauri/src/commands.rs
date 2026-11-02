@@ -1,8 +1,8 @@
 use adtp_cli::client::ApiClient;
 use adtp_cli::config::CliConfig;
 use adtp_cli::models::{
-    AuditLogList, ChainVerifyResult, ContextBlock, SessionList, TransferList, TransferSendResponse,
-    TransferStatus, WatchList, WatchResponse,
+    AuditLogList, ChainVerifyResult, ContextBlock, DeviceFileQueued, PairedDeviceList, SessionList,
+    TransferList, TransferSendResponse, TransferStatus, WatchList, WatchResponse,
 };
 use adtp_peer_core::agent::permissions::PermissionConfig;
 use tauri::AppHandle;
@@ -480,6 +480,37 @@ pub async fn remove_peer(peer_id: String) -> Result<bool, String> {
         .save()
         .map_err(|e| format!("Failed to save peers: {}", e))?;
     Ok(true)
+}
+
+/// Phones that paired with this desktop (gateway device registry).
+#[tauri::command]
+pub async fn list_paired_devices(app: AppHandle) -> Result<PairedDeviceList, String> {
+    let client = make_client(&app)?;
+    client.list_devices().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remove_paired_device(app: AppHandle, device_id: String) -> Result<bool, String> {
+    let client = make_client(&app)?;
+    client
+        .remove_device(&device_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// Stage a local file for a paired phone; the phone downloads it from its inbox.
+#[tauri::command]
+pub async fn send_file_to_device(
+    app: AppHandle,
+    device_id: String,
+    file_path: String,
+) -> Result<DeviceFileQueued, String> {
+    let client = make_client(&app)?;
+    client
+        .queue_device_file(&device_id, &file_path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

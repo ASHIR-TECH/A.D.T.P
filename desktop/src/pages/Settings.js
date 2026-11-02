@@ -48,6 +48,12 @@ export async function render(container) {
     peers = await invoke('list_peers');
   } catch {}
 
+  let devices = [];
+  try {
+    const paired = await invoke('list_paired_devices');
+    devices = paired?.devices || [];
+  } catch {}
+
   container.innerHTML = `
     <div class="settings-page">
       <!-- My Peer ID Card -->
@@ -79,6 +85,33 @@ export async function render(container) {
           </div>
         </div>
         ` : ''}
+      </div>
+
+      <!-- Paired Phones Card -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h3>Paired Phones</h3>
+        </div>
+        <div id="paired-device-list">
+          ${devices.length === 0 ? `
+          <div class="settings-empty">
+            <div class="settings-empty-title">No phone paired yet</div>
+            <div class="settings-empty-text">Scan the pairing QR from MARS — your phone will appear here and can exchange files and system info</div>
+          </div>
+          ` : devices.map(d => `
+          <div class="peer-item" data-device-id="${escHtml(d.device_id)}" data-device-name="${escHtml(d.name)}">
+            <div class="peer-item-info">
+              <div class="peer-item-name">
+                ${escHtml(d.name)}
+                <span class="badge ${d.online ? 'badge-verified' : 'badge-pending'}">${d.online ? 'Online' : 'Offline'}</span>
+              </div>
+              <div class="peer-item-detail">${escHtml(d.platform)} ${escHtml(d.os_version || '')} &middot; ${deviceBattery(d)} &middot; last seen ${formatSeen(d.last_seen)}</div>
+            </div>
+            <button class="btn btn-sm btn-primary device-send-btn">Send File</button>
+            <button class="peer-remove-btn device-remove-btn" title="Remove phone">&times;</button>
+          </div>
+          `).join('')}
+        </div>
       </div>
 
       <!-- Peers Card -->
@@ -262,6 +295,19 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
+function deviceBattery(device) {
+  if (device.battery_percent == null) return 'battery unknown';
+  const charging = device.battery_charging ? ' ⚡' : '';
+  return `${Math.round(device.battery_percent)}%${charging}`;
+}
+
+function formatSeen(value) {
+  if (!value) return 'never';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
 function providerIcon(provider) {
   const p = provider.toLowerCase();
   if (p.includes('openai') || p.includes('gpt')) return 'icons/chatgpt.jpg';
@@ -400,7 +446,7 @@ function setupEventHandlers(container, settings) {
     }
   });
 
-  container.querySelectorAll('.peer-remove-btn').forEach(btn => {
+  container.querySelectorAll('.peer-remove-btn:not(.device-remove-btn)').forEach(btn => {
     btn.addEventListener('click', async () => {
       const item = btn.closest('.peer-item');
       const peerId = item.dataset.peerId;
@@ -412,6 +458,38 @@ function setupEventHandlers(container, settings) {
         item.remove();
       } catch (err) {
         show(`Failed to remove peer: ${err}`, 'error');
+      }
+    });
+  });
+
+  container.querySelectorAll('.device-send-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.peer-item');
+      const deviceId = item.dataset.deviceId;
+      const name = item.dataset.deviceName || deviceId;
+      try {
+        const filePath = await invoke('pick_file');
+        if (!filePath) return;
+        const queued = await invoke('send_file_to_device', { deviceId, filePath });
+        show(`Queued ${queued?.file?.filename || 'file'} for ${name}`, 'success', 'top-right');
+      } catch (err) {
+        show(`Send failed: ${err}`, 'error', 'top-right');
+      }
+    });
+  });
+
+  container.querySelectorAll('.device-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.peer-item');
+      const deviceId = item.dataset.deviceId;
+      const name = item.dataset.deviceName || deviceId;
+      if (!confirm(`Unpair "${name}"? It will need to scan the QR again.`)) return;
+      try {
+        await invoke('remove_paired_device', { deviceId });
+        show(`Phone "${name}" unpaired`, 'success', 'top-right');
+        item.remove();
+      } catch (err) {
+        show(`Failed to unpair: ${err}`, 'error', 'top-right');
       }
     });
   });

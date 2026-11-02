@@ -296,10 +296,6 @@ impl P2PModule {
         let trust_store = TrustStore::load(&peers_path);
         let peers = trust_store.list_peers();
 
-        if peers.is_empty() {
-            return Ok("No peers configured. Add peers in Settings.".into());
-        }
-
         let mut lines = vec!["Known peers:".to_string()];
         for p in &peers {
             let trust = match p.trust_level {
@@ -313,7 +309,44 @@ impl P2PModule {
                 nickname, p.peer_id, p.host, p.port, trust
             ));
         }
+
+        // Paired phones live in the gateway registry, not peers.toml.
+        lines.extend(Self::paired_devices_text().await);
+
+        if lines.len() == 1 {
+            return Ok("No peers configured. Add peers in Settings.".into());
+        }
         Ok(lines.join("\n"))
+    }
+
+    /// Best-effort device list from the local gateway, for the agent's
+    /// `list_peers` output. Any gateway failure just means "no phones".
+    async fn paired_devices_text() -> Vec<String> {
+        let cfg = match adtp_cli::config::CliConfig::load() {
+            Ok(cfg) => cfg,
+            Err(_) => return Vec::new(),
+        };
+        let client = match adtp_cli::client::ApiClient::new(&cfg) {
+            Ok(client) => client,
+            Err(_) => return Vec::new(),
+        };
+        let list = match client.list_devices().await {
+            Ok(list) => list,
+            Err(_) => return Vec::new(),
+        };
+        if list.devices.is_empty() {
+            return Vec::new();
+        }
+
+        let mut lines = vec!["Paired phones (use device_id with send_file_to_device):".to_string()];
+        for d in &list.devices {
+            let state = if d.online { "online" } else { "offline" };
+            lines.push(format!(
+                "  {} — id={} ({} {}, {})",
+                d.name, d.device_id, d.platform, d.os_version, state
+            ));
+        }
+        lines
     }
 }
 
@@ -325,6 +358,23 @@ impl ToolExecutor for P2PModule {
 
     async fn list_peers(&self) -> Result<String, String> {
         self.list_peers_text().await
+    }
+
+    async fn send_file_to_device(
+        &self,
+        file_path: &str,
+        device_id: &str,
+    ) -> Result<String, String> {
+        let cfg = adtp_cli::config::CliConfig::load().map_err(|e| e.to_string())?;
+        let client = adtp_cli::client::ApiClient::new(&cfg).map_err(|e| e.to_string())?;
+        let queued = client
+            .queue_device_file(device_id, file_path)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(format!(
+            "Queued {} ({} bytes) for {} — it will download it from its inbox.",
+            queued.file.filename, queued.file.file_size, device_id
+        ))
     }
 
     async fn get_own_peer_id(&self) -> Result<String, String> {
