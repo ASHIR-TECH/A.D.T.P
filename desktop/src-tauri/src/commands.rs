@@ -639,7 +639,12 @@ fn build_pairing_payload(
         version: 1,
         desktop_id,
         desktop_name,
-        pairing_token: settings::generate_token(),
+        // MARS authenticates its WebSocket with `pairingToken`, while the
+        // gateway authenticates every client with ADTP_API_TOKEN. These must
+        // be the same credential: a one-off random QR token would otherwise
+        // let the phone save a local card but guarantee auth_rejected on the
+        // first connection attempt.
+        pairing_token: agent_api_token.clone(),
         // Millisecond `Z` timestamps are the canonical ES date-time format.
         // MARS runs on Hermes, whose Date.parse is strictly spec-shaped —
         // nanosecond fractions (`+00:00` with 9 digits) are a known risk
@@ -873,6 +878,7 @@ mod tests {
         assert_eq!(json["desktopId"].as_str().unwrap().len(), 64);
         assert_eq!(json["agentApiUrl"], api_url.as_str());
         assert_eq!(json["agentApiToken"], "z".repeat(40));
+        assert_eq!(json["pairingToken"], json["agentApiToken"]);
         assert!(json["relayUrl"].as_str().unwrap().starts_with("wss://"));
 
         // `YYYY-MM-DDTHH:MM:SS.mmmZ` — exactly 3 fraction digits + Z.
