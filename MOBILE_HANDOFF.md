@@ -248,7 +248,7 @@ Owns the QUIC endpoint, transfer queue (`queue.rs`), file receiver (`receiver.rs
 - Config dir: `~/.config/adtp`.
 - `lib.rs` starts P2P on a **separate tokio runtime** and registers Tauri commands + the ToolExecutor.
 - Phase 12 P2P commands (`desktop/src-tauri/src/p2p.rs`): `get_own_peer_id`, `get_connection_status`, `list_peers`, `send_file_to_peer`, `add_peer`, `remove_peer`, `get_own_nat_type`, `get_agent_status`; plus file push and transfer history.
-- App icon source: `media/Logo1.png` (1024x1024). Icons regenerated via `cargo tauri icon media/Logo1.png`.
+- App icon source: `media/Logo1.png`. The generated set lives in `desktop/src-tauri/icons/` (`32x32`, `64x64`, `128x128`, `128x128@2x`, `icon.png` 512px, `icon.ico`, `icon.icns`) and is installed into the `.deb` under `/usr/share/icons/hicolor`.
 
 ---
 

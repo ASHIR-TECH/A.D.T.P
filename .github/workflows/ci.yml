@@ -104,6 +104,7 @@ jobs:
           mkdir -p "$PKG_DIR/usr/share/icons/hicolor/64x64/apps"
           mkdir -p "$PKG_DIR/usr/share/icons/hicolor/128x128/apps"
           mkdir -p "$PKG_DIR/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "$PKG_DIR/usr/share/icons/hicolor/512x512/apps"
           mkdir -p "$PKG_DIR/usr/share/pixmaps"
 
           # Binary
@@ -115,10 +116,11 @@ jobs:
           cp desktop/src-tauri/icons/64x64.png "$PKG_DIR/usr/share/icons/hicolor/64x64/apps/adtp-desktop.png"
           cp desktop/src-tauri/icons/128x128.png "$PKG_DIR/usr/share/icons/hicolor/128x128/apps/adtp-desktop.png"
           cp desktop/src-tauri/icons/128x128@2x.png "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/adtp-desktop.png"
-          cp desktop/src-tauri/icons/128x128.png "$PKG_DIR/usr/share/pixmaps/adtp-desktop.png"
+          cp desktop/src-tauri/icons/icon.png "$PKG_DIR/usr/share/icons/hicolor/512x512/apps/adtp-desktop.png"
+          cp desktop/src-tauri/icons/icon.png "$PKG_DIR/usr/share/pixmaps/adtp-desktop.png"
 
           # Desktop entry (app menu / launcher)
-          printf '[Desktop Entry]\nType=Application\nName=ADTP Desktop\nComment=Agent Direct Transfer Protocol - secure P2P file transfer\nExec=/usr/bin/adtp-desktop\nIcon=adtp-desktop\nTerminal=false\nCategories=Network;FileTransfer;\nKeywords=adtp;transfer;p2p;file;ashir;\nStartupNotify=true\n' > "$PKG_DIR/usr/share/applications/adtp-desktop.desktop"
+          printf '[Desktop Entry]\nType=Application\nName=ADTP Desktop\nGenericName=File Transfer\nComment=Agent Direct Transfer Protocol - secure P2P file transfer\nExec=/usr/bin/adtp-desktop\nIcon=adtp-desktop\nTerminal=false\nCategories=Network;FileTransfer;\nKeywords=adtp;transfer;p2p;file;ashir;mars;\nStartupNotify=true\nStartupWMClass=adtp-desktop\n' > "$PKG_DIR/usr/share/applications/adtp-desktop.desktop"
 
           # Control file
           printf 'Package: adtp-desktop\nVersion: 1.0.0\nSection: net\nPriority: optional\nArchitecture: amd64\nMaintainer: ASHIR Tech <tech@ashir.tech>\nDepends: libgtk-3-0, libwebkit2gtk-4.1-0, libglib2.0-0, librsvg2-2, libssl3\nDescription: ADTP Desktop - Agent Direct Transfer Protocol\n A secure peer-to-peer file transfer desktop application\n with encrypted QUIC transport, audit chains, and mobile companion support.\n' > "$PKG_DIR/DEBIAN/control"
