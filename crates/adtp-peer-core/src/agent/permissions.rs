@@ -15,9 +15,16 @@ pub struct PermissionConfig {
 
 impl Default for PermissionConfig {
     fn default() -> Self {
+        // Phone uploads land here (gateway `system_service.resolved_intake_dir`).
+        // Without it the desktop AI cannot open the files MARS attaches.
+        let intake = default_intake_dir();
+        let allowed = intake
+            .as_ref()
+            .map(|p| vec![p.to_string_lossy().to_string()])
+            .unwrap_or_default();
         Self {
-            allowed_paths: vec![],
-            writable_paths: vec![],
+            allowed_paths: allowed.clone(),
+            writable_paths: allowed,
             denied_paths: vec![],
             allowed_commands: vec![],
             max_file_read_bytes: 10_485_760,
@@ -25,6 +32,16 @@ impl Default for PermissionConfig {
             allow_remote_tasks: true,
         }
     }
+}
+
+/// `<data_dir>/adtp/intake`, mirroring the Python gateway's default.
+pub fn default_intake_dir() -> Option<std::path::PathBuf> {
+    if let Ok(override_dir) = std::env::var("ADTP_INTAKE_DIR") {
+        if !override_dir.trim().is_empty() {
+            return Some(std::path::PathBuf::from(override_dir));
+        }
+    }
+    dirs::data_dir().map(|p| p.join("adtp").join("intake"))
 }
 
 const BLOCKED_COMMANDS: &[&str] = &[
@@ -89,10 +106,10 @@ impl PermissionStore {
         };
 
         if !self.config.allow_hidden_files
-            && canonical.components().any(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                s.starts_with('.')
-            })
+            && canonical
+                .file_name()
+                .map(|name| name.to_string_lossy().starts_with('.'))
+                .unwrap_or(false)
         {
             return PermissionCheck::Denied {
                 reason: "Hidden files are not allowed".into(),
@@ -214,11 +231,26 @@ pub fn permissions_path() -> Option<std::path::PathBuf> {
 
 pub fn load_permissions() -> Result<PermissionConfig, String> {
     let path = permissions_path().ok_or("Cannot determine config directory")?;
-    if !path.exists() {
-        return Ok(PermissionConfig::default());
+    let mut config = if !path.exists() {
+        PermissionConfig::default()
+    } else {
+        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        toml::from_str(&content).map_err(|e| e.to_string())?
+    };
+
+    // Existing installs have a permissions.toml with an empty allowed_paths
+    // list, which silently hid every phone attachment from the desktop AI.
+    // The upload intake folder is always readable/writable.
+    if let Some(intake) = default_intake_dir() {
+        let intake = intake.to_string_lossy().to_string();
+        if !config.allowed_paths.contains(&intake) {
+            config.allowed_paths.push(intake.clone());
+        }
+        if !config.writable_paths.contains(&intake) {
+            config.writable_paths.push(intake);
+        }
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    toml::from_str(&content).map_err(|e| e.to_string())
+    Ok(config)
 }
 
 pub fn save_permissions(config: &PermissionConfig) -> Result<(), String> {
@@ -319,9 +351,11 @@ mod tests {
     }
 
     #[test]
-    fn test_default_permissions_empty() {
+    fn test_default_permissions_expose_intake() {
         let config = PermissionConfig::default();
-        assert!(config.allowed_paths.is_empty());
+        // The upload intake is always readable so the AI can open phone
+        // attachments; nothing else is granted by default.
+        assert!(config.allowed_paths.iter().all(|p| p.ends_with("intake")));
         assert!(config.allowed_commands.is_empty());
         assert_eq!(config.max_file_read_bytes, 10_485_760);
         assert!(config.allow_remote_tasks);

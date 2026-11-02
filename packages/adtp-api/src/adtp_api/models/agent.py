@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 class AgentMessageCreate(BaseModel):
     message: str = Field(min_length=1)
     conversation_id: str | None = None
+    # Absolute paths on THIS desktop that the agent should read first. MARS
+    # uploads attachments to the intake dir and passes the returned path here.
+    attachments: list[str] = Field(default_factory=list)
 
 
 class AgentMessageCreated(BaseModel):

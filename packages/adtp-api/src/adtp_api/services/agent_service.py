@@ -78,23 +78,43 @@ async def submit_message(
     daemon_socket: str,
     message: str,
     conversation_id: str | None = None,
+    attachments: list[str] | None = None,
 ) -> str:
+    prompt = _with_attachments(message, attachments or [])
     message_id = uuid.uuid4().hex
     now = _now()
     await db.execute(
         "INSERT INTO agent_messages (id, conversation_id, status, input, text, tool_calls, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (message_id, conversation_id or "", "pending", message, "", "[]", now, now),
+        (message_id, conversation_id or "", "pending", prompt, "", "[]", now, now),
     )
     await db.commit()
 
     loop = asyncio.get_running_loop()
     loop.create_task(
         _dispatch_message(
-            db_path, agent_socket, daemon_socket, message_id, message, conversation_id
+            db_path, agent_socket, daemon_socket, message_id, prompt, conversation_id
         )
     )
     return message_id
+
+
+def _with_attachments(message: str, attachments: list[str]) -> str:
+    """Make uploaded files explicit in the prompt so any provider can act.
+
+    Providers do not all support native file parts, so the reliable contract is
+    a path list plus the instruction to open it with the read_file tool.
+    """
+    paths = [p.strip() for p in attachments if p and p.strip()]
+    if not paths:
+        return message
+    listing = "\n".join(f"- {path}" for path in paths)
+    return (
+        f"{message}\n\n"
+        "The user attached these files on this desktop. Read them with the "
+        f"read_file tool before answering, and forward them with send_file or "
+        f"send_file_to_device if asked:\n{listing}"
+    )
 
 
 async def _dispatch_message(

@@ -23,6 +23,16 @@ pub trait ToolExecutor: Send + Sync {
     async fn list_peers(&self) -> Result<String, String>;
     async fn get_own_peer_id(&self) -> Result<String, String>;
     async fn list_transfers(&self, status: Option<&str>) -> Result<String, String>;
+
+    /// Stage a file in a paired phone's inbox (the phone polls and downloads).
+    async fn send_file_to_device(
+        &self,
+        file_path: &str,
+        device_id: &str,
+    ) -> Result<String, String> {
+        let _ = (file_path, device_id);
+        Err("Sending to paired devices is not available".into())
+    }
 }
 
 pub struct AgentRuntime {
@@ -81,6 +91,18 @@ impl AgentRuntime {
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {},
+                }),
+            },
+            ToolDefinition {
+                name: "send_file_to_device".into(),
+                description: "Send a local file to a paired phone (MARS). Use this when the user asks to send or forward a file to their phone; the phone downloads it from its inbox.".into(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string", "description": "Absolute path to the file on this machine"},
+                        "device_id": {"type": "string", "description": "ID of the paired phone (see list_peers)"},
+                    },
+                    "required": ["file_path", "device_id"],
                 }),
             },
             ToolDefinition {
@@ -378,6 +400,31 @@ impl AgentRuntime {
                 Some(exe) => exe.list_peers().await,
                 None => Ok("No P2P module connected. You are offline.".into()),
             },
+            "send_file_to_device" => {
+                let file_path = call
+                    .arguments
+                    .get("file_path")
+                    .and_then(|v| v.as_str())
+                    .ok_or("send_file_to_device: missing 'file_path' argument")?;
+                let device_id = call
+                    .arguments
+                    .get("device_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or("send_file_to_device: missing 'device_id' argument")?;
+                match self
+                    .permission_store
+                    .check_read_path(std::path::Path::new(file_path))
+                {
+                    crate::agent::permissions::PermissionCheck::Allowed => {}
+                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                        return Err(format!("Permission denied: {}", reason));
+                    }
+                }
+                match executor {
+                    Some(exe) => exe.send_file_to_device(file_path, device_id).await,
+                    None => Err("Gateway client is not initialized. Cannot send files.".into()),
+                }
+            }
             "list_transfers" => {
                 let status = call.arguments.get("status").and_then(|v| v.as_str());
                 match executor {

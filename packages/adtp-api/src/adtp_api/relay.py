@@ -152,8 +152,16 @@ class RelaySession:
         text = str(message.get("text") or "").strip()
         if not text:
             return
+        raw_attachments = message.get("attachments")
+        attachments = (
+            [str(item) for item in raw_attachments if isinstance(item, str)]
+            if isinstance(raw_attachments, list)
+            else []
+        )
 
-        reply_text, provider = await self._run_agent(text, session_id or None)
+        reply_text, provider = await self._run_agent(
+            text, session_id or None, attachments
+        )
         await self.send(
             {
                 "type": "chat_response",
@@ -164,7 +172,12 @@ class RelaySession:
             }
         )
 
-    async def _run_agent(self, text: str, conversation_id: str | None) -> tuple[str, str | None]:
+    async def _run_agent(
+        self,
+        text: str,
+        conversation_id: str | None,
+        attachments: list[str] | None = None,
+    ) -> tuple[str, str | None]:
         """Submit to the desktop's embedded agent and poll until it finishes."""
         db_path = self.app.state.audit_db
         agent_socket = getattr(self.app.state, "agent_socket", self.app.state.client_socket)
@@ -173,7 +186,13 @@ class RelaySession:
         db = await agent_service.open_db(db_path)
         try:
             message_id = await agent_service.submit_message(
-                db, db_path, agent_socket, daemon_socket, text, conversation_id
+                db,
+                db_path,
+                agent_socket,
+                daemon_socket,
+                text,
+                conversation_id,
+                attachments,
             )
             deadline = asyncio.get_running_loop().time() + CHAT_TIMEOUT_SECS
             while asyncio.get_running_loop().time() < deadline:

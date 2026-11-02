@@ -33,6 +33,7 @@ async def create_message(
         request.app.state.client_socket,
         body.message,
         body.conversation_id,
+        body.attachments,
     )
     return {"id": message_id}
 
