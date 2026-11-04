@@ -30,13 +30,21 @@ const HEALTH_PATH: &str = "/api/v1/health";
 /// pairing token. Without this the desktop would happily "reuse" a listener
 /// that rejects every request the UI makes.
 const AUTH_PROBE_PATH: &str = "/api/v1/devices";
-const START_TIMEOUT: Duration = Duration::from_secs(60);
+/// Per-candidate health wait. A frozen PyInstaller gateway is up in ~1-2 s,
+/// so 25 s leaves plenty of headroom without freezing the QR flow for minutes
+/// when every launcher is broken.
+const START_TIMEOUT: Duration = Duration::from_secs(25);
+/// Hard ceiling across all launchers: the UI must always get an answer.
+const TOTAL_START_BUDGET: Duration = Duration::from_secs(90);
 const PROBE_TIMEOUT: Duration = Duration::from_millis(1200);
 
 #[derive(Clone, serde::Serialize)]
 pub struct ApiStatus {
     pub running: bool,
+    /// Local management URL (`http://127.0.0.1:40003`).
     pub url: String,
+    /// URL a phone must use (`http://192.168.x.x:40003`).
+    pub phone_url: String,
     pub message: String,
 }
 
@@ -250,43 +258,102 @@ fn python_usable(python: &Path, repo: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+}
+
+fn push_unique(out: &mut Vec<Launcher>, launcher: Launcher) {
+    let duplicate = out
+        .iter()
+        .any(|existing| existing.program == launcher.program && existing.args == launcher.args);
+    if !duplicate {
+        out.push(launcher);
+    }
+}
+
+/// Absolute locations the gateway may be installed at.
+///
+/// The release pipeline copies the frozen `adtp-api` next to `adtp-desktop`
+/// (and into `/usr/bin` for the `.deb`), so a packaged install has no Python
+/// dependency at all. The remaining paths keep `pipx`, the source installer
+/// and older installs working.
+fn gateway_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Some(dir) = exe_dir() {
+        for name in ["adtp-api", "adtp-api.exe"] {
+            paths.push(dir.join(name));
+        }
+        for sub in ["resources", "binaries"] {
+            for name in ["adtp-api", "adtp-api.exe"] {
+                paths.push(dir.join(sub).join(name));
+            }
+        }
+    }
+
+    if let Some(data) = dirs::data_dir() {
+        let adtp = data.join("adtp");
+        paths.push(adtp.join("adtp-api"));
+        paths.push(adtp.join("adtp-api.exe"));
+        paths.push(adtp.join("venv").join("bin").join("adtp-api"));
+        paths.push(adtp.join("venv").join("Scripts").join("adtp-api.exe"));
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(".local").join("bin").join("adtp-api"));
+        paths.push(
+            home.join(".local")
+                .join("share")
+                .join("adtp")
+                .join("venv")
+                .join("bin")
+                .join("adtp-api"),
+        );
+        paths.push(home.join(".cargo").join("bin").join("adtp-api"));
+    }
+
+    for fixed in [
+        "/usr/local/bin/adtp-api",
+        "/usr/bin/adtp-api",
+        "/usr/lib/adtp/adtp-api",
+        "/opt/adtp/bin/adtp-api",
+    ] {
+        paths.push(PathBuf::from(fixed));
+    }
+
+    paths
+}
+
 fn launchers(repo: Option<&Path>) -> Vec<Launcher> {
     let mut out = Vec::new();
 
     if let Ok(bin) = std::env::var("ADTP_API_BIN") {
         let trimmed = bin.trim();
         if !trimmed.is_empty() {
-            out.push(Launcher::new(trimmed));
+            push_unique(&mut out, Launcher::new(trimmed));
         }
     }
 
     // A sidecar bundled next to the desktop executable wins over anything
-    // machine-specific: this is what a packaged installer ships.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            for name in ["adtp-api", "adtp-api.exe"] {
-                let path = dir.join(name);
-                if path.is_file() {
-                    out.push(Launcher::new(path.to_string_lossy().to_string()));
-                }
-            }
-            let resource = dir.join("resources").join("adtp-api");
-            if resource.is_file() {
-                out.push(Launcher::new(resource.to_string_lossy().to_string()));
-            }
+    // machine-specific: this is what the packaged installer ships.
+    for path in gateway_paths() {
+        if path.is_file() {
+            push_unique(&mut out, Launcher::new(path.to_string_lossy().to_string()));
         }
     }
 
-    // An installed console script (`pipx install`, a system package, …) is the
-    // cheapest path once the project is packaged.
-    out.push(Launcher::new("adtp-api"));
+    // An installed console script (`pipx install`, `/usr/bin`, …).
+    push_unique(&mut out, Launcher::new("adtp-api"));
 
     // Development checkout: the repo-local interpreter is the fastest path.
     if let Some(repo) = repo {
         for name in ["python3.13", "python3.12", "python3.11", "python"] {
             let python = repo.join(".venv").join("bin").join(name);
             if python.is_file() && python_usable(&python, repo) {
-                out.push(
+                push_unique(
+                    &mut out,
                     Launcher::new(python.to_string_lossy().to_string())
                         .args(vec!["-m".into(), "adtp_api.main".into()])
                         .env("PYTHONPATH", python_path(repo)),
@@ -295,16 +362,29 @@ fn launchers(repo: Option<&Path>) -> Vec<Launcher> {
             }
         }
 
+        // A system Python with the gateway installed also works for dev
+        // checkouts; if the dependencies are missing it exits immediately and
+        // the supervisor moves on.
+        push_unique(
+            &mut out,
+            Launcher::new("python3")
+                .args(vec!["-m".into(), "adtp_api.main".into()])
+                .env("PYTHONPATH", python_path(repo)),
+        );
+
         // uv creates/repairs an isolated environment on demand, so a system
         // Python upgrade (or a half-created venv) can never leave the desktop
         // without a gateway. This is the fallback of last resort.
         let uv = resolve_uv();
-        out.push(Launcher::new(uv).args(vec![
-            "run".into(),
-            "--project".into(),
-            repo.join("packages/adtp-api").to_string_lossy().to_string(),
-            "adtp-api".into(),
-        ]));
+        push_unique(
+            &mut out,
+            Launcher::new(uv).args(vec![
+                "run".into(),
+                "--project".into(),
+                repo.join("packages/adtp-api").to_string_lossy().to_string(),
+                "adtp-api".into(),
+            ]),
+        );
     }
 
     out
@@ -397,6 +477,7 @@ fn spawn_detached(
 pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     let app_settings = settings::read_settings(app);
     let url = app_settings.api_url.trim_end_matches('/').to_string();
+    let phone_url = crate::commands::advertised_api_url(Some(url.as_str()));
     let token = ensure_token(app)?;
     // The CLI-based tools (`list_peers`, `send_file_to_device`) read
     // ~/.config/adtp/cli.toml, so keep it on the exact same gateway + token.
@@ -407,6 +488,7 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
             let status = ApiStatus {
                 running: true,
                 url,
+                phone_url,
                 message: "Gateway already running".into(),
             };
             let _ = app.emit("api-status", status.clone());
@@ -437,8 +519,18 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     let repo = find_repo_root();
     let candidates = launchers(repo.as_deref());
     let mut failures = Vec::new();
+    let budget_deadline = Instant::now() + TOTAL_START_BUDGET;
 
     for launcher in candidates {
+        if Instant::now() >= budget_deadline {
+            failures.push(format!(
+                "stopped after {} s while trying {}",
+                TOTAL_START_BUDGET.as_secs(),
+                launcher.label
+            ));
+            break;
+        }
+
         let mut child = match spawn_detached(&launcher, &token, port, &log_path) {
             Ok(child) => child,
             Err(error) => {
@@ -454,12 +546,14 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
                     let status = ApiStatus {
                         running: true,
                         url,
+                        phone_url,
                         message: format!("Gateway started via {}", launcher.label),
                     };
                     let _ = app.emit("api-status", status.clone());
                     return Ok(status);
                 }
                 Probe::Unauthorized => {
+                    let _ = child.kill();
                     failures.push(format!(
                         "{} started but another process on port {port} uses a different token",
                         launcher.label
@@ -481,6 +575,7 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
             }
 
             if Instant::now() >= deadline {
+                let _ = child.kill();
                 failures.push(format!(
                     "{} did not become healthy within {} s (log: {})",
                     launcher.label,
@@ -494,9 +589,12 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     }
 
     let message = format!(
-        "Could not start the ADTP gateway. {}. Log: {}",
+        "Could not start the ADTP gateway. The app looks for an `adtp-api` binary next to \
+         the desktop executable (packaged installs ship one), then on PATH and in a repo \
+         checkout. Reinstall the latest ADTP Desktop package, set ADTP_API_BIN to a gateway \
+         binary, or run scripts/install-listener.sh from a source checkout. Tried: {}. Log: {}",
         if failures.is_empty() {
-            "No launcher available (set ADTP_API_BIN or install adtp-api)".to_string()
+            "nothing (no launcher available)".to_string()
         } else {
             failures.join(" | ")
         },
@@ -505,6 +603,7 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     let status = ApiStatus {
         running: false,
         url,
+        phone_url,
         message: message.clone(),
     };
     let _ = app.emit("api-status", status);
@@ -515,6 +614,7 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
 pub fn get_api_status(app: AppHandle) -> ApiStatus {
     let app_settings = settings::read_settings(&app);
     let url = app_settings.api_url.trim_end_matches('/').to_string();
+    let phone_url = crate::commands::advertised_api_url(Some(url.as_str()));
     let token = settings::load_api_token(&app).unwrap_or_default();
     let probe = if token.is_empty() {
         Probe::Offline
@@ -524,6 +624,7 @@ pub fn get_api_status(app: AppHandle) -> ApiStatus {
     ApiStatus {
         running: probe == Probe::Healthy,
         url,
+        phone_url,
         message: match probe {
             Probe::Healthy => "Gateway online".into(),
             Probe::Unauthorized => "Gateway running with a different pairing token".into(),
