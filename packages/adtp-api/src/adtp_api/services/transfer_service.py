@@ -9,6 +9,7 @@ from pathlib import Path
 import aiosqlite
 
 from adtp_api.errors import FileNotFoundError_, FileTooLargeError, TransferNotFoundError
+from adtp_api.mime_types import guess_mime
 from adtp_api.models.transfer import TransferRecord, TransferList, TransferStatus
 from adtp_api.config import settings
 from adtp_api.services.system_service import resolved_intake_dir
@@ -99,6 +100,7 @@ async def receive_upload(
 
     transfer_id = uuid.uuid4().hex
     received_at = datetime.now(timezone.utc).isoformat()
+    mime_type = guess_mime(destination.name, upload.content_type)
     if db is not None:
         from adtp_api.services.audit_service import append_transfer_audit
 
@@ -109,7 +111,7 @@ async def receive_upload(
                 "session_id": f"device-{device_id}" if device_id else "phone-upload",
                 "transfer_type": "push",
                 "filename": destination.name,
-                "mime_type": upload.content_type or "",
+                "mime_type": mime_type,
                 "file_size": size,
                 "status": "delivered",
                 "integrity_verified": True,
@@ -129,7 +131,7 @@ async def receive_upload(
         "path": str(destination),
         "size": size,
         "sha256": hasher.hexdigest(),
-        "content_type": upload.content_type,
+        "content_type": mime_type,
         "received_at": received_at,
     }
 
