@@ -638,7 +638,7 @@ fn port_from_url(url: &str) -> Option<u16> {
 /// primary LAN IPv4 address instead, keeping the configured port. An explicit
 /// `ADTP_API_URL` still wins (operators may publish a real hostname), and a
 /// non-loopback configured URL is trusted as-is.
-fn advertised_api_url(configured: Option<&str>) -> String {
+pub(crate) fn advertised_api_url(configured: Option<&str>) -> String {
     if let Ok(override_url) = std::env::var("ADTP_API_URL") {
         let trimmed = override_url.trim();
         if !trimmed.is_empty() {
@@ -769,6 +769,57 @@ pub async fn get_pairing_qr_data(
         validity_secs,
         Some(app_settings.api_url),
     )
+}
+
+/// Payload plus the gateway state for the phone-specific pairing panel.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MobilePairingInfo {
+    pub payload: PairingPayload,
+    pub gateway_running: bool,
+    pub gateway_message: String,
+    pub phone_url: String,
+}
+
+/// QR data for MARS. Unlike the generic pairing payload this starts (or
+/// reuses) the gateway first, so a scan can never hand the phone a URL that
+/// nothing is listening on.
+#[tauri::command]
+pub async fn get_mobile_pairing_qr_data(
+    app: AppHandle,
+    p2p: P2PState<'_>,
+    validity_secs: Option<i64>,
+) -> Result<MobilePairingInfo, String> {
+    let desktop_id = p2p.as_ref().ok_or("P2P module not initialized")?.peer_id();
+
+    let desktop_name = match hostname::get() {
+        Ok(name) => name.to_string_lossy().to_string(),
+        Err(_) => DEFAULT_DESKTOP_NAME.to_string(),
+    };
+
+    let app_settings = settings::read_settings(&app);
+    let handle = app.clone();
+    let status = tauri::async_runtime::spawn_blocking(move || {
+        crate::api_supervisor::ensure_api_running(&handle)
+    })
+    .await
+    .map_err(|error| format!("Gateway task failed: {error}"))??;
+
+    let phone_url = advertised_api_url(Some(app_settings.api_url.as_str()));
+    let payload = build_pairing_payload(
+        desktop_id,
+        desktop_name,
+        settings::load_api_token(&app),
+        validity_secs,
+        Some(app_settings.api_url),
+    )?;
+
+    Ok(MobilePairingInfo {
+        payload,
+        gateway_running: status.running,
+        gateway_message: status.message,
+        phone_url,
+    })
 }
 
 #[cfg(test)]

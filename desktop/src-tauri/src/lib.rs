@@ -236,6 +236,7 @@ pub fn run() {
             commands::send_message_to_device,
             commands::launch_cli,
             commands::get_pairing_qr_data,
+            commands::get_mobile_pairing_qr_data,
             commands::show_main_window,
             api_supervisor::get_api_status,
             api_supervisor::start_api_listener,

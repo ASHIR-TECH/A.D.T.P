@@ -77,11 +77,12 @@ export async function render(container) {
             </span>
           </div>
           <div style="margin-top:var(--space-2);font-size:12px;color:var(--interactive-muted)">
-            <code id="listener-url">${escHtml(apiStatus?.url || settings.api_url)}</code>
-            &middot; stays reachable after this window closes
+            Phone URL: <code id="listener-url">${escHtml(apiStatus?.phone_url || apiStatus?.url || settings.api_url)}</code>
+            &middot; starts with the app and stays reachable after this window closes
           </div>
-          <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3)">
+          <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3);flex-wrap:wrap">
             <button class="btn btn-sm btn-primary" id="start-listener">Start Listener</button>
+            <button class="btn btn-sm btn-secondary" id="pair-phone">Pair Phone (QR)</button>
             <button class="btn-toolbar-action" id="refresh-devices">Refresh Phones</button>
           </div>
         </div>
@@ -121,6 +122,7 @@ export async function render(container) {
       <div class="settings-card">
         <div class="settings-card-header">
           <h3>Paired Phones</h3>
+          <button class="btn btn-sm btn-primary" id="pair-phone-card">Pair Phone (QR)</button>
         </div>
         <div id="paired-device-list">
           ${deviceRows(devices)}
@@ -403,7 +405,7 @@ async function refreshListenerStatus(container) {
     const message = container.querySelector('#listener-message');
     if (message) message.textContent = status.message;
     const url = container.querySelector('#listener-url');
-    if (url) url.textContent = status.url;
+    if (url) url.textContent = status.phone_url || status.url;
   } catch {}
 }
 
@@ -653,6 +655,13 @@ function setupEventHandlers(container, settings) {
     const { showQRPairModal } = await import('../components/QRPairPanel.js');
     showQRPairModal(container);
   });
+
+  const openPhoneQR = async () => {
+    const { showQRPairModal } = await import('../components/QRPairPanel.js');
+    showQRPairModal(container, { mode: 'mobile' });
+  };
+  container.querySelector('#pair-phone')?.addEventListener('click', openPhoneQR);
+  container.querySelector('#pair-phone-card')?.addEventListener('click', openPhoneQR);
 
   ['poll-transfers', 'poll-health', 'minimize-tray'].forEach(id => {
     container.querySelector(`#${id}`)?.addEventListener('change', () => saveSettings(container));
