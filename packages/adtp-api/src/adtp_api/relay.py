@@ -9,11 +9,39 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from adtp_api.config import settings
-from adtp_api.services import agent_service, system_service
+from adtp_api.services import agent_service, device_service, system_service
 
 # How long a single chat turn may run before the phone is told it timed out.
 CHAT_TIMEOUT_SECS = 120.0
 POLL_INTERVAL_SECS = 0.75
+
+# Live phone sessions: device_id -> RelaySession set. The gateway is the only
+# long-lived process on the desktop, so this is where real-time presence and
+# desktop → phone pushes live. (REST heartbeats still provide durability.)
+_SESSIONS: dict[str, set["RelaySession"]] = {}
+
+
+def device_online(device_id: str) -> bool:
+    return bool(_SESSIONS.get(device_id))
+
+
+async def notify_device(device_id: str, payload: dict) -> int:
+    """Push one frame to every live socket for a phone.
+
+    Returns the number of sockets that accepted it. Callers fall back to the
+    durable REST inbox when this is 0 (phone offline / app backgrounded).
+    """
+    sessions = list(_SESSIONS.get(device_id, ()))
+    delivered = 0
+    for session in sessions:
+        try:
+            await session.send(payload)
+            delivered += 1
+        except Exception:
+            # A half-closed socket is removed by its own `finally`; don't let
+            # one dead phone block delivery to another.
+            pass
+    return delivered
 
 
 def _expected_token() -> str:
@@ -56,6 +84,7 @@ class RelaySession:
         self.send_lock = asyncio.Lock()
         self.tasks: set[asyncio.Task] = set()
         self.desktop_id: str | None = None
+        self.device_id: str | None = None
 
     async def send(self, payload: dict) -> None:
         async with self.send_lock:
@@ -67,6 +96,9 @@ class RelaySession:
             return
 
         await self.send({"type": "auth_ack"})
+        if self.device_id:
+            _SESSIONS.setdefault(self.device_id, set()).add(self)
+            await self._touch_device()
         await self._push_state()
 
         state_task = asyncio.create_task(self._state_loop())
@@ -82,6 +114,27 @@ class RelaySession:
             state_task.cancel()
             for task in list(self.tasks):
                 task.cancel()
+            if self.device_id:
+                group = _SESSIONS.get(self.device_id)
+                if group is not None:
+                    group.discard(self)
+                    if not group:
+                        _SESSIONS.pop(self.device_id, None)
+
+    async def _touch_device(self) -> None:
+        """Mark this phone online without waiting for its next REST heartbeat."""
+        if not self.device_id:
+            return
+        db = None
+        try:
+            db = await agent_service.open_db(self.app.state.audit_db)
+            await device_service.touch(db, self.device_id)
+        except Exception:
+            # A missing/removed device must never tear down the relay socket.
+            pass
+        finally:
+            if db is not None:
+                await db.close()
 
     async def _authenticate(self) -> bool:
         try:
@@ -94,11 +147,20 @@ class RelaySession:
         params = message.get("params") if isinstance(message, dict) else None
         token = ""
         desktop_id: str | None = None
+        device_id: str | None = None
         if isinstance(params, dict):
             token = str(params.get("token") or "")
             raw_id = params.get("desktopId") or params.get("nodeId")
             if isinstance(raw_id, str) and raw_id and raw_id != "__auth__":
                 desktop_id = raw_id
+            raw_device = params.get("deviceId")
+            if (
+                isinstance(raw_device, str)
+                and raw_device
+                and len(raw_device) <= 128
+                and all(ch.isalnum() or ch in "-_" for ch in raw_device)
+            ):
+                device_id = raw_device
         expected = _expected_token()
         is_auth = (
             isinstance(message, dict)
@@ -110,6 +172,7 @@ class RelaySession:
             await self._close_quietly()
             return False
         self.desktop_id = desktop_id
+        self.device_id = device_id
         return True
 
     async def _close_quietly(self) -> None:
@@ -146,20 +209,29 @@ class RelaySession:
             task = asyncio.create_task(self._respond(message))
             self.tasks.add(task)
             task.add_done_callback(self.tasks.discard)
+            return
+
+        if message.get("type") == "ping":
+            await self.send({"type": "pong", "timestamp": _now()})
+            await self._touch_device()
+            return
+
+        if message.get("type") == "pong":
+            await self._touch_device()
 
     async def _respond(self, message: dict) -> None:
         session_id = str(message.get("sessionId") or "")
         text = str(message.get("text") or "").strip()
-        if not text:
-            return
         raw_attachments = message.get("attachments")
         attachments = (
             [str(item) for item in raw_attachments if isinstance(item, str)]
             if isinstance(raw_attachments, list)
             else []
         )
+        if not text and not attachments:
+            return
 
-        reply_text, provider = await self._run_agent(
+        reply_text, provider, tool_calls = await self._run_agent(
             text, session_id or None, attachments
         )
         await self.send(
@@ -169,6 +241,9 @@ class RelaySession:
                 "text": reply_text,
                 "timestamp": _now(),
                 "providerLabel": provider,
+                # Lets MARS render file tiles (AI-sent attachments) and the
+                # per-tool steps instead of only the final text.
+                "toolCalls": tool_calls,
             }
         )
 
@@ -177,7 +252,7 @@ class RelaySession:
         text: str,
         conversation_id: str | None,
         attachments: list[str] | None = None,
-    ) -> tuple[str, str | None]:
+    ) -> tuple[str, str | None, list[dict]]:
         """Submit to the desktop's embedded agent and poll until it finishes."""
         db_path = self.app.state.audit_db
         agent_socket = getattr(self.app.state, "agent_socket", self.app.state.client_socket)
@@ -198,14 +273,29 @@ class RelaySession:
             while asyncio.get_running_loop().time() < deadline:
                 state = await agent_service.get_message(db, message_id)
                 status = state.get("status")
+                tool_calls = state.get("tool_calls") or []
+                if not isinstance(tool_calls, list):
+                    tool_calls = []
                 if status == "completed":
-                    return state.get("text") or "Done.", state.get("provider")
+                    return (
+                        state.get("text") or "Done.",
+                        state.get("provider"),
+                        tool_calls,
+                    )
                 if status == "failed":
-                    return state.get("error") or "The desktop agent failed.", state.get("provider")
+                    return (
+                        state.get("error") or "The desktop agent failed.",
+                        state.get("provider"),
+                        tool_calls,
+                    )
                 await asyncio.sleep(POLL_INTERVAL_SECS)
-            return "The desktop agent is still working. Please try again.", None
+            return (
+                "The desktop agent is still working. Please try again.",
+                None,
+                [],
+            )
         except Exception as exc:  # noqa: BLE001 - report failures to the phone
-            return f"Desktop agent unreachable: {exc}", None
+            return f"Desktop agent unreachable: {exc}", None, []
         finally:
             await db.close()
 

@@ -280,3 +280,17 @@ pub struct DeviceFile {
 pub struct DeviceFileQueued {
     pub file: DeviceFile,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceMessage {
+    pub id: String,
+    pub device_id: String,
+    pub text: String,
+    pub created_at: String,
+    pub delivered_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceMessageQueued {
+    pub message: DeviceMessage,
+}

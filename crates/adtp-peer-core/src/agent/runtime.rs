@@ -7,6 +7,7 @@ use crate::agent::permissions::{PermissionConfig, PermissionStore};
 use crate::agent::provider::{LlmMessage, LlmResponse, Provider, ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use std::sync::Arc;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
@@ -95,14 +96,14 @@ impl AgentRuntime {
             },
             ToolDefinition {
                 name: "send_file_to_device".into(),
-                description: "Send a local file to a paired phone (MARS). Use this when the user asks to send or forward a file to their phone; the phone downloads it from its inbox.".into(),
+                description: "Send a local file to a paired phone (MARS). The phone downloads it from its inbox and it also appears in the phone's chat. Omit `device_id` when only one phone is paired.".into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "file_path": {"type": "string", "description": "Absolute path to the file on this machine"},
-                        "device_id": {"type": "string", "description": "ID of the paired phone (see list_peers)"},
+                        "file_path": {"type": "string", "description": "Absolute path (or ~/path) to the file on this machine"},
+                        "device_id": {"type": "string", "description": "ID of the paired phone from list_peers. Optional when only one phone is paired."},
                     },
-                    "required": ["file_path", "device_id"],
+                    "required": ["file_path"],
                 }),
             },
             ToolDefinition {
@@ -125,24 +126,24 @@ impl AgentRuntime {
             },
             ToolDefinition {
                 name: "find_file".into(),
-                description: "Search the local filesystem for a file by name or pattern".into(),
+                description: "Search the local filesystem for a file by name or pattern. By default this searches the user's Downloads, Documents, Pictures, Desktop and the phone-upload intake. Pass `directory` to search one folder.".into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "pattern": {"type": "string", "description": "Filename or glob pattern"},
-                        "directory": {"type": "string", "description": "Directory to search in"},
-                        "extension": {"type": "string", "description": "File extension filter"},
+                        "pattern": {"type": "string", "description": "Filename or glob pattern, e.g. image.json or *.png"},
+                        "directory": {"type": "string", "description": "Optional absolute directory (or ~/path) to search instead of the default folders"},
+                        "extension": {"type": "string", "description": "Optional file extension filter, e.g. png or .png"},
                     },
                     "required": ["pattern"],
                 }),
             },
             ToolDefinition {
                 name: "read_file".into(),
-                description: "Read the contents of a local file".into(),
+                description: "Read a local UTF-8 text file. For binary files (images, PDFs, archives) it returns metadata instead of bytes so you can still confirm and forward the file.".into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "path": {"type": "string", "description": "Absolute path to the file"},
+                        "path": {"type": "string", "description": "Absolute path or ~/path to the file"},
                     },
                     "required": ["path"],
                 }),
@@ -153,7 +154,7 @@ impl AgentRuntime {
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "path": {"type": "string", "description": "Absolute path to the directory"},
+                        "path": {"type": "string", "description": "Absolute path or ~/path to the directory"},
                     },
                     "required": ["path"],
                 }),
@@ -382,9 +383,12 @@ impl AgentRuntime {
                     .get("peer_id")
                     .and_then(|v| v.as_str())
                     .ok_or("send_file: missing 'peer_id' argument")?;
+                let file_path = crate::agent::permissions::expand_path(file_path)
+                    .to_string_lossy()
+                    .to_string();
                 match self
                     .permission_store
-                    .check_read_path(std::path::Path::new(file_path))
+                    .check_read_path(std::path::Path::new(&file_path))
                 {
                     crate::agent::permissions::PermissionCheck::Allowed => {}
                     crate::agent::permissions::PermissionCheck::Denied { reason } => {
@@ -392,7 +396,7 @@ impl AgentRuntime {
                     }
                 }
                 match executor {
-                    Some(exe) => exe.send_file(file_path, peer_id).await,
+                    Some(exe) => exe.send_file(&file_path, peer_id).await,
                     None => Err("P2P module not initialized. Cannot send files.".into()),
                 }
             }
@@ -406,14 +410,21 @@ impl AgentRuntime {
                     .get("file_path")
                     .and_then(|v| v.as_str())
                     .ok_or("send_file_to_device: missing 'file_path' argument")?;
+                // Optional: the desktop picks the only paired phone when the
+                // model omits it, which is the common "send it to my phone" case.
                 let device_id = call
                     .arguments
                     .get("device_id")
                     .and_then(|v| v.as_str())
-                    .ok_or("send_file_to_device: missing 'device_id' argument")?;
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                let file_path = crate::agent::permissions::expand_path(file_path)
+                    .to_string_lossy()
+                    .to_string();
                 match self
                     .permission_store
-                    .check_read_path(std::path::Path::new(file_path))
+                    .check_read_path(std::path::Path::new(&file_path))
                 {
                     crate::agent::permissions::PermissionCheck::Allowed => {}
                     crate::agent::permissions::PermissionCheck::Denied { reason } => {
@@ -421,7 +432,7 @@ impl AgentRuntime {
                     }
                 }
                 match executor {
-                    Some(exe) => exe.send_file_to_device(file_path, device_id).await,
+                    Some(exe) => exe.send_file_to_device(&file_path, &device_id).await,
                     None => Err("Gateway client is not initialized. Cannot send files.".into()),
                 }
             }
@@ -442,42 +453,46 @@ impl AgentRuntime {
                     .get("pattern")
                     .and_then(|v| v.as_str())
                     .ok_or("find_file: missing 'pattern' argument")?;
-                let dir = call.arguments.get("directory").and_then(|v| v.as_str());
+                let dir = call
+                    .arguments
+                    .get("directory")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|d| !d.is_empty());
                 let ext = call.arguments.get("extension").and_then(|v| v.as_str());
-                let effective_dir = if let Some(d) = dir {
-                    if !d.is_empty() {
-                        d
-                    } else {
-                        self.permission_store
-                            .config()
-                            .allowed_paths
-                            .first()
-                            .map(|s| s.as_str())
-                            .ok_or(
-                                "find_file: no allowed paths configured and no directory specified",
-                            )?
-                    }
-                } else {
-                    self.permission_store
+
+                let roots: Vec<std::path::PathBuf> = match dir {
+                    Some(d) => vec![crate::agent::permissions::expand_path(d)],
+                    None => self
+                        .permission_store
                         .config()
                         .allowed_paths
-                        .first()
-                        .map(|s| s.as_str())
-                        .ok_or(
-                            "find_file: no allowed paths configured and no directory specified",
-                        )?
+                        .iter()
+                        .map(|p| crate::agent::permissions::expand_path(p))
+                        .collect(),
                 };
-                match self
-                    .permission_store
-                    .check_read_path(std::path::Path::new(effective_dir))
-                {
-                    crate::agent::permissions::PermissionCheck::Allowed => {}
-                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
-                        return Err(format!("Permission denied: {}", reason));
+                if roots.is_empty() {
+                    return Err(
+                        "find_file: no allowed paths configured and no directory specified".into(),
+                    );
+                }
+
+                let mut allowed_roots = Vec::new();
+                let mut denied_reasons = Vec::new();
+                for root in roots {
+                    match self.permission_store.check_read_path(&root) {
+                        crate::agent::permissions::PermissionCheck::Allowed => {
+                            allowed_roots.push(root)
+                        }
+                        crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                            denied_reasons.push(format!("{}: {reason}", root.display()))
+                        }
                     }
                 }
-                self.find_file_local(pattern, Some(effective_dir), ext)
-                    .await
+                if allowed_roots.is_empty() {
+                    return Err(format!("Permission denied: {}", denied_reasons.join("; ")));
+                }
+                self.find_file_local(pattern, &allowed_roots, ext).await
             }
             "read_file" => {
                 let path = call
@@ -485,16 +500,14 @@ impl AgentRuntime {
                     .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or("read_file: missing 'path' argument")?;
-                match self
-                    .permission_store
-                    .check_read_path(std::path::Path::new(path))
-                {
+                let path = crate::agent::permissions::expand_path(path);
+                match self.permission_store.check_read_path(&path) {
                     crate::agent::permissions::PermissionCheck::Allowed => {}
                     crate::agent::permissions::PermissionCheck::Denied { reason } => {
                         return Err(format!("Permission denied: {}", reason));
                     }
                 }
-                self.read_file_local(path).await
+                self.read_file_local(&path.to_string_lossy()).await
             }
             "list_directory" => {
                 let path = call
@@ -502,16 +515,14 @@ impl AgentRuntime {
                     .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or("list_directory: missing 'path' argument")?;
-                match self
-                    .permission_store
-                    .check_read_path(std::path::Path::new(path))
-                {
+                let path = crate::agent::permissions::expand_path(path);
+                match self.permission_store.check_read_path(&path) {
                     crate::agent::permissions::PermissionCheck::Allowed => {}
                     crate::agent::permissions::PermissionCheck::Denied { reason } => {
                         return Err(format!("Permission denied: {}", reason));
                     }
                 }
-                self.list_directory_local(path).await
+                self.list_directory_local(&path.to_string_lossy()).await
             }
             "shell_exec" => {
                 let command = call
@@ -535,32 +546,114 @@ impl AgentRuntime {
     async fn find_file_local(
         &self,
         pattern: &str,
-        directory: Option<&str>,
+        directories: &[std::path::PathBuf],
         extension: Option<&str>,
     ) -> Result<String, String> {
-        let search_dir = directory.ok_or("find_file: no search directory provided")?;
-        let mut results = Vec::new();
-        let walker = walkdir::WalkDir::new(search_dir).max_depth(5).into_iter();
-        for entry in walker.filter_map(|e| e.ok()) {
-            let name = entry.file_name().to_string_lossy().to_lowercase();
-            let pat = pattern.to_lowercase();
-            if name.contains(&pat) || glob_match(&pat, &name) {
-                if let Some(ext) = extension {
-                    if !entry.path().extension().map(|e| e == ext).unwrap_or(false) {
+        let wanted_ext = extension
+            .map(|ext| ext.trim().trim_start_matches('.').to_lowercase())
+            .filter(|ext| !ext.is_empty());
+        let pat = pattern.trim().to_lowercase();
+        if pat.is_empty() {
+            return Err("find_file: pattern is empty".into());
+        }
+
+        // A full path (or a path that already exists) is the fastest answer,
+        // but only when it sits inside one of the permission-checked roots.
+        // Without this check `pattern: "/etc/passwd"` would bypass the roots
+        // that execute_tool just validated.
+        let direct = crate::agent::permissions::expand_path(pattern);
+        if direct.is_file() && path_is_under_any(&direct, directories) {
+            return Ok(format!(
+                "Found 1 file(s):\n{}",
+                describe_file_line(&direct).await
+            ));
+        }
+
+        const SKIP_DIRS: &[&str] = &[
+            "node_modules",
+            "target",
+            "venv",
+            ".venv",
+            "__pycache__",
+            ".git",
+            ".cache",
+            "AppData",
+            "Library",
+        ];
+        let mut results: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for root in directories {
+            if !root.exists() {
+                continue;
+            }
+            // Searching a file's parent when the caller passed a file root.
+            let search_root = if root.is_dir() {
+                root.clone()
+            } else if let Some(parent) = root.parent() {
+                parent.to_path_buf()
+            } else {
+                continue;
+            };
+            let walker = walkdir::WalkDir::new(&search_root)
+                .max_depth(6)
+                .into_iter()
+                .filter_entry(|entry| {
+                    if entry.depth() == 0 {
+                        return true;
+                    }
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
+                        return false;
+                    }
+                    true
+                });
+            for entry in walker.filter_map(|e| e.ok()) {
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_lowercase();
+                let matches = name.contains(&pat) || glob_match(&pat, &name);
+                if !matches {
+                    continue;
+                }
+                if let Some(ref ext) = wanted_ext {
+                    let entry_ext = entry
+                        .path()
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| e.to_lowercase());
+                    if entry_ext.as_deref() != Some(ext.as_str()) {
                         continue;
                     }
                 }
-                results.push(entry.path().to_string_lossy().to_string());
-                if results.len() >= 20 {
+                let path = entry.path().to_path_buf();
+                let key = path.to_string_lossy().to_string();
+                if !seen.insert(key) {
+                    continue;
+                }
+                results.push(describe_file_line(&path).await);
+                if results.len() >= 30 {
                     break;
                 }
             }
+            if results.len() >= 30 {
+                break;
+            }
         }
+
         if results.is_empty() {
-            Ok("No files found matching the pattern.".into())
+            Ok(format!(
+                "No files found matching \"{pattern}\" in: {}",
+                directories
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
         } else {
             Ok(format!(
-                "Found {} file(s):\n{}",
+                "Found {} file(s) (newest match first is not guaranteed; pick the path that fits):\n{}",
                 results.len(),
                 results.join("\n")
             ))
@@ -568,18 +661,44 @@ impl AgentRuntime {
     }
 
     async fn read_file_local(&self, path: &str) -> Result<String, String> {
-        let content = tokio::fs::read_to_string(path)
+        let file_path = std::path::Path::new(path);
+        let metadata = tokio::fs::metadata(file_path)
             .await
             .map_err(|e| format!("Cannot read file: {}", e))?;
-        let max_len = 50000;
-        if content.len() > max_len {
-            Ok(format!(
-                "{}\n... [truncated at {} characters]",
-                &content[..max_len],
-                max_len
-            ))
-        } else {
-            Ok(content)
+        if !metadata.is_file() {
+            return Err(format!("Not a regular file: {path}"));
+        }
+        if !self.permission_store.file_size_allowed(metadata.len()) {
+            return Ok(format!(
+                "File is too large to read inline: {path}\nSize: {}\nLimit: {}\n\
+                 The file still exists and can be sent with send_file_to_device.",
+                human_size(metadata.len()),
+                human_size(self.permission_store.config().max_file_read_bytes),
+            ));
+        }
+
+        let bytes = tokio::fs::read(file_path)
+            .await
+            .map_err(|e| format!("Cannot read file: {}", e))?;
+        match String::from_utf8(bytes) {
+            Ok(content) => {
+                let max_chars = 50_000;
+                if content.chars().count() > max_chars {
+                    let truncated: String = content.chars().take(max_chars).collect();
+                    Ok(format!(
+                        "{truncated}\n... [truncated at {max_chars} characters]"
+                    ))
+                } else {
+                    Ok(content)
+                }
+            }
+            Err(error) => {
+                // Images/PDFs/archives are not UTF-8. Returning readable
+                // metadata (instead of an error) is what lets the agent confirm
+                // the attachment and forward it to the phone.
+                let bytes = error.into_bytes();
+                Ok(describe_binary(path, metadata.len(), &bytes))
+            }
         }
     }
 
@@ -654,22 +773,38 @@ impl AgentRuntime {
         };
 
         let mut prompt = format!(
-            r#"You are the ADTP agent running locally on this machine. You manage files, execute commands, and send files to other computers over the internet.
+            r#"You are the ADTP agent running locally on this machine. You manage files, execute commands, and send files to other computers and paired phones over the internet or LAN.
 
 You have access to the following tools:
 - send_file: Send a file to another computer by peer ID (requires file_path and peer_id)
-- list_peers: List known remote peers and their online status
+- send_file_to_device: Send a file to a paired phone (MARS). Requires file_path; device_id is optional when only one phone is paired
+- list_peers: List known remote peers and the paired phones (device_id + online status)
 - list_transfers: List recent file transfers (optionally filter by status: completed, failed, in_progress)
 - get_own_peer_id: Get this computer's own peer ID
-- find_file: Search for files on this machine
-- read_file: Read the contents of a local file
+- find_file: Search the user's Downloads, Documents, Pictures, Desktop and the phone-upload intake
+- read_file: Read a text file; for images/PDFs/archives it returns metadata
 - list_directory: List contents of a directory
 - shell_exec: Execute a permitted shell command
 
-When the user asks you to send a file to another computer:
+When the user asks to send a file to another computer:
 1. First use list_peers to see available peers
 2. If the target peer exists, use send_file with the file path and peer ID
 3. After sending, tell the user the result
+
+When the user asks to send a file to their phone / MARS / this app:
+1. Use list_peers to find the paired phone (device_id)
+2. Use send_file_to_device with the absolute file_path; omit device_id when only one phone is paired
+3. The phone downloads it from its inbox and can also tap it in the chat. Tell the user the filename and that it is ready on the phone.
+
+When the user says "send me", "send to my phone", "attach it", or references a file they just attached:
+- Files attached from the phone are saved in the upload intake and are listed in the prompt.
+- Use send_file_to_device to send them back (for example an image the user wants returned).
+- Images are binary: read_file returns name/MIME/size, which is enough to confirm the file; do not claim to describe pixel contents unless a tool provides them.
+
+When the user asks to find a file by name (for example "I want image.json"):
+1. Use find_file with the filename or pattern; it searches the common user folders by default
+2. Pick the matching absolute path, and use read_file first if you need to confirm JSON/text contents
+3. If the user asked to send it, call send_file_to_device in the same turn
 
 When the user asks for their peer ID, use get_own_peer_id.
 When the user asks about recent transfers, use list_transfers.
@@ -704,6 +839,128 @@ fn glob_match(pattern: &str, name: &str) -> bool {
         return name.ends_with(suffix);
     }
     false
+}
+
+/// True when `path` canonicalises to a location inside one of `roots`.
+fn path_is_under_any(path: &std::path::Path, roots: &[std::path::PathBuf]) -> bool {
+    let Ok(candidate) = path.canonicalize() else {
+        return false;
+    };
+    roots.iter().any(|root| {
+        root.canonicalize()
+            .map(|canonical| candidate.starts_with(canonical))
+            .unwrap_or(false)
+    })
+}
+
+fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} {}", bytes, UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// MIME for text formats that magic-byte sniffers (`infer`) do not identify.
+fn mime_from_extension(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_lowercase();
+    Some(match ext.as_str() {
+        "txt" | "log" => "text/plain",
+        "md" | "markdown" => "text/markdown",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "xml" => "application/xml",
+        "yaml" | "yml" => "application/yaml",
+        "toml" => "application/toml",
+        "html" | "htm" => "text/html",
+        "css" => "text/css",
+        "js" | "mjs" => "text/javascript",
+        "ts" => "text/typescript",
+        "rs" => "text/rust",
+        "py" => "text/x-python",
+        "sh" => "text/x-shellscript",
+        "pdf" => "application/pdf",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "zip" => "application/zip",
+        "gz" | "tgz" => "application/gzip",
+        "tar" => "application/x-tar",
+        "7z" => "application/x-7z-compressed",
+        "rar" => "application/vnd.rar",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "heic" => "image/heic",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "m4a" => "audio/mp4",
+        "ogg" => "audio/ogg",
+        "apk" => "application/vnd.android.package-archive",
+        "ipa" => "application/octet-stream",
+        _ => return None,
+    })
+}
+
+fn file_mime(path: &std::path::Path, bytes: &[u8]) -> String {
+    if let Some(kind) = infer::get(bytes) {
+        return kind.mime_type().to_string();
+    }
+    mime_from_extension(path)
+        .unwrap_or("application/octet-stream")
+        .to_string()
+}
+
+async fn describe_file_line(path: &std::path::Path) -> String {
+    let size = tokio::fs::metadata(path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+    // Sniff only the first 8 KiB; the file may be a multi-GB video.
+    let mut head = vec![0u8; 8192];
+    let read = match tokio::fs::File::open(path).await {
+        Ok(mut file) => file.read(&mut head).await.unwrap_or(0),
+        Err(_) => 0,
+    };
+    head.truncate(read);
+    format!(
+        "{} [{}] ({})",
+        path.to_string_lossy(),
+        file_mime(path, &head),
+        human_size(size)
+    )
+}
+
+fn describe_binary(path: &str, size: u64, bytes: &[u8]) -> String {
+    let path = std::path::Path::new(path);
+    let mime = file_mime(path, bytes);
+    format!(
+        "Binary file: {}\nPath: {}\nMIME: {}\nSize: {}\n\
+         This file is not UTF-8 text, so its bytes are not shown. The file exists \
+         and can be forwarded with send_file or send_file_to_device.",
+        path.file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".into()),
+        path.to_string_lossy(),
+        mime,
+        human_size(size)
+    )
 }
 
 #[cfg(test)]
@@ -896,5 +1153,117 @@ mod tests {
             .expect("tool detail");
         assert_eq!(detail.status, "failed");
         assert!(detail.result.as_deref().unwrap().contains("peer offline"));
+    }
+
+    #[tokio::test]
+    async fn test_find_file_searches_every_allowed_root() {
+        let base =
+            std::env::temp_dir().join(format!("adtp-agent-find-test-{}", std::process::id()));
+        let downloads = base.join("Downloads");
+        let pictures = base.join("Pictures");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&pictures).unwrap();
+        let wanted = pictures.join("image.json");
+        std::fs::write(&wanted, br#"{"ok":true}"#).unwrap();
+
+        let runtime = AgentRuntime::new(
+            AgentConfig::default(),
+            PermissionConfig {
+                allowed_paths: vec![
+                    downloads.to_string_lossy().into_owned(),
+                    pictures.to_string_lossy().into_owned(),
+                ],
+                ..Default::default()
+            },
+        );
+        let result = runtime
+            .find_file_local("image.json", &[downloads, pictures], None)
+            .await
+            .unwrap();
+
+        assert!(result.contains("image.json"));
+        assert!(result.contains("application/json"));
+    }
+
+    #[tokio::test]
+    async fn test_find_file_rejects_direct_path_outside_allowed_roots() {
+        let base =
+            std::env::temp_dir().join(format!("adtp-agent-find-scope-test-{}", std::process::id()));
+        let allowed = base.join("allowed");
+        std::fs::create_dir_all(&allowed).unwrap();
+        let secret = base.join("secret.txt");
+        std::fs::write(&secret, b"do not expose").unwrap();
+
+        let runtime = AgentRuntime::new(
+            AgentConfig::default(),
+            PermissionConfig {
+                allowed_paths: vec![allowed.to_string_lossy().into_owned()],
+                ..Default::default()
+            },
+        );
+        let result = runtime
+            .find_file_local(&secret.to_string_lossy(), &[allowed], None)
+            .await
+            .unwrap();
+
+        assert!(result.starts_with("No files found"));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_describes_binary_instead_of_failing() {
+        let base =
+            std::env::temp_dir().join(format!("adtp-agent-binary-test-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let image = base.join("photo.png");
+        // Minimal PNG magic + payload; enough for MIME sniffing.
+        std::fs::write(&image, b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR").unwrap();
+
+        let runtime = AgentRuntime::new(
+            AgentConfig::default(),
+            PermissionConfig {
+                allowed_paths: vec![base.to_string_lossy().into_owned()],
+                ..Default::default()
+            },
+        );
+        let result = runtime
+            .read_file_local(&image.to_string_lossy())
+            .await
+            .unwrap();
+
+        assert!(result.contains("Binary file"));
+        assert!(result.contains("image/png"));
+        assert!(result.contains("send_file_to_device"));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_truncates_multibyte_text_safely() {
+        let base =
+            std::env::temp_dir().join(format!("adtp-agent-utf8-test-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let text = base.join("unicode.txt");
+        std::fs::write(&text, "é".repeat(60_000)).unwrap();
+
+        let runtime = AgentRuntime::new(
+            AgentConfig::default(),
+            PermissionConfig {
+                allowed_paths: vec![base.to_string_lossy().into_owned()],
+                ..Default::default()
+            },
+        );
+        let result = runtime
+            .read_file_local(&text.to_string_lossy())
+            .await
+            .unwrap();
+
+        assert!(result.contains("truncated at 50000 characters"));
+    }
+
+    #[test]
+    fn test_system_prompt_mentions_phone_files_and_find() {
+        let runtime = AgentRuntime::new(AgentConfig::default(), PermissionConfig::default());
+        let prompt = runtime.build_system_prompt();
+        assert!(prompt.contains("send_file_to_device"));
+        assert!(prompt.contains("find_file"));
+        assert!(prompt.contains("phone"));
     }
 }

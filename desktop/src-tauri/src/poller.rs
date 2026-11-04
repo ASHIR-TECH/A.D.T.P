@@ -10,6 +10,10 @@ use tokio::time::{interval, Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthSnapshot {
+    /// The mobile-facing gateway answered `/api/v1/health`. This is the
+    /// connection that matters for phones and is independent of the Unix
+    /// socket daemon.
+    pub api_online: bool,
     pub daemon_connected: bool,
     pub queue_pending: i64,
     pub queue_in_progress: i64,
@@ -131,9 +135,13 @@ async fn poll_health(app: AppHandle, state: SharedState) {
         let readiness = client
             .get::<ReadinessResponse>("/api/v1/health/ready")
             .await;
+        let gateway = client
+            .get::<adtp_cli::models::HealthResponse>("/api/v1/health")
+            .await;
         let queue = client.get::<QueueResponse>("/api/v1/health/queue").await;
 
         let snapshot = HealthSnapshot {
+            api_online: gateway.is_ok(),
             daemon_connected: readiness
                 .as_ref()
                 .map(|r| r.daemon_connected)
@@ -202,6 +210,7 @@ mod tests {
     #[test]
     fn test_health_snapshot_default() {
         let snapshot = HealthSnapshot {
+            api_online: false,
             daemon_connected: false,
             queue_pending: 0,
             queue_in_progress: 0,
@@ -214,6 +223,7 @@ mod tests {
     #[test]
     fn test_health_snapshot_connected() {
         let snapshot = HealthSnapshot {
+            api_online: true,
             daemon_connected: true,
             queue_pending: 0,
             queue_in_progress: 0,
@@ -234,6 +244,7 @@ mod tests {
     #[test]
     fn test_health_snapshot_serde() {
         let s = HealthSnapshot {
+            api_online: true,
             daemon_connected: true,
             queue_pending: 3,
             queue_in_progress: 1,

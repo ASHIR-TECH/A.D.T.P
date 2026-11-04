@@ -1,8 +1,9 @@
 use adtp_cli::client::ApiClient;
 use adtp_cli::config::CliConfig;
 use adtp_cli::models::{
-    AuditLogList, ChainVerifyResult, ContextBlock, DeviceFileQueued, PairedDeviceList, SessionList,
-    TransferList, TransferSendResponse, TransferStatus, WatchList, WatchResponse,
+    AuditLogList, ChainVerifyResult, ContextBlock, DeviceFileQueued, DeviceMessageQueued,
+    PairedDeviceList, SessionList, TransferList, TransferSendResponse, TransferStatus, WatchList,
+    WatchResponse,
 };
 use adtp_peer_core::agent::permissions::PermissionConfig;
 use tauri::AppHandle;
@@ -247,7 +248,8 @@ pub async fn load_settings(app: AppHandle) -> Result<settings::AppSettings, Stri
 #[tauri::command]
 pub async fn save_api_token(app: AppHandle, token: String) -> Result<bool, String> {
     settings::save_api_token(&app, &token)?;
-    settings::write_token_to_cli_config(&token)?;
+    let api_url = settings::read_settings(&app).api_url;
+    settings::write_cli_config(&token, &api_url)?;
     Ok(true)
 }
 
@@ -513,6 +515,20 @@ pub async fn send_file_to_device(
         .map_err(|e| e.to_string())
 }
 
+/// Send a desktop → phone message (AI reply, notification, note).
+#[tauri::command]
+pub async fn send_message_to_device(
+    app: AppHandle,
+    device_id: String,
+    text: String,
+) -> Result<DeviceMessageQueued, String> {
+    let client = make_client(&app)?;
+    client
+        .send_device_message(&device_id, &text)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn get_own_nat_type(p2p: P2PState<'_>) -> Result<String, String> {
     match p2p.as_ref() {
@@ -604,7 +620,25 @@ fn primary_non_loopback_ipv4() -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 fn agent_api_url_from_env() -> String {
+    advertised_api_url(None)
+}
+
+fn port_from_url(url: &str) -> Option<u16> {
+    let rest = url.split("://").nth(1)?;
+    let authority = rest.split('/').next()?;
+    authority.rsplit_once(':')?.1.parse().ok()
+}
+
+/// The URL a phone should use to reach this gateway.
+///
+/// `settings.api_url` is the desktop's *local* management URL
+/// (`http://127.0.0.1:40003`), which is useless from a phone. Advertise the
+/// primary LAN IPv4 address instead, keeping the configured port. An explicit
+/// `ADTP_API_URL` still wins (operators may publish a real hostname), and a
+/// non-loopback configured URL is trusted as-is.
+fn advertised_api_url(configured: Option<&str>) -> String {
     if let Ok(override_url) = std::env::var("ADTP_API_URL") {
         let trimmed = override_url.trim();
         if !trimmed.is_empty() {
@@ -612,13 +646,23 @@ fn agent_api_url_from_env() -> String {
         }
     }
 
+    if let Some(url) = configured.map(str::trim).filter(|u| !u.is_empty()) {
+        if !url.contains("127.0.0.1") && !url.contains("localhost") {
+            return url.to_string();
+        }
+    }
+
     let scheme = match std::env::var("ADTP_API_SCHEME").ok().as_deref() {
         Some(s) if s.eq_ignore_ascii_case("https") => "https",
         _ => "http",
     };
-    let port = std::env::var("ADTP_API_PORT")
-        .ok()
-        .and_then(|p| p.trim().parse::<u16>().ok())
+    let port = configured
+        .and_then(port_from_url)
+        .or_else(|| {
+            std::env::var("ADTP_API_PORT")
+                .ok()
+                .and_then(|p| p.trim().parse::<u16>().ok())
+        })
         .unwrap_or(DEFAULT_API_PORT);
     let ip = primary_non_loopback_ipv4().unwrap_or_else(|| "127.0.0.1".to_string());
     format!("{}://{}:{}", scheme, ip, port)
@@ -657,8 +701,9 @@ fn build_pairing_payload(
     desktop_name: String,
     stored_token: Option<String>,
     validity_secs: Option<i64>,
+    configured_api_url: Option<String>,
 ) -> Result<PairingPayload, String> {
-    let agent_api_url = agent_api_url_from_env();
+    let agent_api_url = advertised_api_url(configured_api_url.as_deref());
     let agent_api_token = resolve_agent_api_token(stored_token)?;
 
     let now = chrono::Utc::now();
@@ -716,11 +761,13 @@ pub async fn get_pairing_qr_data(
         Err(_) => DEFAULT_DESKTOP_NAME.to_string(),
     };
 
+    let app_settings = settings::read_settings(&app);
     build_pairing_payload(
         module.peer_id(),
         desktop_name,
         settings::load_api_token(&app),
         validity_secs,
+        Some(app_settings.api_url),
     )
 }
 
@@ -885,6 +932,7 @@ mod tests {
             "test-pc".into(),
             Some("unused-stored".into()),
             Some(3600),
+            Some(api_url.clone()),
         )
         .unwrap();
         let json = serde_json::to_value(&payload).unwrap();

@@ -31,10 +31,16 @@ def app(tmp_path):
         os.environ.pop(var, None)
 
 
-def _auth_frame(token: str = VALID_TOKEN, desktop_id: str | None = None) -> dict:
+def _auth_frame(
+    token: str = VALID_TOKEN,
+    desktop_id: str | None = None,
+    device_id: str | None = None,
+) -> dict:
     params: dict = {"token": token}
     if desktop_id:
         params["desktopId"] = desktop_id
+    if device_id:
+        params["deviceId"] = device_id
     return {
         "type": "command",
         "nodeId": "__auth__",
@@ -82,12 +88,22 @@ def test_relay_reports_desktop_under_paired_id(app):
 
 
 def test_relay_chat_message_returns_agent_reply(app):
+    tool_calls = [
+        {
+            "id": "call-1",
+            "name": "send_file_to_device",
+            "status": "completed",
+            "params": {"file_path": "/home/me/image.json"},
+            "result": '{"device_file_id": "file-abc", "filename": "image.json"}',
+        }
+    ]
+
     async def fake_call_socket(socket_path, cmd, params=None):
         assert cmd == "agent_message"
         return {
             "text": "Your desktop is online.",
             "provider": "ollama",
-            "tool_calls": [],
+            "tool_calls": tool_calls,
         }
 
     with patch("adtp_mcp.bridge.base.call_socket", new=fake_call_socket):
@@ -111,3 +127,74 @@ def test_relay_chat_message_returns_agent_reply(app):
                 assert frame["text"] == "Your desktop is online."
                 assert frame["providerLabel"] == "ollama"
                 assert frame["timestamp"]
+                # MARS renders AI-sent files from these tool calls.
+                assert frame["toolCalls"] == tool_calls
+
+
+DEVICE_ID = "phone-relay-1"
+
+
+def _registration() -> dict:
+    return {
+        "device_id": DEVICE_ID,
+        "name": "Relay Phone",
+        "platform": "android",
+        "os_name": "Android",
+        "os_version": "16",
+        "app_version": "1.0.0",
+        "model": "Pixel 9",
+        "capabilities": ["chat"],
+    }
+
+
+def _auth_header() -> dict[str, str]:
+    return {"Authorization": f"Bearer {VALID_TOKEN}"}
+
+
+def test_device_session_receives_desktop_ping_and_goes_offline(app):
+    """The relay socket is the live presence channel the desktop can ping."""
+    with TestClient(app) as client:
+        assert (
+            client.post(
+                "/api/v1/devices/register", json=_registration(), headers=_auth_header()
+            ).status_code
+            == 201
+        )
+
+        with client.websocket_connect("/relay") as ws:
+            ws.send_json(_auth_frame(device_id=DEVICE_ID))
+            assert ws.receive_json()["type"] == "auth_ack"
+            assert ws.receive_json()["type"] == "state_update"
+
+            ping = client.post(
+                f"/api/v1/devices/{DEVICE_ID}/ping", headers=_auth_header()
+            )
+            assert ping.status_code == 200
+            assert ping.json()["online"] is True
+
+            for _ in range(10):
+                frame = ws.receive_json()
+                if frame["type"] == "ping":
+                    break
+            assert frame["type"] == "ping"
+
+        offline = client.post(
+            f"/api/v1/devices/{DEVICE_ID}/ping", headers=_auth_header()
+        )
+        assert offline.json()["online"] is False
+
+
+def test_relay_answers_phone_ping_with_pong(app):
+    with TestClient(app) as client:
+        with client.websocket_connect("/relay") as ws:
+            ws.send_json(_auth_frame())
+            assert ws.receive_json()["type"] == "auth_ack"
+            assert ws.receive_json()["type"] == "state_update"
+
+            ws.send_json({"type": "ping"})
+            for _ in range(10):
+                frame = ws.receive_json()
+                if frame["type"] == "pong":
+                    break
+            assert frame["type"] == "pong"
+            assert frame["timestamp"]

@@ -62,8 +62,19 @@ pub fn load_api_token(app: &AppHandle) -> Option<String> {
 }
 
 pub fn write_token_to_cli_config(token: &str) -> Result<(), String> {
+    write_cli_config(token, "")
+}
+
+/// Keep the CLI pointed at the same gateway the desktop/QR use. Without the
+/// URL sync, a non-default `api_url` (custom port, LAN/EC2 host) made
+/// `send_file_to_device` queue files against a gateway that isn't there.
+pub fn write_cli_config(token: &str, api_url: &str) -> Result<(), String> {
     let mut cfg = adtp_cli::config::CliConfig::load().map_err(|e| e.to_string())?;
     cfg.api_token = token.to_string();
+    let url = api_url.trim().trim_end_matches('/');
+    if !url.is_empty() {
+        cfg.api_url = url.to_string();
+    }
     cfg.save().map_err(|e| e.to_string())
 }
 

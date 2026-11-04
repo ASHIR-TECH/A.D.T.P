@@ -8,6 +8,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from adtp_api.main import create_app
+from adtp_api.services.agent_service import _with_attachments
 
 VALID_TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -142,6 +143,26 @@ async def test_message_flow_transitions_running_to_completed(client):
 async def test_health_ready_stays_auth_exempt(client):
     resp = await client.get("/api/v1/health/ready")
     assert resp.status_code != 401
+
+
+def test_attachment_prompt_includes_name_mime_and_size(tmp_path):
+    image = tmp_path / "image.json"
+    image.write_text('{"hello": "mars"}', encoding="utf-8")
+
+    prompt = _with_attachments("send me image.json", [str(image)])
+
+    assert "send me image.json" in prompt
+    assert f"path: {image}" in prompt
+    assert "name: image.json" in prompt
+    assert "mime: application/json" in prompt
+    assert "size:" in prompt
+    assert "send_file_to_device" in prompt
+
+
+def test_attachment_prompt_flags_missing_file(tmp_path):
+    missing = tmp_path / "gone.png"
+    prompt = _with_attachments("what is this?", [str(missing)])
+    assert "missing: file was not found" in prompt
 
 
 @pytest.mark.asyncio

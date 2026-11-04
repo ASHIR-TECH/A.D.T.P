@@ -6,10 +6,12 @@ from fastapi.responses import FileResponse
 
 from adtp_api.dependencies import get_db
 from adtp_api.models.device import (
-    DeviceFile,
     DeviceFileList,
     DeviceFileQueued,
     DeviceList,
+    DeviceMessageCreate,
+    DeviceMessageList,
+    DeviceMessageQueued,
     DeviceRecord,
     DeviceRegistration,
     DeviceRegistrationResult,
@@ -109,3 +111,60 @@ async def download_device_file(
         filename=record.filename,
         media_type=record.mime_type or "application/octet-stream",
     )
+
+
+@router.post("/{device_id}/messages", status_code=201, response_model=DeviceMessageQueued)
+async def queue_device_message(
+    device_id: str,
+    body: DeviceMessageCreate,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+) -> dict:
+    """Queue a desktop → phone message and push it to a live socket.
+
+    The durable row is the source of truth: if the phone is offline the gateway
+    keeps the message until the phone polls its inbox.
+    """
+    record = await device_service.queue_message(db, device_id, body.text)
+    from adtp_api.relay import notify_device
+
+    await notify_device(
+        device_id,
+        {"type": "device_message", "message": record.model_dump()},
+    )
+    return {"message": record}
+
+
+@router.get("/{device_id}/messages", response_model=DeviceMessageList)
+async def list_device_messages(
+    device_id: str,
+    request: Request,
+    include_delivered: bool = Query(False),
+    db: aiosqlite.Connection = Depends(get_db),
+) -> DeviceMessageList:
+    return await device_service.list_messages(db, device_id, include_delivered)
+
+
+@router.post("/{device_id}/messages/{message_id}/delivered")
+async def mark_device_message_delivered(
+    device_id: str,
+    message_id: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+) -> dict:
+    await device_service.mark_message_delivered(db, device_id, message_id)
+    return {"delivered": True, "message_id": message_id}
+
+
+@router.post("/{device_id}/ping")
+async def ping_device(
+    device_id: str,
+    request: Request,
+    db: aiosqlite.Connection = Depends(get_db),
+) -> dict:
+    """Presence probe: true only while the phone's relay socket is attached."""
+    await device_service.get_device(db, device_id)
+    from adtp_api.relay import notify_device
+
+    sent = await notify_device(device_id, {"type": "ping"})
+    return {"sent": sent, "online": sent > 0, "device_id": device_id}

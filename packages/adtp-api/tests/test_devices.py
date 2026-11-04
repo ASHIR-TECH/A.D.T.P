@@ -135,6 +135,19 @@ async def test_desktop_file_is_queued_and_downloadable(client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_queued_file_infers_mime_from_filename(client):
+    await client.post("/api/v1/devices/register", json=_registration(), headers=_auth())
+
+    queued = await client.post(
+        f"/api/v1/devices/{DEVICE_ID}/files",
+        files={"file": ("photo.png", b"\x89PNG\r\n\x1a\n", "application/octet-stream")},
+        headers=_auth(),
+    )
+    assert queued.status_code == 201
+    assert queued.json()["file"]["mime_type"] == "image/png"
+
+
+@pytest.mark.asyncio
 async def test_phone_upload_appears_in_history(client, tmp_path):
     payload = b"phone attachment"
     upload = await client.post(
@@ -177,3 +190,47 @@ async def test_device_id_is_validated_for_on_disk_paths(client):
         headers=_auth(),
     )
     assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_desktop_message_is_queued_and_can_be_marked_delivered(client):
+    await client.post("/api/v1/devices/register", json=_registration(), headers=_auth())
+
+    queued = await client.post(
+        f"/api/v1/devices/{DEVICE_ID}/messages",
+        json={"text": "The desktop agent finished your report."},
+        headers=_auth(),
+    )
+    assert queued.status_code == 201
+    message = queued.json()["message"]
+    assert message["text"] == "The desktop agent finished your report."
+    assert message["device_id"] == DEVICE_ID
+    assert message["delivered_at"] is None
+
+    inbox = await client.get(f"/api/v1/devices/{DEVICE_ID}/messages", headers=_auth())
+    assert inbox.status_code == 200
+    assert inbox.json()["total"] == 1
+
+    marked = await client.post(
+        f"/api/v1/devices/{DEVICE_ID}/messages/{message['id']}/delivered",
+        headers=_auth(),
+    )
+    assert marked.status_code == 200
+    assert marked.json()["delivered"] is True
+
+    inbox = await client.get(f"/api/v1/devices/{DEVICE_ID}/messages", headers=_auth())
+    assert inbox.json()["total"] == 0
+
+    history = await client.get(
+        f"/api/v1/devices/{DEVICE_ID}/messages?include_delivered=true",
+        headers=_auth(),
+    )
+    assert history.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ping_reports_offline_without_a_live_relay_socket(client):
+    await client.post("/api/v1/devices/register", json=_registration(), headers=_auth())
+    ping = await client.post(f"/api/v1/devices/{DEVICE_ID}/ping", headers=_auth())
+    assert ping.status_code == 200
+    assert ping.json() == {"sent": 0, "online": False, "device_id": DEVICE_ID}

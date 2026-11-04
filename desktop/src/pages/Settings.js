@@ -4,6 +4,7 @@ import { showBanner } from '../components/Banner.js';
 import { render as renderAgentStatus } from '../components/AgentStatusCard.js';
 
 let advancedOpen = false;
+let liveTimer = null;
 
 export async function render(container) {
   let settings;
@@ -54,8 +55,37 @@ export async function render(container) {
     devices = paired?.devices || [];
   } catch {}
 
+  let apiStatus = null;
+  try {
+    apiStatus = await invoke('get_api_status');
+  } catch {}
+
   container.innerHTML = `
     <div class="settings-page">
+      <!-- Phone Listener Card -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h3>Phone Listener</h3>
+        </div>
+        <div class="field-group">
+          <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+            <span class="badge ${apiStatus?.running ? 'badge-verified' : 'badge-pending'}" id="listener-badge">
+              ${apiStatus?.running ? 'Online' : 'Offline'}
+            </span>
+            <span id="listener-message" style="font-size:13px;color:var(--interactive-muted)">
+              ${escHtml(apiStatus?.message || 'Checking gateway...')}
+            </span>
+          </div>
+          <div style="margin-top:var(--space-2);font-size:12px;color:var(--interactive-muted)">
+            <code id="listener-url">${escHtml(apiStatus?.url || settings.api_url)}</code>
+            &middot; stays reachable after this window closes
+          </div>
+          <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3)">
+            <button class="btn btn-sm btn-primary" id="start-listener">Start Listener</button>
+            <button class="btn-toolbar-action" id="refresh-devices">Refresh Phones</button>
+          </div>
+        </div>
+      </div>
       <!-- My Peer ID Card -->
       <div class="settings-card">
         <div class="settings-card-header">
@@ -93,24 +123,7 @@ export async function render(container) {
           <h3>Paired Phones</h3>
         </div>
         <div id="paired-device-list">
-          ${devices.length === 0 ? `
-          <div class="settings-empty">
-            <div class="settings-empty-title">No phone paired yet</div>
-            <div class="settings-empty-text">Scan the pairing QR from MARS — your phone will appear here and can exchange files and system info</div>
-          </div>
-          ` : devices.map(d => `
-          <div class="peer-item" data-device-id="${escHtml(d.device_id)}" data-device-name="${escHtml(d.name)}">
-            <div class="peer-item-info">
-              <div class="peer-item-name">
-                ${escHtml(d.name)}
-                <span class="badge ${d.online ? 'badge-verified' : 'badge-pending'}">${d.online ? 'Online' : 'Offline'}</span>
-              </div>
-              <div class="peer-item-detail">${escHtml(d.platform)} ${escHtml(d.os_version || '')} &middot; ${deviceBattery(d)} &middot; last seen ${formatSeen(d.last_seen)}</div>
-            </div>
-            <button class="btn btn-sm btn-primary device-send-btn">Send File</button>
-            <button class="peer-remove-btn device-remove-btn" title="Remove phone">&times;</button>
-          </div>
-          `).join('')}
+          ${deviceRows(devices)}
         </div>
       </div>
 
@@ -301,6 +314,124 @@ function deviceBattery(device) {
   return `${Math.round(device.battery_percent)}%${charging}`;
 }
 
+function deviceRows(devices) {
+  if (!devices || devices.length === 0) {
+    return `
+      <div class="settings-empty">
+        <div class="settings-empty-title">No phone paired yet</div>
+        <div class="settings-empty-text">Scan the pairing QR from MARS — your phone will appear here and can exchange files, messages and system info</div>
+      </div>`;
+  }
+  return devices.map(d => `
+    <div class="peer-item" data-device-id="${escHtml(d.device_id)}" data-device-name="${escHtml(d.name)}">
+      <div class="peer-item-info">
+        <div class="peer-item-name">
+          ${escHtml(d.name)}
+          <span class="badge ${d.online ? 'badge-verified' : 'badge-pending'}">${d.online ? 'Online' : 'Offline'}</span>
+        </div>
+        <div class="peer-item-detail">
+          ${escHtml(d.model || d.platform)} &middot; ${escHtml(d.os_name || d.platform)} ${escHtml(d.os_version || '')}
+          &middot; ${deviceBattery(d)} &middot; last seen ${formatSeen(d.last_seen)}
+        </div>
+        <div class="peer-item-detail">${escHtml(d.device_id)}</div>
+      </div>
+      <button class="btn btn-sm btn-secondary device-note-btn">Message</button>
+      <button class="btn btn-sm btn-primary device-send-btn">Send File</button>
+      <button class="peer-remove-btn device-remove-btn" title="Remove phone">&times;</button>
+    </div>
+  `).join('');
+}
+
+/** Rebind row actions after the list is refreshed in place. */
+function bindDeviceActions(container) {
+  container.querySelectorAll('.device-send-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.peer-item');
+      const deviceId = item.dataset.deviceId;
+      const name = item.dataset.deviceName || deviceId;
+      try {
+        const filePath = await invoke('pick_file');
+        if (!filePath) return;
+        const queued = await invoke('send_file_to_device', { deviceId, filePath });
+        show(`Queued ${queued?.file?.filename || 'file'} for ${name}`, 'success', 'top-right');
+      } catch (err) {
+        show(`Send failed: ${err}`, 'error', 'top-right');
+      }
+    });
+  });
+
+  container.querySelectorAll('.device-note-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.peer-item');
+      const deviceId = item.dataset.deviceId;
+      const name = item.dataset.deviceName || deviceId;
+      const text = window.prompt(`Message for ${name}:`);
+      if (!text || !text.trim()) return;
+      try {
+        await invoke('send_message_to_device', { deviceId, text: text.trim() });
+        show(`Message sent to ${name}`, 'success', 'top-right');
+      } catch (err) {
+        show(`Message failed: ${err}`, 'error', 'top-right');
+      }
+    });
+  });
+
+  container.querySelectorAll('.device-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const item = btn.closest('.peer-item');
+      const deviceId = item.dataset.deviceId;
+      const name = item.dataset.deviceName || deviceId;
+      if (!confirm(`Unpair "${name}"? It will need to scan the QR again.`)) return;
+      try {
+        await invoke('remove_paired_device', { deviceId });
+        show(`Phone "${name}" unpaired`, 'success', 'top-right');
+        item.remove();
+      } catch (err) {
+        show(`Failed to unpair: ${err}`, 'error', 'top-right');
+      }
+    });
+  });
+}
+
+async function refreshListenerStatus(container) {
+  const badge = container.querySelector('#listener-badge');
+  if (!badge) return;
+  try {
+    const status = await invoke('get_api_status');
+    badge.textContent = status.running ? 'Online' : 'Offline';
+    badge.className = `badge ${status.running ? 'badge-verified' : 'badge-pending'}`;
+    const message = container.querySelector('#listener-message');
+    if (message) message.textContent = status.message;
+    const url = container.querySelector('#listener-url');
+    if (url) url.textContent = status.url;
+  } catch {}
+}
+
+async function refreshDeviceList(container) {
+  const list = container.querySelector('#paired-device-list');
+  if (!list) return;
+  try {
+    const paired = await invoke('list_paired_devices');
+    list.innerHTML = deviceRows(paired?.devices || []);
+    bindDeviceActions(container);
+  } catch {}
+}
+
+function startLiveRefresh(container) {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = setInterval(async () => {
+    // The page container is reused across tabs, so look for the Settings card
+    // itself instead of the container.
+    if (!document.body.contains(container) || !container.querySelector('#paired-device-list')) {
+      clearInterval(liveTimer);
+      liveTimer = null;
+      return;
+    }
+    await refreshListenerStatus(container);
+    await refreshDeviceList(container);
+  }, 5000);
+}
+
 function formatSeen(value) {
   if (!value) return 'never';
   const date = new Date(value);
@@ -462,37 +593,30 @@ function setupEventHandlers(container, settings) {
     });
   });
 
-  container.querySelectorAll('.device-send-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const item = btn.closest('.peer-item');
-      const deviceId = item.dataset.deviceId;
-      const name = item.dataset.deviceName || deviceId;
-      try {
-        const filePath = await invoke('pick_file');
-        if (!filePath) return;
-        const queued = await invoke('send_file_to_device', { deviceId, filePath });
-        show(`Queued ${queued?.file?.filename || 'file'} for ${name}`, 'success', 'top-right');
-      } catch (err) {
-        show(`Send failed: ${err}`, 'error', 'top-right');
-      }
-    });
+  bindDeviceActions(container);
+
+  container.querySelector('#start-listener')?.addEventListener('click', async () => {
+    const button = container.querySelector('#start-listener');
+    button.disabled = true;
+    button.textContent = 'Starting...';
+    try {
+      const status = await invoke('start_api_listener');
+      show(status?.message || 'Listener online', 'success', 'top-right');
+    } catch (err) {
+      show(`Listener failed: ${err}`, 'error', 'top-right');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Start Listener';
+      await refreshListenerStatus(container);
+    }
   });
 
-  container.querySelectorAll('.device-remove-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const item = btn.closest('.peer-item');
-      const deviceId = item.dataset.deviceId;
-      const name = item.dataset.deviceName || deviceId;
-      if (!confirm(`Unpair "${name}"? It will need to scan the QR again.`)) return;
-      try {
-        await invoke('remove_paired_device', { deviceId });
-        show(`Phone "${name}" unpaired`, 'success', 'top-right');
-        item.remove();
-      } catch (err) {
-        show(`Failed to unpair: ${err}`, 'error', 'top-right');
-      }
-    });
+  container.querySelector('#refresh-devices')?.addEventListener('click', async () => {
+    await refreshListenerStatus(container);
+    await refreshDeviceList(container);
   });
+
+  startLiveRefresh(container);
 
   container.querySelector('#advanced-toggle')?.addEventListener('click', () => {
     advancedOpen = !advancedOpen;

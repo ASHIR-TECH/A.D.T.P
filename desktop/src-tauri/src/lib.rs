@@ -1,9 +1,9 @@
 mod agent_ipc;
 mod agent_manager;
+mod api_supervisor;
 mod commands;
 mod p2p;
 mod poller;
-mod relay_listener;
 mod settings;
 mod tray;
 
@@ -11,7 +11,6 @@ use adtp_peer_core::agent::ToolExecutor;
 use agent_manager::AgentManager;
 use p2p::P2PModule;
 use poller::SharedState;
-use relay_listener::auto_start_on_launch;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 use tokio::sync::Mutex;
@@ -28,6 +27,19 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage::<SharedState>(Arc::new(Mutex::new(poller::AppState::default())))
         .manage::<Arc<Mutex<AgentManager>>>(Arc::new(Mutex::new(AgentManager::new())))
+        .on_window_event(|window, event| {
+            // Closing the window keeps ADTP (and the embedded agent) alive in
+            // the tray, so the phone keeps a working AI and the supervisor
+            // keeps the gateway healthy. "Quit" in the tray still exits
+            // normally; the detached gateway survives either way.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                if settings::read_settings(app).minimize_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             tray::build_tray(app.handle())?;
 
@@ -86,8 +98,17 @@ pub fn run() {
                 mgr.activate_enabled().await;
             });
 
-            // Auto-start relay listener if paired
-            let _ = auto_start_on_launch(app.handle());
+            // Make sure the phone-facing gateway is running. It is detached
+            // on purpose: the desktop window may close while the listener stays
+            // reachable 24/7. This runs off the setup thread because it may
+            // spend a few seconds launching Python and waiting for health.
+            let api_handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || match api_supervisor::ensure_api_running(
+                &api_handle,
+            ) {
+                Ok(status) => tracing::info!("{} — {}", status.message, status.url),
+                Err(error) => tracing::warn!("ADTP gateway unavailable: {error}"),
+            });
 
             std::mem::forget(p2p_rt); // keep runtime alive for background tasks (accept loop, etc.)
 
@@ -212,13 +233,20 @@ pub fn run() {
             commands::list_paired_devices,
             commands::remove_paired_device,
             commands::send_file_to_device,
+            commands::send_message_to_device,
             commands::launch_cli,
             commands::get_pairing_qr_data,
             commands::show_main_window,
-            relay_listener::start_relay_listener,
-            relay_listener::stop_relay_listener,
-            relay_listener::relay_listener_status,
+            api_supervisor::get_api_status,
+            api_supervisor::start_api_listener,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running ADTP Desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building ADTP Desktop")
+        .run(|_app, event| {
+            // Remove the embedded-agent socket on exit so the detached gateway
+            // does not try to talk to a socket whose owner is gone.
+            if let tauri::RunEvent::Exit = event {
+                let _ = std::fs::remove_file(agent_ipc::agent_socket_path());
+            }
+        });
 }

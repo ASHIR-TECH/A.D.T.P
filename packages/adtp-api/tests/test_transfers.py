@@ -74,6 +74,19 @@ async def test_upload_persists_file_to_intake(client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_upload_infers_mime_from_filename(client):
+    resp = await client.post(
+        "/api/v1/transfers/upload",
+        files={"file": ("image.json", b'{"ok": true}', "application/octet-stream")},
+        headers=_auth(),
+    )
+    assert resp.status_code == 201
+    # Picker metadata was generic; the gateway fills in a usable MIME so the
+    # desktop AI and the transfer list know what the file is.
+    assert resp.json()["content_type"] == "application/json"
+
+
+@pytest.mark.asyncio
 async def test_upload_strips_client_path_traversal(client, tmp_path):
     resp = await client.post(
         "/api/v1/transfers/upload",

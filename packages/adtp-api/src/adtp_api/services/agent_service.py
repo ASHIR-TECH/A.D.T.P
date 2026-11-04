@@ -4,10 +4,12 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import aiosqlite
 
 from adtp_api.errors import AdtpError
+from adtp_api.mime_types import guess_mime
 
 AGENT_MESSAGES_SCHEMA = """CREATE TABLE IF NOT EXISTS agent_messages (
     id TEXT PRIMARY KEY,
@@ -99,21 +101,52 @@ async def submit_message(
     return message_id
 
 
+def _human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024.0 or unit == "TB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024.0
+    return f"{size} B"
+
+
+def _attachment_details(path: str) -> str:
+    """Name, MIME and size for one attachment.
+
+    Text-only providers cannot see the bytes, so the prompt carries exactly the
+    metadata the agent needs to acknowledge the file and forward it later.
+    """
+    candidate = Path(path)
+    parts = [f"- path: {path}"]
+    try:
+        if candidate.is_file():
+            parts.append(f"name: {candidate.name}")
+            parts.append(f"mime: {guess_mime(candidate.name)}")
+            parts.append(f"size: {_human_size(candidate.stat().st_size)}")
+        else:
+            parts.append("missing: file was not found at that path")
+    except OSError:
+        parts.append("unreadable: metadata could not be read")
+    return "\n  ".join(parts)
+
+
 def _with_attachments(message: str, attachments: list[str]) -> str:
     """Make uploaded files explicit in the prompt so any provider can act.
 
     Providers do not all support native file parts, so the reliable contract is
-    a path list plus the instruction to open it with the read_file tool.
+    attachment metadata (path, name, MIME, size) plus the instruction to open
+    text files with read_file. Binary files are acknowledged by metadata.
     """
     paths = [p.strip() for p in attachments if p and p.strip()]
     if not paths:
         return message
-    listing = "\n".join(f"- {path}" for path in paths)
+    listing = "\n".join(_attachment_details(path) for path in paths)
     return (
-        f"{message}\n\n"
-        "The user attached these files on this desktop. Read them with the "
-        f"read_file tool before answering, and forward them with send_file or "
-        f"send_file_to_device if asked:\n{listing}"
+        f"{message or 'The user sent an attachment without a message.'}\n\n"
+        "The user attached these files on this desktop. Text files can be read "
+        "with the read_file tool; images/PDFs/archives return metadata (name, "
+        "MIME, size) and can still be forwarded with send_file or "
+        f"send_file_to_device:\n{listing}"
     )
 
 

@@ -23,6 +23,7 @@ dependencies = [
  "crossterm 0.28.1",
  "dirs 5.0.1",
  "indicatif",
+ "infer 0.15.0",
  "keyring",
  "reqwest 0.12.28",
  "rustyline",
