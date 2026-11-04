@@ -196,7 +196,16 @@ impl ApiClient {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "file.bin".into());
-        let part = reqwest::multipart::Part::bytes(bytes).file_name(filename);
+        // reqwest sends no Content-Type unless we set one. The gateway has an
+        // extension fallback, but sniffing bytes here also covers extensionless
+        // files and keeps the phone's download tile accurate.
+        let mime = guess_mime(file_path, &bytes);
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(filename)
+            .mime_str(&mime)
+            .map_err(|e| CliError::Http {
+                message: format!("Invalid MIME type {mime}: {e}"),
+            })?;
         let form = reqwest::multipart::Form::new().part(field.to_string(), part);
 
         let resp = self
@@ -249,6 +258,76 @@ impl ApiClient {
         )
         .await
     }
+
+    /// Queue a desktop → phone message. The gateway also pushes it live over
+    /// `/relay` when the phone has an open session; otherwise it waits in the
+    /// phone's durable inbox.
+    pub async fn send_device_message(
+        &self,
+        device_id: &str,
+        text: &str,
+    ) -> Result<crate::models::DeviceMessageQueued, CliError> {
+        self.post(
+            &format!("/api/v1/devices/{device_id}/messages"),
+            &serde_json::json!({ "text": text }),
+        )
+        .await
+    }
+}
+
+/// MIME used for multipart uploads. Magic bytes win (works without an
+/// extension); the filename covers text formats that sniffers cannot identify.
+fn guess_mime(file_path: &str, bytes: &[u8]) -> String {
+    if let Some(kind) = infer::get(bytes) {
+        return kind.mime_type().to_string();
+    }
+    let ext = std::path::Path::new(file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "txt" | "log" => "text/plain",
+        "md" | "markdown" => "text/markdown",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "xml" => "application/xml",
+        "yaml" | "yml" => "application/yaml",
+        "toml" => "application/toml",
+        "html" | "htm" => "text/html",
+        "css" => "text/css",
+        "js" | "mjs" => "text/javascript",
+        "ts" => "text/typescript",
+        "pdf" => "application/pdf",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "zip" => "application/zip",
+        "gz" | "tgz" => "application/gzip",
+        "tar" => "application/x-tar",
+        "7z" => "application/x-7z-compressed",
+        "rar" => "application/vnd.rar",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "heic" => "image/heic",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "m4a" => "audio/mp4",
+        "ogg" => "audio/ogg",
+        "apk" => "application/vnd.android.package-archive",
+        _ => "application/octet-stream",
+    };
+    mime.to_string()
 }
 
 fn map_http_error(e: reqwest::Error, base_url: &str) -> CliError {
