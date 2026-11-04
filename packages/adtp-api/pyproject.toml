@@ -7,14 +7,21 @@ authors = [{ name = "ASHIR Tech" }]
 dependencies = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.29",
+    "websockets>=12",
     "pydantic>=2.7",
     "pydantic-settings>=2.2",
     "aiosqlite>=0.20",
     "python-multipart>=0.0.9",
     "slowapi>=0.1.9",
     "httpx>=0.27",
-    "adtp-mcp @ file:///home/contractor/Koding/A.D.T.P/packages/adtp-mcp",
+    # Sibling package in this repository. `[tool.uv.sources]` below keeps the
+    # path portable; a plain `pip install` can use `--no-deps` plus PYTHONPATH
+    # when the bridge is not needed.
+    "adtp-mcp>=0.2.0",
 ]
+
+[tool.uv.sources]
+adtp-mcp = { path = "../adtp-mcp", editable = true }
 
 [project.optional-dependencies]
 test = [
