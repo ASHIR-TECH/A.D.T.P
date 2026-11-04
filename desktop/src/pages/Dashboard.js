@@ -9,6 +9,7 @@ let transfers = [];
 let health = null;
 let p2pTransfers = [];
 let peers = [];
+let devices = [];
 
 export async function render(container) {
   try {
@@ -19,6 +20,10 @@ export async function render(container) {
   } catch {}
   try {
     peers = await invoke('list_peers');
+  } catch {}
+  try {
+    const paired = await invoke('list_paired_devices');
+    devices = paired?.devices || [];
   } catch {}
 
   container.innerHTML = `
@@ -56,10 +61,11 @@ export async function render(container) {
         <div class="field-group">
           <label>Peer</label>
           <select id="peer-select" class="peer-select">
-            ${peers.length === 0 ? '<option value="" style="color:#000">No peers configured</option>' : ''}
-            ${peers.map(p => `<option value="${p.peer_id}">${p.nickname || p.peer_id.slice(0, 16)} — ${p.host}:${p.port}</option>`).join('')}
+            ${peers.length === 0 && devices.length === 0 ? '<option value="" style="color:#000">No peers or phones configured</option>' : ''}
+            ${peers.map(p => `<option value="peer:${p.peer_id}">${p.nickname || p.peer_id.slice(0, 16)} — ${p.host}:${p.port}</option>`).join('')}
+            ${devices.map(d => `<option value="device:${d.device_id}">${d.name} — phone${d.online ? ' (online)' : ' (offline, queues)'}</option>`).join('')}
           </select>
-          ${peers.length === 0 ? '<div style="color:var(--interactive-muted);font-size:12px;margin-top:4px">Add peers in Settings first</div>' : ''}
+          ${peers.length === 0 && devices.length === 0 ? '<div style="color:var(--interactive-muted);font-size:12px;margin-top:4px">Add a peer in Settings, or pair a phone with the QR code</div>' : ''}
         </div>
         <div class="field-group">
           <label>File</label>
@@ -136,16 +142,22 @@ function setupSendToPeer(container) {
   });
 
   sendBtn.addEventListener('click', async () => {
-    const peerId = peerSelect.value;
-    if (!peerId || !pickedPath) return;
+    const target = peerSelect.value;
+    if (!target || !pickedPath) return;
+    const isDevice = target.startsWith('device:');
+    const peerId = isDevice ? target.slice('device:'.length) : target.slice('peer:'.length);
     sendBtn.disabled = true;
     sendBtn.textContent = 'Sending...';
     resultDiv.textContent = '';
     resultDiv.style.color = '';
 
     try {
-      const result = await invoke('send_file_to_peer', { filePath: pickedPath, peerId });
-      resultDiv.textContent = result;
+      const result = isDevice
+        ? await invoke('send_file_to_device', { deviceId: peerId, filePath: pickedPath })
+        : await invoke('send_file_to_peer', { filePath: pickedPath, peerId });
+      resultDiv.textContent = isDevice
+        ? `Queued ${result?.file?.filename || 'file'} — the phone downloads it from its inbox`
+        : result;
       resultDiv.style.color = 'var(--success)';
       const { show } = await import('../components/Toast.js');
       show('File sent to peer', 'success');
