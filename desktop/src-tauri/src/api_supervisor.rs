@@ -79,7 +79,16 @@ impl Launcher {
 fn parse_http_addr(url: &str) -> Option<(String, u16, bool)> {
     let trimmed = url.trim();
     let (scheme, rest) = trimmed.split_once("://")?;
-    let secure = scheme.eq_ignore_ascii_case("https");
+    // Only the gateway's HTTP(S) URLs are valid here. Without this check a
+    // `ws://…` URL would be treated as plain HTTP and quietly probed on the
+    // wrong scheme.
+    let secure = if scheme.eq_ignore_ascii_case("https") {
+        true
+    } else if scheme.eq_ignore_ascii_case("http") {
+        false
+    } else {
+        return None;
+    };
     let authority = rest.split('/').next()?;
     let (host, port) = match authority.rsplit_once(':') {
         Some((host, port)) => (host, port.parse::<u16>().ok()?),
