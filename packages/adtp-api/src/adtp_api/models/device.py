@@ -100,6 +100,29 @@ class DeviceFileQueued(BaseModel):
     file: DeviceFile
 
 
+class DeviceMessageCreate(BaseModel):
+    """Desktop → phone text (chat reply, notification, AI note)."""
+
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class DeviceMessage(BaseModel):
+    id: str
+    device_id: str
+    text: str
+    created_at: str
+    delivered_at: str | None = None
+
+
+class DeviceMessageList(BaseModel):
+    messages: list[DeviceMessage]
+    total: int
+
+
+class DeviceMessageQueued(BaseModel):
+    message: DeviceMessage
+
+
 class DeviceRegistrationResult(BaseModel):
     device: DeviceRecord
     already_paired: bool = False
