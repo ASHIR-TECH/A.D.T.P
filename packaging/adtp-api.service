@@ -1,0 +1,22 @@
+[Unit]
+Description=ADTP gateway — M.A.R.S phone listener
+Documentation=https://github.com/Ashir-Technologies/A.D.T.P
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The desktop writes this file (token + LAN bind) so the QR code and the
+# listener always share one pairing token.
+EnvironmentFile=%h/.config/adtp/api.env
+Environment=ADTP_LOG_LEVEL=INFO
+ExecStart=%h/.local/share/adtp/venv/bin/adtp-api
+Restart=always
+RestartSec=2
+# A user service does not inherit the graphical session; do not add PrivateTmp
+# here because the gateway reaches the desktop agent at /tmp/adtp-agent.sock.
+NoNewPrivileges=yes
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
