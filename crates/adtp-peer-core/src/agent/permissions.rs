@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionConfig {
@@ -15,16 +15,16 @@ pub struct PermissionConfig {
 
 impl Default for PermissionConfig {
     fn default() -> Self {
-        // Phone uploads land here (gateway `system_service.resolved_intake_dir`).
-        // Without it the desktop AI cannot open the files MARS attaches.
-        let intake = default_intake_dir();
-        let allowed = intake
-            .as_ref()
+        let allowed = default_allowed_dirs()
+            .into_iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        let writable = default_intake_dir()
             .map(|p| vec![p.to_string_lossy().to_string()])
             .unwrap_or_default();
         Self {
-            allowed_paths: allowed.clone(),
-            writable_paths: allowed,
+            allowed_paths: allowed,
+            writable_paths: writable,
             denied_paths: vec![],
             allowed_commands: vec![],
             max_file_read_bytes: 10_485_760,
@@ -32,6 +32,79 @@ impl Default for PermissionConfig {
             allow_remote_tasks: true,
         }
     }
+}
+
+/// Expand a user-facing path (`~`, `~/Downloads`) before canonicalisation.
+///
+/// The model often emits `~/Pictures/photo.png` even though the tool schema
+/// asks for absolute paths. `canonicalize` cannot resolve `~`, so without this
+/// every such call looked like a permission denial.
+pub fn expand_path(path: &str) -> PathBuf {
+    let trimmed = path.trim();
+    if trimmed == "~" {
+        return dirs::home_dir().unwrap_or_else(|| PathBuf::from(trimmed));
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(trimmed)
+}
+
+fn env_allowed_paths() -> Vec<PathBuf> {
+    let Ok(raw) = std::env::var("ADTP_ALLOWED_PATHS") else {
+        return Vec::new();
+    };
+    raw.split(if cfg!(windows) { ';' } else { ':' })
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(expand_path)
+        .collect()
+}
+
+/// Directories the desktop assistant may read out of the box.
+///
+/// A PC assistant that can only see the upload intake cannot answer "find my
+/// image.json and send it to my phone". The common user folders plus the
+/// upload intake cover laptops/desktops without exposing the whole home
+/// directory (hidden files stay denied). Servers and locked-down machines can
+/// replace this list with `ADTP_ALLOWED_PATHS` or `permissions.toml`.
+pub fn default_allowed_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(intake) = default_intake_dir() {
+        dirs.push(intake);
+    }
+
+    let from_env = env_allowed_paths();
+    if !from_env.is_empty() {
+        dirs.extend(from_env);
+    } else if let Some(home) = dirs::home_dir() {
+        for name in ["Downloads", "Documents", "Pictures", "Desktop"] {
+            let candidate = home.join(name);
+            if candidate.is_dir() {
+                dirs.push(candidate);
+            }
+        }
+        // OneDrive is the default Documents/Pictures location on many managed
+        // Windows machines; include it when the English folder names are absent.
+        let onedrive = home.join("OneDrive");
+        if onedrive.is_dir() {
+            for name in ["Documents", "Pictures", "Desktop"] {
+                let candidate = onedrive.join(name);
+                if candidate.is_dir() {
+                    dirs.push(candidate);
+                }
+            }
+        }
+    }
+
+    let mut seen = HashSet::new();
+    dirs.retain(|path| seen.insert(path.clone()));
+    dirs
 }
 
 /// `<data_dir>/adtp/intake`, mirroring the Python gateway's default.
@@ -96,11 +169,18 @@ impl PermissionStore {
     }
 
     pub fn check_read_path(&self, path: &Path) -> PermissionCheck {
-        let canonical = match path.canonicalize() {
+        let expanded = path
+            .to_str()
+            .map(expand_path)
+            .unwrap_or_else(|| path.to_path_buf());
+        let canonical = match expanded.canonicalize() {
             Ok(p) => p,
             Err(_) => {
                 return PermissionCheck::Denied {
-                    reason: "Path does not exist or cannot be resolved".into(),
+                    reason: format!(
+                        "Path does not exist or cannot be resolved: {}",
+                        path.display()
+                    ),
                 }
             }
         };
@@ -147,6 +227,11 @@ impl PermissionStore {
     }
 
     pub fn check_write_path(&self, path: &Path) -> PermissionCheck {
+        let expanded = path
+            .to_str()
+            .map(expand_path)
+            .unwrap_or_else(|| path.to_path_buf());
+        let path = expanded.as_path();
         let canonical = match path.canonicalize() {
             Ok(p) => p,
             Err(_) => {
@@ -238,18 +323,43 @@ pub fn load_permissions() -> Result<PermissionConfig, String> {
         toml::from_str(&content).map_err(|e| e.to_string())?
     };
 
-    // Existing installs have a permissions.toml with an empty allowed_paths
+    // Legacy installs have a permissions.toml with an empty allowed_paths
     // list, which silently hid every phone attachment from the desktop AI.
-    // The upload intake folder is always readable/writable.
-    if let Some(intake) = default_intake_dir() {
-        let intake = intake.to_string_lossy().to_string();
-        if !config.allowed_paths.contains(&intake) {
-            config.allowed_paths.push(intake.clone());
+    // Fill an empty list with the safe defaults (intake + common user folders).
+    if config.allowed_paths.is_empty() {
+        config.allowed_paths = default_allowed_dirs()
+            .into_iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+    } else {
+        // Always keep the upload intake reachable; files attached from MARS
+        // land there and the AI must be able to act on them.
+        if let Some(intake) = default_intake_dir() {
+            let intake = intake.to_string_lossy().to_string();
+            if !config.allowed_paths.contains(&intake) {
+                config.allowed_paths.push(intake);
+            }
         }
+        // Server/homelab operators use this to add `/srv`, `/data`, etc.
+        for extra in env_allowed_paths() {
+            let extra = extra.to_string_lossy().to_string();
+            if !config.allowed_paths.contains(&extra) {
+                config.allowed_paths.push(extra);
+            }
+        }
+    }
+
+    if config.writable_paths.is_empty() {
+        config.writable_paths = default_intake_dir()
+            .map(|p| vec![p.to_string_lossy().to_string()])
+            .unwrap_or_default();
+    } else if let Some(intake) = default_intake_dir() {
+        let intake = intake.to_string_lossy().to_string();
         if !config.writable_paths.contains(&intake) {
             config.writable_paths.push(intake);
         }
     }
+
     Ok(config)
 }
 
@@ -351,14 +461,26 @@ mod tests {
     }
 
     #[test]
-    fn test_default_permissions_expose_intake() {
+    fn test_default_permissions_expose_intake_and_user_folders() {
         let config = PermissionConfig::default();
         // The upload intake is always readable so the AI can open phone
-        // attachments; nothing else is granted by default.
-        assert!(config.allowed_paths.iter().all(|p| p.ends_with("intake")));
+        // attachments; common user folders let it find files the user names.
+        assert!(config.allowed_paths.iter().any(|p| p.ends_with("intake")));
+        assert!(config.writable_paths.iter().all(|p| p.ends_with("intake")));
         assert!(config.allowed_commands.is_empty());
         assert_eq!(config.max_file_read_bytes, 10_485_760);
         assert!(config.allow_remote_tasks);
+    }
+
+    #[test]
+    fn test_expand_path_expands_home() {
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(expand_path("~"), home);
+        assert_eq!(expand_path("~/Pictures/a.png"), home.join("Pictures/a.png"));
+        assert_eq!(
+            expand_path("/var/data/a.json"),
+            Path::new("/var/data/a.json")
+        );
     }
 
     #[test]
