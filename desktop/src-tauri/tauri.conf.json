@@ -32,9 +32,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [
-      "relay_listener.py"
-    ],
     "externalBin": [],
     "icon": [
       "icons/32x32.png",
