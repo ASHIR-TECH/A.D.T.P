@@ -85,7 +85,7 @@ jobs:
   gateway-linux:
     name: Build gateway (Linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: lint
     steps:
       - uses: actions/checkout@v4
@@ -147,7 +147,7 @@ jobs:
   gateway-windows:
     name: Build gateway (Windows)
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: lint
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +182,7 @@ jobs:
     name: Build Linux (.deb)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    needs: [lint, test, audit, gateway-linux, gateway-windows]
+    needs: [lint, test, audit, gateway-linux]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -248,7 +248,7 @@ jobs:
     name: Build Windows (.exe)
     runs-on: windows-2025
     timeout-minutes: 60
-    needs: [lint, test, audit, gateway-linux, gateway-windows]
+    needs: [lint, test, audit, gateway-windows]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
