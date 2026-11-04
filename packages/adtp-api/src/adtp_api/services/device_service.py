@@ -11,9 +11,12 @@ import aiosqlite
 
 from adtp_api.config import settings, default_data_dir
 from adtp_api.errors import DeviceNotFoundError, FileTooLargeError
+from adtp_api.mime_types import guess_mime
 from adtp_api.models.device import (
     DeviceFile,
     DeviceFileList,
+    DeviceMessage,
+    DeviceMessageList,
     DeviceRecord,
     DeviceRegistration,
     DeviceTelemetry,
@@ -50,6 +53,16 @@ DEVICE_FILES_SCHEMA = """CREATE TABLE IF NOT EXISTS device_files (
     delivered_at TEXT
 )"""
 
+# Desktop → phone text messages. Kept small and durable so a phone that is
+# offline when the desktop sends a message still receives it on reconnect.
+DEVICE_MESSAGES_SCHEMA = """CREATE TABLE IF NOT EXISTS device_messages (
+    id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    delivered_at TEXT
+)"""
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -58,9 +71,14 @@ def _now() -> str:
 async def ensure_device_tables(db: aiosqlite.Connection) -> None:
     await db.execute(DEVICES_SCHEMA)
     await db.execute(DEVICE_FILES_SCHEMA)
+    await db.execute(DEVICE_MESSAGES_SCHEMA)
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_device_files_device "
         "ON device_files (device_id, created_at)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_device_messages_device "
+        "ON device_messages (device_id, created_at)"
     )
     await db.commit()
 
@@ -140,6 +158,16 @@ def _row_to_file(row: aiosqlite.Row) -> DeviceFile:
         file_size=int(row["file_size"] or 0),
         mime_type=row["mime_type"] or "application/octet-stream",
         sha256=row["sha256"] or "",
+        created_at=row["created_at"],
+        delivered_at=row["delivered_at"],
+    )
+
+
+def _row_to_message(row: aiosqlite.Row) -> DeviceMessage:
+    return DeviceMessage(
+        id=row["id"],
+        device_id=row["device_id"],
+        text=row["text"],
         created_at=row["created_at"],
         delivered_at=row["delivered_at"],
     )
@@ -247,6 +275,21 @@ async def heartbeat(
     return await get_device(db, device_id)
 
 
+async def touch(db: aiosqlite.Connection, device_id: str) -> None:
+    """Refresh `last_seen` without a full heartbeat.
+
+    The relay calls this when a phone's WebSocket authenticates, so the desktop
+    shows the phone as online immediately instead of waiting up to 20 s for the
+    next REST heartbeat. Unknown ids are ignored (a stale pairing must not
+    resurrect a device the user removed).
+    """
+    await db.execute(
+        "UPDATE paired_devices SET last_seen = ? WHERE device_id = ?",
+        (_now(), device_id),
+    )
+    await db.commit()
+
+
 async def get_device(db: aiosqlite.Connection, device_id: str) -> DeviceRecord:
     rows = await db.execute_fetchall(
         "SELECT * FROM paired_devices WHERE device_id = ?", [device_id]
@@ -266,6 +309,7 @@ async def list_devices(db: aiosqlite.Connection) -> list[DeviceRecord]:
 async def remove_device(db: aiosqlite.Connection, device_id: str) -> bool:
     await get_device(db, device_id)
     await db.execute("DELETE FROM device_files WHERE device_id = ?", [device_id])
+    await db.execute("DELETE FROM device_messages WHERE device_id = ?", [device_id])
     await db.execute("DELETE FROM paired_devices WHERE device_id = ?", [device_id])
     await db.commit()
 
@@ -317,7 +361,7 @@ async def queue_file(
         device_id=device_id,
         filename=destination.name,
         file_size=size,
-        mime_type=upload.content_type or "application/octet-stream",
+        mime_type=guess_mime(destination.name, upload.content_type),
         sha256=hasher.hexdigest(),
         created_at=_now(),
     )
@@ -372,3 +416,48 @@ async def open_file(
     )
     await db.commit()
     return record, path
+
+
+async def queue_message(
+    db: aiosqlite.Connection, device_id: str, text: str
+) -> DeviceMessage:
+    """Store a desktop → phone message, then return it for live delivery."""
+    await get_device(db, device_id)
+    record = DeviceMessage(
+        id=uuid.uuid4().hex,
+        device_id=device_id,
+        text=text.strip(),
+        created_at=_now(),
+    )
+    await db.execute(
+        "INSERT INTO device_messages (id, device_id, text, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (record.id, device_id, record.text, record.created_at),
+    )
+    await db.commit()
+    return record
+
+
+async def list_messages(
+    db: aiosqlite.Connection, device_id: str, include_delivered: bool = False
+) -> DeviceMessageList:
+    await get_device(db, device_id)
+    where = "" if include_delivered else "AND delivered_at IS NULL"
+    rows = await db.execute_fetchall(
+        f"SELECT * FROM device_messages WHERE device_id = ? {where} "
+        "ORDER BY created_at ASC",
+        [device_id],
+    )
+    messages = [_row_to_message(row) for row in rows]
+    return DeviceMessageList(messages=messages, total=len(messages))
+
+
+async def mark_message_delivered(
+    db: aiosqlite.Connection, device_id: str, message_id: str
+) -> None:
+    await db.execute(
+        "UPDATE device_messages SET delivered_at = ? "
+        "WHERE id = ? AND device_id = ? AND delivered_at IS NULL",
+        (_now(), message_id, device_id),
+    )
+    await db.commit()
