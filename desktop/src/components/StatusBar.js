@@ -10,7 +10,15 @@ function applyHealth(h) {
   const pending = el.querySelector('#queue-pending');
   const inProg = el.querySelector('#queue-in-progress');
 
-  if (h.daemon_connected) {
+  // `api_online` is the phone-facing gateway; `daemon_connected` is the Unix
+  // socket file daemon (needed for desktop→desktop transfers only). Showing
+  // "Disconnected" just because the daemon is absent hid a working phone link.
+  const apiOnline = h.api_online !== false;
+
+  if (!apiOnline) {
+    dot.className = 'status-dot disconnected';
+    text.textContent = 'Disconnected';
+  } else if (h.daemon_connected) {
     if (h.queue_pending > 0 || h.queue_in_progress > 0) {
       dot.className = 'status-dot syncing';
       text.textContent = 'Syncing';
@@ -19,8 +27,8 @@ function applyHealth(h) {
       text.textContent = 'Connected';
     }
   } else {
-    dot.className = 'status-dot disconnected';
-    text.textContent = 'Disconnected';
+    dot.className = 'status-dot syncing';
+    text.textContent = 'Listener online';
   }
   if (pending) pending.textContent = h.queue_pending ?? 0;
   if (inProg) inProg.textContent = h.queue_in_progress ?? 0;
