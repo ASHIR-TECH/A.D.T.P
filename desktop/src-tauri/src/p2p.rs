@@ -367,14 +367,58 @@ impl ToolExecutor for P2PModule {
     ) -> Result<String, String> {
         let cfg = adtp_cli::config::CliConfig::load().map_err(|e| e.to_string())?;
         let client = adtp_cli::client::ApiClient::new(&cfg).map_err(|e| e.to_string())?;
+
+        // The model often omits device_id for "send it to my phone". Resolve the
+        // target here: one paired phone wins outright; with several, only an
+        // unambiguous online phone is chosen, otherwise ask for the id.
+        let target = if device_id.trim().is_empty() {
+            let list = client.list_devices().await.map_err(|e| e.to_string())?;
+            match list.devices.as_slice() {
+                [] => {
+                    return Err(
+                        "No phone is paired yet. Pair MARS in ADTP Desktop → Mobile first.".into(),
+                    )
+                }
+                [only] => only.device_id.clone(),
+                many => {
+                    let online: Vec<_> = many.iter().filter(|d| d.online).collect();
+                    if online.len() == 1 {
+                        online[0].device_id.clone()
+                    } else {
+                        let ids = many
+                            .iter()
+                            .map(|d| format!("{} ({})", d.device_id, d.name))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        return Err(format!(
+                            "Several phones are paired; pass device_id. Pairings: {ids}"
+                        ));
+                    }
+                }
+            }
+        } else {
+            device_id.trim().to_string()
+        };
+
         let queued = client
-            .queue_device_file(device_id, file_path)
+            .queue_device_file(&target, file_path)
             .await
             .map_err(|e| e.to_string())?;
-        Ok(format!(
-            "Queued {} ({} bytes) for {} — it will download it from its inbox.",
-            queued.file.filename, queued.file.file_size, device_id
-        ))
+        // Structured result: the mobile chat parses it to render a download
+        // tile with the exact device-file id, size and MIME.
+        Ok(serde_json::json!({
+            "status": "queued",
+            "device_file_id": queued.file.id,
+            "device_id": target,
+            "filename": queued.file.filename,
+            "size_bytes": queued.file.file_size,
+            "mime_type": queued.file.mime_type,
+            "message": format!(
+                "Queued {} ({} bytes) for {} — it will download it from its inbox.",
+                queued.file.filename, queued.file.file_size, target
+            ),
+        })
+        .to_string())
     }
 
     async fn get_own_peer_id(&self) -> Result<String, String> {
