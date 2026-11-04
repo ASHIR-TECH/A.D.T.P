@@ -22,6 +22,20 @@ running after the window closes. Closing the window keeps ADTP in the tray (and
 the embedded AI alive); **Quit** in the tray exits the desktop process, while
 the gateway listener stays up.
 
+The packaged installers ship the gateway as a **self-contained binary**, so no
+Python, venv or repo checkout is needed:
+
+- Linux `.deb`: `/usr/bin/adtp-api` (next to `adtp-desktop`).
+- Windows: `adtp-api.exe` in the same folder as `adtp-desktop.exe`. Keep both
+  files together, or the desktop cannot start the listener.
+- Standalone `adtp-api` / `adtp-api.exe` binaries are attached to each release
+  if you want to run the gateway elsewhere.
+
+The desktop looks for the gateway in this order: `ADTP_API_BIN`, next to the
+executable (`./adtp-api`, `./resources/`, `./binaries/`), the ADTP data dir,
+`~/.local/bin`, `/usr/local/bin`, `/usr/bin`, then a source checkout's venv and
+finally `uv run`.
+
 **systemd user service (optional, starts at login).** This is the recommended
 way to have the listener up 24/7 before the desktop app is opened:
 
@@ -31,9 +45,10 @@ systemctl --user status adtp-api
 journalctl --user -u adtp-api -f
 ```
 
-The installer creates a venv at `~/.local/share/adtp/venv`, installs the two
-Python packages, writes the same `api.env` the desktop uses, and enables the
-unit. It also tries `loginctl enable-linger` so the listener survives logout.
+The installer uses a bundled `adtp-api` when one is on `PATH`; otherwise it
+creates a venv at `~/.local/share/adtp/venv`, installs the two Python packages,
+writes the same `api.env` the desktop uses, and enables the unit. It also tries
+`loginctl enable-linger` so the listener survives logout.
 
 Open TCP 40003 on the LAN if a firewall is active:
 
@@ -43,13 +58,20 @@ sudo ufw allow 40003/tcp
 
 ### 2. Pair the phone
 
-1. Desktop → **Settings → My Peer ID → Pair (QR)**. The QR advertises the
-   desktop's primary LAN IPv4 address and the configured port (not `127.0.0.1`).
+Use the **phone-specific** QR, which starts/reuses the gateway before the code
+is rendered and always advertises the LAN address:
+
+1. Desktop → **Settings → Paired Phones → Pair Phone (QR)** (also available in
+   the Phone Listener card). The dialog shows **Listener online/offline**, the
+   **Phone URL** and a firewall hint.
 2. MARS → **SCAN** → scan the QR.
 3. Pairing verifies `/api/v1/system/info`, registers the phone in
    `paired_devices`, and stores the token. The desktop shows the phone under
    **Settings → Paired Phones**; the phone shows the desktop on Home with live
    CPU/RAM/battery telemetry.
+
+The generic **Pair a New Device** QR remains available for desktop-to-desktop
+peering; it does not start the phone gateway.
 
 Both sides use the same high-entropy token from `api.env` / the desktop
 settings store. If the desktop reports *“Gateway running with a different
@@ -169,9 +191,22 @@ ss -ltnp | grep 40003
 
 - **Phone scans but stays offline** — the phone is probably using a QR that
   advertises `127.0.0.1` (old build) or cannot reach the LAN IP. Re-open the QR
-  dialog in the current build and allow 40003 through the firewall.
+  with **Pair Phone (QR)** in the current build, check the **Phone URL** it
+  shows, and allow 40003 through the firewall.
+- **MARS says “Could not reach your desktop at http://…”** — that URL is the
+  exact address the phone tried. If it is `127.0.0.1`/`localhost`, rebuild and
+  reinstall ADTP (the QR must advertise the LAN IPv4). Otherwise check that the
+  phone is on the same Wi-Fi/VPN, that the gateway is bound to `0.0.0.0`
+  (`ss -ltnp | grep 40003`), and that the firewall allows TCP 40003.
 - **Listener won't start** — check `~/.local/share/adtp/gateway.log`. The
   desktop tries, in order: `ADTP_API_BIN`, a sidecar next to the executable,
-  `adtp-api` on `PATH`, the repo's `.venv`, then `uv run`.
+  the ADTP data dir / `~/.local/bin` / `/usr/bin`, `adtp-api` on `PATH`, the
+  repo's `.venv`, then `uv run`. A packaged build should never reach the venv
+  paths; if it reports `adtp-api unavailable: No such file or directory`,
+  reinstall the latest `.deb`/`.exe` (older releases did not bundle the
+  gateway) or point `ADTP_API_BIN` at the standalone binary from the release.
+- **Listener starts but the phone is rejected** — the running gateway uses a
+  different token. Stop it (`systemctl --user stop adtp-api`, or kill the
+  process on 40003) and reopen ADTP so it rewrites `api.env`.
 - **AI works on the phone only while the window is open** — expected; see the
   table above.
