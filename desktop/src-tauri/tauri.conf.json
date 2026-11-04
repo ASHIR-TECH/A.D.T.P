@@ -9,7 +9,7 @@
   "app": {
     "windows": [
       {
-        "title": "ADTP Desktop — Ashir Tech",
+        "title": "ADTP",
         "minWidth": 800,
         "minHeight": 500,
         "center": true,
