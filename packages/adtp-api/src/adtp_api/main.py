@@ -114,8 +114,11 @@ app = create_app()
 def main() -> None:
     import uvicorn
 
+    # Pass the app object instead of the "module:attr" string. Frozen builds
+    # (PyInstaller) ship the module as bytecode, and uvicorn's import-string
+    # path would try to re-import it from disk and fail.
     uvicorn.run(
-        "adtp_api.main:app",
+        app,
         host=settings.api_host,
         port=settings.api_port,
         log_level=settings.log_level.lower(),
