@@ -8,6 +8,7 @@
 #
 # Usage:
 #   ./scripts/install-listener.sh
+#   ADTP_API_BIN=/usr/bin/adtp-api ./scripts/install-listener.sh
 #   PYTHON=python3.12 ./scripts/install-listener.sh
 set -euo pipefail
 
@@ -24,24 +25,41 @@ if ! command -v "$python_bin" >/dev/null 2>&1; then
   python_bin="python3"
 fi
 
+# The .deb installs a self-contained gateway next to the desktop binary. Prefer
+# it: no Python, venv or repo checkout required.
+api_bin=""
+if [ -n "${ADTP_API_BIN:-}" ] && [ -x "${ADTP_API_BIN}" ]; then
+  api_bin="$ADTP_API_BIN"
+elif command -v adtp-api >/dev/null 2>&1; then
+  api_bin="$(command -v adtp-api)"
+fi
+
 echo "==> Repository: $repo_root"
-echo "==> Python:     $python_bin"
+if [ -n "$api_bin" ]; then
+  echo "==> Gateway:    $api_bin (bundled)"
+else
+  echo "==> Gateway:    source install into $venv"
+  echo "==> Python:     $python_bin"
+fi
 
 mkdir -p "$data_home/adtp" "$config_home/adtp" "$unit_dir"
 
-if [ ! -x "$venv/bin/python" ]; then
-  echo "==> Creating virtualenv at $venv"
-  "$python_bin" -m venv "$venv"
-fi
+if [ -z "$api_bin" ]; then
+  if [ ! -x "$venv/bin/python" ]; then
+    echo "==> Creating virtualenv at $venv"
+    "$python_bin" -m venv "$venv"
+  fi
 
-echo "==> Installing adtp-api and adtp-mcp (editable)"
-"$venv/bin/python" -m pip install --upgrade pip >/dev/null
-# Install the sibling package first so pip does not look for adtp-mcp on PyPI.
-"$venv/bin/python" -m pip install -e "$repo_root/packages/adtp-mcp" -e "$repo_root/packages/adtp-api"
+  echo "==> Installing adtp-api and adtp-mcp (editable)"
+  "$venv/bin/python" -m pip install --upgrade pip >/dev/null
+  # Install the sibling package first so pip does not look for adtp-mcp on PyPI.
+  "$venv/bin/python" -m pip install -e "$repo_root/packages/adtp-mcp" -e "$repo_root/packages/adtp-api"
+  api_bin="$venv/bin/adtp-api"
+fi
 
 if [ ! -f "$env_file" ] || ! grep -q '^ADTP_API_TOKEN=' "$env_file"; then
   echo "==> Generating pairing token in $env_file"
-  token="$("$venv/bin/python" -c 'import secrets; print(secrets.token_hex(32))')"
+  token="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
   umask 077
   {
     echo "ADTP_API_HOST=0.0.0.0"
@@ -53,7 +71,7 @@ chmod 600 "$env_file"
 
 echo "==> Installing systemd user unit"
 sed \
-  -e "s|%h/.local/share/adtp/venv|$venv|g" \
+  -e "s|%h/.local/share/adtp/venv/bin/adtp-api|$api_bin|g" \
   -e "s|%h/.config/adtp/api.env|$env_file|g" \
   "$repo_root/packaging/adtp-api.service" > "$unit_file"
 
