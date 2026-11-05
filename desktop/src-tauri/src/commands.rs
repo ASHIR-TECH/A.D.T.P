@@ -797,7 +797,6 @@ pub async fn get_mobile_pairing_qr_data(
         Err(_) => DEFAULT_DESKTOP_NAME.to_string(),
     };
 
-    let app_settings = settings::read_settings(&app);
     let handle = app.clone();
     let status = tauri::async_runtime::spawn_blocking(move || {
         crate::api_supervisor::ensure_api_running(&handle)
@@ -805,13 +804,17 @@ pub async fn get_mobile_pairing_qr_data(
     .await
     .map_err(|error| format!("Gateway task failed: {error}"))??;
 
-    let phone_url = advertised_api_url(Some(app_settings.api_url.as_str()));
+    // The supervisor may have moved the gateway to an ephemeral port if the
+    // configured one was taken. Use the resolved URL so the QR and the relay
+    // WebSocket the phone dials match the port the gateway is actually bound
+    // to.
+    let phone_url = advertised_api_url(Some(status.url.as_str()));
     let payload = build_pairing_payload(
         desktop_id,
         desktop_name,
         settings::load_api_token(&app),
         validity_secs,
-        Some(app_settings.api_url),
+        Some(status.url),
     )?;
 
     Ok(MobilePairingInfo {

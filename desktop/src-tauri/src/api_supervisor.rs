@@ -16,7 +16,7 @@
 //! the QR the phone scans always matches the gateway that is actually running.
 
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -119,6 +119,33 @@ fn tcp_open(url: &str) -> bool {
     addrs
         .into_iter()
         .any(|addr| TcpStream::connect_timeout(&addr, PROBE_TIMEOUT).is_ok())
+}
+
+/// Can we bind `host:port` right now? Used to detect a port that is already
+/// taken before we ask the gateway to bind it (uvicorn will just exit with an
+/// "address already in use" error instead of picking another port).
+fn port_available(host: &str, port: u16) -> bool {
+    (host, port)
+        .to_socket_addrs()
+        .ok()
+        .and_then(|addrs| {
+            addrs
+                .into_iter()
+                .find_map(|addr| TcpListener::bind(addr).ok())
+        })
+        .is_some()
+}
+
+/// Pick a port the OS considers free right now. Bind to port 0, read back the
+/// assigned ephemeral port, then release it so the gateway can bind it. There
+/// is a tiny race window (another process could grab it in between), but it is
+/// good enough to escape a busy default port.
+fn find_free_port(host: &str) -> Option<u16> {
+    let addr = (host, 0).to_socket_addrs().ok()?.next()?;
+    let listener = TcpListener::bind(addr).ok()?;
+    let port = listener.local_addr().ok()?.port();
+    drop(listener);
+    Some(port)
 }
 
 /// Minimal HTTP status probe. Deliberately avoids pulling an HTTP client into
@@ -476,12 +503,37 @@ fn spawn_detached(
 /// Start the gateway if it is not already answering, then wait for health.
 pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     let app_settings = settings::read_settings(app);
-    let url = app_settings.api_url.trim_end_matches('/').to_string();
-    let phone_url = crate::commands::advertised_api_url(Some(url.as_str()));
+    let configured_url = app_settings.api_url.trim_end_matches('/').to_string();
     let token = ensure_token(app)?;
     // The CLI-based tools (`list_peers`, `send_file_to_device`) read
     // ~/.config/adtp/cli.toml, so keep it on the exact same gateway + token.
-    let _ = settings::write_cli_config(&token, &url);
+    let _ = settings::write_cli_config(&token, &configured_url);
+
+    let (host, configured_port, _) = parse_http_addr(&configured_url)
+        .ok_or_else(|| format!("Invalid desktop API URL: {configured_url}"))?;
+
+    // Pick a port the gateway can actually bind. If the configured port is
+    // taken (firewall, another process), fall back to an ephemeral port so the
+    // phone can still reach us over the LAN.
+    let port = if port_available(&host, configured_port) {
+        configured_port
+    } else {
+        find_free_port(&host).ok_or_else(|| {
+            format!("Port {configured_port} is in use and no ephemeral port is available")
+        })?
+    };
+
+    let url = format!("http://{host}:{port}");
+
+    // Persist the resolved port so the phone's QR, the CLI config and the next
+    // launch all agree with the gateway that is actually running.
+    if port != configured_port {
+        let mut updated = app_settings.clone();
+        updated.api_url = url.clone();
+        let _ = settings::write_settings(app, &updated);
+    }
+    let _ = write_env_file(&token, port);
+    let phone_url = crate::commands::advertised_api_url(Some(url.as_str()));
 
     match probe(&url, &token) {
         Probe::Healthy => {
@@ -503,10 +555,6 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
         }
         Probe::Offline => {}
     }
-
-    let (_, port, _) =
-        parse_http_addr(&url).ok_or_else(|| format!("Invalid desktop API URL: {url}"))?;
-    let _ = write_env_file(&token, port);
 
     let log_path = dirs::data_dir()
         .unwrap_or_else(std::env::temp_dir)
