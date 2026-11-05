@@ -1,4 +1,5 @@
 use adtp_cli::config::AgentEntry;
+use hostname;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
@@ -6,6 +7,7 @@ use tauri_plugin_store::StoreExt;
 const STORE_FILE: &str = "settings.json";
 
 const TOKEN_KEY: &str = "api_token";
+const DESKTOP_ID_KEY: &str = "desktop_id";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
@@ -15,6 +17,8 @@ pub struct AppSettings {
     pub minimize_to_tray: bool,
     pub theme: String,
     pub agents: Vec<AgentEntry>,
+    #[serde(default)]
+    pub desktop_id: String,
 }
 
 impl Default for AppSettings {
@@ -26,6 +30,7 @@ impl Default for AppSettings {
             minimize_to_tray: true,
             theme: "dark".into(),
             agents: Vec::new(),
+            desktop_id: String::new(),
         }
     }
 }
@@ -59,6 +64,40 @@ pub fn load_api_token(app: &AppHandle) -> Option<String> {
     store
         .get(TOKEN_KEY)
         .and_then(|v| v.as_str().map(String::from))
+}
+
+/// Returns a stable desktop identifier used in the pairing QR payload.
+///
+/// Prefers the P2P peer ID when available; otherwise falls back to a
+/// persisted settings value (generated on first launch). This keeps the QR
+/// working even when the P2P/QUIC module cannot bind (e.g. port conflict in
+/// a packaged install).
+pub fn desktop_id(app: &AppHandle) -> String {
+    let store = match app.store(STORE_FILE) {
+        Ok(s) => s,
+        Err(_) => return generate_desktop_id(),
+    };
+    if let Some(id) = store
+        .get(DESKTOP_ID_KEY)
+        .and_then(|v| v.as_str().map(String::from))
+    {
+        if !id.is_empty() {
+            return id;
+        }
+    }
+    let id = generate_desktop_id();
+    let _ = store.set(DESKTOP_ID_KEY, serde_json::Value::String(id.clone()));
+    let _ = store.save();
+    id
+}
+
+fn generate_desktop_id() -> String {
+    // A hostname-derived stable id so the same machine always shows the same
+    // desktop id in the QR, without needing the P2P module.
+    match hostname::get() {
+        Ok(name) => format!("adtp-{}", name.to_string_lossy().replace('.', "-")),
+        Err(_) => format!("adtp-{}", generate_token()),
+    }
 }
 
 pub fn write_token_to_cli_config(token: &str) -> Result<(), String> {
@@ -111,6 +150,7 @@ mod tests {
                 port: 40003,
                 default: true,
             }],
+            desktop_id: "adtp-test-pc".into(),
         };
         let json = serde_json::to_value(&s).unwrap();
         assert_eq!(json["api_url"], "http://localhost:9999");

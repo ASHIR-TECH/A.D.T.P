@@ -754,7 +754,12 @@ pub async fn get_pairing_qr_data(
     p2p: P2PState<'_>,
     validity_secs: Option<i64>,
 ) -> Result<PairingPayload, String> {
-    let module = p2p.as_ref().ok_or("P2P module not initialized")?;
+    // Prefer the P2P peer ID; fall back to the persisted settings desktop_id
+    // so the QR still works when the QUIC/P2P module couldn't bind.
+    let desktop_id = match p2p.as_ref() {
+        Some(module) => module.peer_id(),
+        None => settings::desktop_id(&app),
+    };
 
     let desktop_name = match hostname::get() {
         Ok(name) => name.to_string_lossy().to_string(),
@@ -763,7 +768,7 @@ pub async fn get_pairing_qr_data(
 
     let app_settings = settings::read_settings(&app);
     build_pairing_payload(
-        module.peer_id(),
+        desktop_id,
         desktop_name,
         settings::load_api_token(&app),
         validity_secs,
@@ -790,7 +795,10 @@ pub async fn get_mobile_pairing_qr_data(
     p2p: P2PState<'_>,
     validity_secs: Option<i64>,
 ) -> Result<MobilePairingInfo, String> {
-    let desktop_id = p2p.as_ref().ok_or("P2P module not initialized")?.peer_id();
+    let desktop_id = match p2p.as_ref() {
+        Some(module) => module.peer_id(),
+        None => settings::desktop_id(&app),
+    };
 
     let desktop_name = match hostname::get() {
         Ok(name) => name.to_string_lossy().to_string(),
