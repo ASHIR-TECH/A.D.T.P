@@ -2,6 +2,7 @@ use adtp_cli::config::AgentEntry;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
+use tracing::warn;
 
 const STORE_FILE: &str = "settings.json";
 
@@ -86,7 +87,9 @@ pub fn desktop_id(app: &AppHandle) -> String {
     }
     let id = generate_desktop_id();
     store.set(DESKTOP_ID_KEY, serde_json::Value::String(id.clone()));
-    store.save();
+    if let Err(e) = store.save() {
+        warn!("failed to persist desktop id: {e}");
+    }
     id
 }
 
