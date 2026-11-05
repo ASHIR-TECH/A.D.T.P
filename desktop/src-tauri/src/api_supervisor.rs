@@ -15,6 +15,7 @@
 //! The token is shared with the QR generator through the settings store, so
 //! the QR the phone scans always matches the gateway that is actually running.
 
+use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
@@ -37,6 +38,47 @@ const START_TIMEOUT: Duration = Duration::from_secs(25);
 /// Hard ceiling across all launchers: the UI must always get an answer.
 const TOTAL_START_BUDGET: Duration = Duration::from_secs(90);
 const PROBE_TIMEOUT: Duration = Duration::from_millis(1200);
+
+/// Path to the PID file that tracks the gateway process this desktop spawned.
+/// Used to prevent multiple gateways from running simultaneously and to clean
+/// up on exit.
+fn gateway_pid_path() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("adtp").join("gateway.pid"))
+}
+
+/// Read the PID from the PID file, if it exists and the process is still alive.
+fn read_gateway_pid() -> Option<u32> {
+    let path = gateway_pid_path()?;
+    let contents = fs::read_to_string(&path).ok()?;
+    let pid: u32 = contents.trim().parse().ok()?;
+    // Verify the process is actually alive (Unix: /proc/<pid> exists).
+    if cfg!(unix) {
+        Path::new(&format!("/proc/{}", pid)).exists().then_some(pid)
+    } else {
+        // On Windows we can't easily check without an API call; trust the PID file.
+        Some(pid)
+    }
+}
+
+/// Write our PID to the PID file so other desktop instances know a gateway is running.
+fn write_gateway_pid(pid: u32) -> Option<()> {
+    let path = gateway_pid_path()?;
+    fs::create_dir_all(path.parent()?).ok()?;
+    fs::write(&path, pid.to_string()).ok();
+    Some(())
+}
+
+/// Remove the PID file (called on exit).
+fn remove_gateway_pid() {
+    if let Some(path) = gateway_pid_path() {
+        let _ = fs::remove_file(&path);
+    }
+}
+
+/// True if a gateway PID file exists and the process is alive.
+fn gateway_pid_alive() -> bool {
+    read_gateway_pid().is_some()
+}
 
 #[derive(Clone, serde::Serialize)]
 pub struct ApiStatus {
@@ -535,6 +577,23 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     let _ = write_env_file(&token, port);
     let phone_url = crate::commands::advertised_api_url(Some(url.as_str()));
 
+    // If a gateway PID file exists and the process is alive, another desktop
+    // instance already owns the gateway — reuse it instead of spawning a duplicate.
+    if gateway_pid_alive() {
+        if let Probe::Healthy = probe(&url, &token) {
+            let status = ApiStatus {
+                running: true,
+                url,
+                phone_url,
+                message: "Gateway already running (owned by another instance)".into(),
+            };
+            let _ = app.emit("api-status", status.clone());
+            return Ok(status);
+        }
+        // Stale PID file — the process died, clean it up and proceed to spawn.
+        remove_gateway_pid();
+    }
+
     match probe(&url, &token) {
         Probe::Healthy => {
             let status = ApiStatus {
@@ -591,6 +650,8 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
         loop {
             match probe(&url, &token) {
                 Probe::Healthy => {
+                    let pid = child.id();
+                    write_gateway_pid(pid);
                     let status = ApiStatus {
                         running: true,
                         url,

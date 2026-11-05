@@ -11,6 +11,7 @@ use adtp_peer_core::agent::ToolExecutor;
 use agent_manager::AgentManager;
 use p2p::P2PModule;
 use poller::SharedState;
+use std::process;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 use tokio::sync::Mutex;
@@ -248,6 +249,21 @@ pub fn run() {
             // does not try to talk to a socket whose owner is gone.
             if let tauri::RunEvent::Exit = event {
                 let _ = std::fs::remove_file(agent_ipc::agent_socket_path());
+                // Kill the gateway process we spawned (if any) and clean up the PID file.
+                if let Some(path) = std::env::var_os("ADTP_DATA_DIR")
+                    .map(std::path::PathBuf::from)
+                    .or_else(|| dirs::data_dir().map(|d| d.join("adtp")))
+                {
+                    let pid_path = path.join("gateway.pid");
+                    if let Ok(contents) = std::fs::read_to_string(&pid_path) {
+                        if let Ok(pid) = contents.trim().parse::<u32>() {
+                            let _ = process::Command::new("kill")
+                                .arg(format!("-{}", pid))
+                                .status();
+                        }
+                    }
+                    let _ = std::fs::remove_file(&pid_path);
+                }
             }
         });
 }
