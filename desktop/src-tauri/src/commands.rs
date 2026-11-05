@@ -797,7 +797,6 @@ pub async fn get_mobile_pairing_qr_data(
         Err(_) => DEFAULT_DESKTOP_NAME.to_string(),
     };
 
-    let app_settings = settings::read_settings(&app);
     let handle = app.clone();
     let status = tauri::async_runtime::spawn_blocking(move || {
         crate::api_supervisor::ensure_api_running(&handle)
@@ -815,7 +814,7 @@ pub async fn get_mobile_pairing_qr_data(
         desktop_name,
         settings::load_api_token(&app),
         validity_secs,
-        Some(status.url.as_str()),
+        Some(status.url),
     )?;
 
     Ok(MobilePairingInfo {
