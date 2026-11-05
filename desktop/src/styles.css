@@ -1198,6 +1198,7 @@ body.booting #app {
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-light);
+  align-items: flex-end;
 }
 
 .chat-input {
@@ -1214,6 +1215,116 @@ body.booting #app {
 }
 
 .chat-input:focus { outline: none; border-color: var(--surface-card); }
+
+/* Attached file chip (shown above input when a file is picked) */
+.chat-file-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(232, 163, 77, 0.12);
+  border: 1px solid rgba(232, 163, 77, 0.35);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--white);
+  margin-bottom: var(--space-1);
+  max-width: 200px;
+}
+.chat-file-chip-icon { font-size: 14px; }
+.chat-file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.chat-file-chip-remove {
+  background: none;
+  border: none;
+  color: var(--white);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.chat-file-chip-remove:hover { opacity: 0.7; }
+
+.chat-actions {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.btn-chat-attach {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--white);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+}
+.btn-chat-attach:hover { background: rgba(255,255,255,0.2); }
+.btn-chat-attach:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* File shown inside a user message bubble */
+.chat-file-attached {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--interactive-muted);
+  margin-bottom: 4px;
+}
+.chat-file-attached .chat-file-icon { font-size: 14px; }
+
+/* AI file transfer results */
+.chat-transfers {
+  margin-top: 6px;
+}
+.chat-transfer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+}
+.chat-transfer-icon { font-size: 14px; }
+.chat-transfer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 600; color: var(--white); }
+.chat-transfer-status {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(63, 166, 107, 0.15);
+  color: #3FA66B;
+}
+.chat-transfer-status.pending { background: rgba(134, 134, 172, 0.15); color: #8686AC; }
+.chat-transfer-status.failed { background: rgba(200, 67, 10, 0.15); color: #C8430A; }
+.chat-transfer-device {
+  font-size: 10px;
+  color: var(--interactive-muted);
+  margin-left: auto;
+}
+
+/* Device selector in chat header */
+.chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-device-select {
+  background: var(--bg-deepest);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  color: var(--white);
+  font-size: 11px;
+  min-width: 140px;
+}
+.chat-device-select:focus { outline: none; border-color: var(--surface-card); }
 
 /* Setup Wizard */
 .setup-wizard { max-width: 600px; margin: 0 auto; }
