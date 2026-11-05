@@ -1,5 +1,4 @@
 use adtp_cli::config::AgentEntry;
-use hostname;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
@@ -86,15 +85,15 @@ pub fn desktop_id(app: &AppHandle) -> String {
         }
     }
     let id = generate_desktop_id();
-    let _ = store.set(DESKTOP_ID_KEY, serde_json::Value::String(id.clone()));
-    let _ = store.save();
+    store.set(DESKTOP_ID_KEY, serde_json::Value::String(id.clone()));
+    store.save();
     id
 }
 
 fn generate_desktop_id() -> String {
     // A hostname-derived stable id so the same machine always shows the same
     // desktop id in the QR, without needing the P2P module.
-    match hostname::get() {
+    match ::hostname::get() {
         Ok(name) => format!("adtp-{}", name.to_string_lossy().replace('.', "-")),
         Err(_) => format!("adtp-{}", generate_token()),
     }
