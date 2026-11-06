@@ -2,6 +2,7 @@ const { invoke } = window.__TAURI__.core;
 import { show } from '../components/Toast.js';
 import { showBanner } from '../components/Banner.js';
 import { render as renderAgentStatus } from '../components/AgentStatusCard.js';
+import { openDeviceChat } from '../components/DeviceChat.js';
 
 let advancedOpen = false;
 let liveTimer = null;
@@ -325,20 +326,23 @@ function deviceRows(devices) {
       </div>`;
   }
   return devices.map(d => `
-    <div class="peer-item" data-device-id="${escHtml(d.device_id)}" data-device-name="${escHtml(d.name)}">
+    <div class="peer-item device-hub-item" data-device-id="${escHtml(d.device_id)}" data-device-name="${escHtml(d.name)}"
+      data-os-name="${escHtml(d.os_name || '')}" data-os-version="${escHtml(d.os_version || '')}"
+      data-model="${escHtml(d.model || '')}"
+      data-battery="${d.battery_percent == null ? '' : Math.round(d.battery_percent)}"
+      data-charging="${d.battery_charging ? '1' : '0'}">
+      <div class="device-hub-avatar">${escHtml((d.name || 'P').trim().charAt(0).toUpperCase())}</div>
       <div class="peer-item-info">
         <div class="peer-item-name">
           ${escHtml(d.name)}
           <span class="badge ${d.online ? 'badge-verified' : 'badge-pending'}">${d.online ? 'Online' : 'Offline'}</span>
         </div>
         <div class="peer-item-detail">
-          ${escHtml(d.model || d.platform)} &middot; ${escHtml(d.os_name || d.platform)} ${escHtml(d.os_version || '')}
+          ${escHtml(d.model || 'MARS')} &middot; ${escHtml(d.os_name || d.platform)} ${escHtml(d.os_version || '')}
           &middot; ${deviceBattery(d)} &middot; last seen ${formatSeen(d.last_seen)}
         </div>
-        <div class="peer-item-detail">${escHtml(d.device_id)}</div>
       </div>
-      <button class="btn btn-sm btn-secondary device-note-btn">Message</button>
-      <button class="btn btn-sm btn-primary device-send-btn">Send File</button>
+      <button class="btn btn-sm btn-primary device-chat-btn">Chat</button>
       <button class="peer-remove-btn device-remove-btn" title="Remove phone">&times;</button>
     </div>
   `).join('');
@@ -346,35 +350,19 @@ function deviceRows(devices) {
 
 /** Rebind row actions after the list is refreshed in place. */
 function bindDeviceActions(container) {
-  container.querySelectorAll('.device-send-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  container.querySelectorAll('.device-chat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
       const item = btn.closest('.peer-item');
-      const deviceId = item.dataset.deviceId;
-      const name = item.dataset.deviceName || deviceId;
-      try {
-        const filePath = await invoke('pick_file');
-        if (!filePath) return;
-        const queued = await invoke('send_file_to_device', { deviceId, filePath });
-        show(`Queued ${queued?.file?.filename || 'file'} for ${name}`, 'success', 'top-right');
-      } catch (err) {
-        show(`Send failed: ${err}`, 'error', 'top-right');
-      }
-    });
-  });
-
-  container.querySelectorAll('.device-note-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const item = btn.closest('.peer-item');
-      const deviceId = item.dataset.deviceId;
-      const name = item.dataset.deviceName || deviceId;
-      const text = window.prompt(`Message for ${name}:`);
-      if (!text || !text.trim()) return;
-      try {
-        await invoke('send_message_to_device', { deviceId, text: text.trim() });
-        show(`Message sent to ${name}`, 'success', 'top-right');
-      } catch (err) {
-        show(`Message failed: ${err}`, 'error', 'top-right');
-      }
+      openDeviceChat({
+        device_id: item.dataset.deviceId,
+        name: item.dataset.deviceName || item.dataset.deviceId,
+        online: !!item.querySelector('.badge-verified'),
+        os_name: item.dataset.osName || '',
+        os_version: item.dataset.osVersion || '',
+        model: item.dataset.model || '',
+        battery_percent: item.dataset.battery ? Number(item.dataset.battery) : null,
+        battery_charging: item.dataset.charging === '1',
+      });
     });
   });
 
