@@ -78,19 +78,30 @@ pub fn run() {
             let p2p_rt = tokio::runtime::Runtime::new()
                 .expect("failed to create tokio runtime for P2P init");
             let p2p_option = p2p_rt.block_on(P2PModule::new(config_dir)).ok();
+            let agent_mgr_exec: Arc<Mutex<AgentManager>> =
+                app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
             if let Some(ref p2p) = p2p_option {
                 tracing::info!("P2P module initialized — peer_id: {}", p2p.peer_id());
-                let agent_mgr: Arc<Mutex<AgentManager>> =
-                    app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
                 let exec = p2p.clone() as Arc<dyn ToolExecutor>;
                 p2p_rt.block_on(async {
-                    let mgr = agent_mgr.lock().await;
+                    let mgr = agent_mgr_exec.lock().await;
                     mgr.set_tool_executor(exec).await;
                 });
             } else {
+                // P2P/QUIC failed, but the gateway still knows every paired
+                // phone. Without this fallback the agent had no executor at
+                // all, so "what devices are connected?" and phone messaging
+                // silently stopped working.
                 tracing::warn!(
-                    "P2P module failed to initialize — agent file transfers will be unavailable"
+                    "P2P module failed to initialize — falling back to gateway-only device tools"
                 );
+                let exec = Arc::new(p2p::GatewayToolExecutor {
+                    desktop_id: "adtp-desktop".into(),
+                }) as Arc<dyn ToolExecutor>;
+                p2p_rt.block_on(async {
+                    let mgr = agent_mgr_exec.lock().await;
+                    mgr.set_tool_executor(exec).await;
+                });
             }
             app.manage::<Option<Arc<P2PModule>>>(p2p_option);
 
@@ -244,6 +255,8 @@ pub fn run() {
             commands::remove_paired_device,
             commands::send_file_to_device,
             commands::send_message_to_device,
+            commands::list_device_messages,
+            commands::list_device_files,
             commands::launch_cli,
             commands::get_pairing_qr_data,
             commands::get_mobile_pairing_qr_data,

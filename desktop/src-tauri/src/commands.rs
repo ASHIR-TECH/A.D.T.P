@@ -1,9 +1,9 @@
 use adtp_cli::client::ApiClient;
 use adtp_cli::config::CliConfig;
 use adtp_cli::models::{
-    AuditLogList, ChainVerifyResult, ContextBlock, DeviceFileQueued, DeviceMessageQueued,
-    PairedDeviceList, SessionList, TransferList, TransferSendResponse, TransferStatus, WatchList,
-    WatchResponse,
+    AuditLogList, ChainVerifyResult, ContextBlock, DeviceFileList, DeviceFileQueued,
+    DeviceMessageList, DeviceMessageQueued, PairedDeviceList, SessionList, TransferList,
+    TransferSendResponse, TransferStatus, WatchList, WatchResponse,
 };
 use adtp_peer_core::agent::permissions::PermissionConfig;
 use tauri::AppHandle;
@@ -525,6 +525,34 @@ pub async fn send_message_to_device(
     let client = make_client(&app)?;
     client
         .send_device_message(&device_id, &text)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Desktop → phone chat history for the per-device chat drawer.
+#[tauri::command]
+pub async fn list_device_messages(
+    app: AppHandle,
+    device_id: String,
+    include_delivered: Option<bool>,
+) -> Result<DeviceMessageList, String> {
+    let client = make_client(&app)?;
+    client
+        .list_device_messages(&device_id, include_delivered.unwrap_or(true))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Files already staged for this phone (merged with messages in the drawer).
+#[tauri::command]
+pub async fn list_device_files(
+    app: AppHandle,
+    device_id: String,
+    include_delivered: Option<bool>,
+) -> Result<DeviceFileList, String> {
+    let client = make_client(&app)?;
+    client
+        .list_device_files(&device_id, include_delivered.unwrap_or(true))
         .await
         .map_err(|e| e.to_string())
 }

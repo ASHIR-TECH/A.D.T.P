@@ -273,6 +273,38 @@ impl ApiClient {
         )
         .await
     }
+
+    /// Full desktop → phone message history for the device chat drawer.
+    pub async fn list_device_messages(
+        &self,
+        device_id: &str,
+        include_delivered: bool,
+    ) -> Result<crate::models::DeviceMessageList, CliError> {
+        self.get_with_query(
+            &format!("/api/v1/devices/{device_id}/messages"),
+            &[(
+                "include_delivered",
+                if include_delivered { "true" } else { "false" },
+            )],
+        )
+        .await
+    }
+
+    /// Files the desktop staged for one phone (chat history file tiles).
+    pub async fn list_device_files(
+        &self,
+        device_id: &str,
+        include_delivered: bool,
+    ) -> Result<crate::models::DeviceFileList, CliError> {
+        self.get_with_query(
+            &format!("/api/v1/devices/{device_id}/files"),
+            &[(
+                "include_delivered",
+                if include_delivered { "true" } else { "false" },
+            )],
+        )
+        .await
+    }
 }
 
 /// MIME used for multipart uploads. Magic bytes win (works without an

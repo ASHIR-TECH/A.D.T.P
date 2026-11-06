@@ -350,6 +350,122 @@ impl P2PModule {
     }
 }
 
+/// Resolve a phone target for agent tools. The model often omits `device_id`
+/// for "send it to my phone": one paired phone wins outright; with several,
+/// only an unambiguous online phone is chosen, otherwise the error lists ids.
+async fn resolve_device_target(
+    client: &adtp_cli::client::ApiClient,
+    device_id: &str,
+) -> Result<String, String> {
+    if !device_id.trim().is_empty() {
+        return Ok(device_id.trim().to_string());
+    }
+    let list = client.list_devices().await.map_err(|e| e.to_string())?;
+    match list.devices.as_slice() {
+        [] => Err("No phone is paired yet. Pair MARS in ADTP Desktop → Mobile first.".into()),
+        [only] => Ok(only.device_id.clone()),
+        many => {
+            let online: Vec<_> = many.iter().filter(|d| d.online).collect();
+            if online.len() == 1 {
+                Ok(online[0].device_id.clone())
+            } else {
+                let ids = many
+                    .iter()
+                    .map(|d| format!("{} ({})", d.device_id, d.name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Err(format!(
+                    "Several phones are paired; pass device_id. Pairings: {ids}"
+                ))
+            }
+        }
+    }
+}
+
+fn gateway_client() -> Result<adtp_cli::client::ApiClient, String> {
+    let cfg = adtp_cli::config::CliConfig::load().map_err(|e| e.to_string())?;
+    adtp_cli::client::ApiClient::new(&cfg).map_err(|e| e.to_string())
+}
+
+async fn send_file_via_gateway(file_path: &str, device_id: &str) -> Result<String, String> {
+    let client = gateway_client()?;
+    let target = resolve_device_target(&client, device_id).await?;
+    let queued = client
+        .queue_device_file(&target, file_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    // Structured result: the mobile chat parses it to render a download tile
+    // with the exact device-file id, size and MIME.
+    Ok(serde_json::json!({
+        "status": "queued",
+        "device_file_id": queued.file.id,
+        "device_id": target,
+        "filename": queued.file.filename,
+        "size_bytes": queued.file.file_size,
+        "mime_type": queued.file.mime_type,
+        "message": format!(
+            "Queued {} ({} bytes) for {} — it will download it from its inbox.",
+            queued.file.filename, queued.file.file_size, target
+        ),
+    })
+    .to_string())
+}
+
+async fn send_message_via_gateway(text: &str, device_id: &str) -> Result<String, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("send_message_to_device: text is empty".into());
+    }
+    let client = gateway_client()?;
+    let target = resolve_device_target(&client, device_id).await?;
+    let queued = client
+        .send_device_message(&target, text)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "status": "sent",
+        "device_id": target,
+        "message_id": queued.message.id,
+        "text": text,
+        "message": format!("Sent to {} — it will appear in the phone's chat.", target),
+    })
+    .to_string())
+}
+
+async fn list_devices_via_gateway() -> Result<String, String> {
+    let client = gateway_client()?;
+    let list = client.list_devices().await.map_err(|e| e.to_string())?;
+    if list.devices.is_empty() {
+        return Ok("No phones are paired yet. Pair MARS in ADTP Desktop → Mobile first.".into());
+    }
+    let mut lines = vec![format!("Paired phones ({}):", list.devices.len())];
+    for d in &list.devices {
+        let battery = match d.battery_percent {
+            Some(percent) => format!(
+                "{:.0}%{}",
+                percent,
+                if d.battery_charging == Some(true) {
+                    " (charging)"
+                } else {
+                    ""
+                }
+            ),
+            None => "battery unknown".to_string(),
+        };
+        lines.push(format!(
+            "  {} — id={} ({} {}, {}, {}, {})",
+            d.name,
+            d.device_id,
+            d.os_name,
+            d.os_version,
+            d.platform,
+            battery,
+            if d.online { "online" } else { "offline" }
+        ));
+    }
+    Ok(lines.join("\n"))
+}
+
 #[async_trait]
 impl ToolExecutor for P2PModule {
     async fn send_file(&self, file_path: &str, peer_id: &str) -> Result<String, String> {
@@ -365,60 +481,15 @@ impl ToolExecutor for P2PModule {
         file_path: &str,
         device_id: &str,
     ) -> Result<String, String> {
-        let cfg = adtp_cli::config::CliConfig::load().map_err(|e| e.to_string())?;
-        let client = adtp_cli::client::ApiClient::new(&cfg).map_err(|e| e.to_string())?;
+        send_file_via_gateway(file_path, device_id).await
+    }
 
-        // The model often omits device_id for "send it to my phone". Resolve the
-        // target here: one paired phone wins outright; with several, only an
-        // unambiguous online phone is chosen, otherwise ask for the id.
-        let target = if device_id.trim().is_empty() {
-            let list = client.list_devices().await.map_err(|e| e.to_string())?;
-            match list.devices.as_slice() {
-                [] => {
-                    return Err(
-                        "No phone is paired yet. Pair MARS in ADTP Desktop → Mobile first.".into(),
-                    )
-                }
-                [only] => only.device_id.clone(),
-                many => {
-                    let online: Vec<_> = many.iter().filter(|d| d.online).collect();
-                    if online.len() == 1 {
-                        online[0].device_id.clone()
-                    } else {
-                        let ids = many
-                            .iter()
-                            .map(|d| format!("{} ({})", d.device_id, d.name))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        return Err(format!(
-                            "Several phones are paired; pass device_id. Pairings: {ids}"
-                        ));
-                    }
-                }
-            }
-        } else {
-            device_id.trim().to_string()
-        };
+    async fn send_message_to_device(&self, text: &str, device_id: &str) -> Result<String, String> {
+        send_message_via_gateway(text, device_id).await
+    }
 
-        let queued = client
-            .queue_device_file(&target, file_path)
-            .await
-            .map_err(|e| e.to_string())?;
-        // Structured result: the mobile chat parses it to render a download
-        // tile with the exact device-file id, size and MIME.
-        Ok(serde_json::json!({
-            "status": "queued",
-            "device_file_id": queued.file.id,
-            "device_id": target,
-            "filename": queued.file.filename,
-            "size_bytes": queued.file.file_size,
-            "mime_type": queued.file.mime_type,
-            "message": format!(
-                "Queued {} ({} bytes) for {} — it will download it from its inbox.",
-                queued.file.filename, queued.file.file_size, target
-            ),
-        })
-        .to_string())
+    async fn list_devices(&self) -> Result<String, String> {
+        list_devices_via_gateway().await
     }
 
     async fn get_own_peer_id(&self) -> Result<String, String> {
@@ -445,5 +516,53 @@ impl ToolExecutor for P2PModule {
             ));
         }
         Ok(lines.join("\n"))
+    }
+}
+
+/// Tool executor that uses only the local gateway REST API.
+///
+/// The embedded agent used to get *no* executor when P2P/QUIC failed to
+/// initialize, which silently disabled device listing and chat/file delivery.
+/// The gateway is independent of P2P, so the agent can still see and message
+/// paired phones in that case.
+pub struct GatewayToolExecutor {
+    pub desktop_id: String,
+}
+
+#[async_trait]
+impl ToolExecutor for GatewayToolExecutor {
+    async fn send_file(&self, _file_path: &str, _peer_id: &str) -> Result<String, String> {
+        Err(
+            "Peer-to-peer transport is unavailable. Use send_file_to_device for paired phones."
+                .into(),
+        )
+    }
+
+    async fn list_peers(&self) -> Result<String, String> {
+        list_devices_via_gateway().await
+    }
+
+    async fn send_file_to_device(
+        &self,
+        file_path: &str,
+        device_id: &str,
+    ) -> Result<String, String> {
+        send_file_via_gateway(file_path, device_id).await
+    }
+
+    async fn send_message_to_device(&self, text: &str, device_id: &str) -> Result<String, String> {
+        send_message_via_gateway(text, device_id).await
+    }
+
+    async fn list_devices(&self) -> Result<String, String> {
+        list_devices_via_gateway().await
+    }
+
+    async fn get_own_peer_id(&self) -> Result<String, String> {
+        Ok(self.desktop_id.clone())
+    }
+
+    async fn list_transfers(&self, _status: Option<&str>) -> Result<String, String> {
+        Ok("Transfer history is shown in the ADTP Desktop dashboard.".into())
     }
 }
