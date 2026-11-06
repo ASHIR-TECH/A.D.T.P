@@ -214,9 +214,11 @@ async function refreshThread(state, { quiet } = {}) {
   }
 }
 
-function renderThread(state) {
+function renderThread(state, { forceScroll = false } = {}) {
   const thread = state.root.querySelector('#device-chat-thread');
   if (!thread) return;
+  const atBottom =
+    thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
 
   const items = [
     ...state.messages.map(m => ({
@@ -247,6 +249,7 @@ function renderThread(state) {
   }
 
   let lastDay = '';
+  const firstRender = thread.dataset.rendered !== '1';
   thread.innerHTML = items.map(item => {
     const date = new Date(item.createdAt);
     const day = Number.isNaN(date.getTime()) ? '' : date.toDateString();
@@ -256,7 +259,11 @@ function renderThread(state) {
     lastDay = day || lastDay;
     return dayLabel + renderItem(item, state.device.name);
   }).join('');
-  thread.scrollTop = thread.scrollHeight;
+  // Don't yank the thread to the bottom while the user is reading history.
+  if (forceScroll || firstRender || atBottom) {
+    thread.scrollTop = thread.scrollHeight;
+  }
+  thread.dataset.rendered = '1';
 }
 
 function renderItem(item, deviceName) {
@@ -336,7 +343,8 @@ async function send(state) {
     show(`Send failed: ${err}`, 'error', 'top-right');
   } finally {
     state.sending = false;
-    state.root.querySelector('#device-chat-send').disabled = false;
+    const sendBtn = state.root.querySelector('#device-chat-send');
+    if (sendBtn) sendBtn.disabled = !input.value.trim() && !state.attachedFile;
     void refreshThread(state, { quiet: true });
   }
 }
