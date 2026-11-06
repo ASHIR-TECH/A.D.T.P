@@ -11,7 +11,6 @@ use adtp_peer_core::agent::ToolExecutor;
 use agent_manager::AgentManager;
 use p2p::P2PModule;
 use poller::SharedState;
-use std::process;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 use tokio::sync::Mutex;
@@ -21,6 +20,16 @@ pub fn run() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     tauri::Builder::default()
+        // Must be the first plugin: a second launch (double-click, autostart +
+        // manual open) is handed to the running instance and exits, so the app
+        // can never end up with two trays and two supervisors.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
@@ -69,19 +78,30 @@ pub fn run() {
             let p2p_rt = tokio::runtime::Runtime::new()
                 .expect("failed to create tokio runtime for P2P init");
             let p2p_option = p2p_rt.block_on(P2PModule::new(config_dir)).ok();
+            let agent_mgr_exec: Arc<Mutex<AgentManager>> =
+                app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
             if let Some(ref p2p) = p2p_option {
                 tracing::info!("P2P module initialized — peer_id: {}", p2p.peer_id());
-                let agent_mgr: Arc<Mutex<AgentManager>> =
-                    app.state::<Arc<Mutex<AgentManager>>>().inner().clone();
                 let exec = p2p.clone() as Arc<dyn ToolExecutor>;
                 p2p_rt.block_on(async {
-                    let mgr = agent_mgr.lock().await;
+                    let mgr = agent_mgr_exec.lock().await;
                     mgr.set_tool_executor(exec).await;
                 });
             } else {
+                // P2P/QUIC failed, but the gateway still knows every paired
+                // phone. Without this fallback the agent had no executor at
+                // all, so "what devices are connected?" and phone messaging
+                // silently stopped working.
                 tracing::warn!(
-                    "P2P module failed to initialize — agent file transfers will be unavailable"
+                    "P2P module failed to initialize — falling back to gateway-only device tools"
                 );
+                let exec = Arc::new(p2p::GatewayToolExecutor {
+                    desktop_id: "adtp-desktop".into(),
+                }) as Arc<dyn ToolExecutor>;
+                p2p_rt.block_on(async {
+                    let mgr = agent_mgr_exec.lock().await;
+                    mgr.set_tool_executor(exec).await;
+                });
             }
             app.manage::<Option<Arc<P2PModule>>>(p2p_option);
 
@@ -235,6 +255,8 @@ pub fn run() {
             commands::remove_paired_device,
             commands::send_file_to_device,
             commands::send_message_to_device,
+            commands::list_device_messages,
+            commands::list_device_files,
             commands::launch_cli,
             commands::get_pairing_qr_data,
             commands::get_mobile_pairing_qr_data,
@@ -247,23 +269,13 @@ pub fn run() {
         .run(|_app, event| {
             // Remove the embedded-agent socket on exit so the detached gateway
             // does not try to talk to a socket whose owner is gone.
+            //
+            // The gateway itself is intentionally left running: it is the
+            // phone-facing listener, and the next launch adopts it via
+            // `gateway.json` instead of spawning a replacement. Killing it here
+            // was how a quit/relaunch cycle accumulated orphaned processes.
             if let tauri::RunEvent::Exit = event {
                 let _ = std::fs::remove_file(agent_ipc::agent_socket_path());
-                // Kill the gateway process we spawned (if any) and clean up the PID file.
-                if let Some(path) = std::env::var_os("ADTP_DATA_DIR")
-                    .map(std::path::PathBuf::from)
-                    .or_else(|| dirs::data_dir().map(|d| d.join("adtp")))
-                {
-                    let pid_path = path.join("gateway.pid");
-                    if let Ok(contents) = std::fs::read_to_string(&pid_path) {
-                        if let Ok(pid) = contents.trim().parse::<u32>() {
-                            let _ = process::Command::new("kill")
-                                .arg(format!("-{}", pid))
-                                .status();
-                        }
-                    }
-                    let _ = std::fs::remove_file(&pid_path);
-                }
             }
         });
 }

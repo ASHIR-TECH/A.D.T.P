@@ -185,6 +185,9 @@ function setupChat(container) {
       if (devices.length > 0) {
         deviceSelect.innerHTML = '<option value="">All devices</option>' +
           devices.map(d => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.name)} — ${d.online ? 'Online' : 'Offline'}</option>`).join('');
+        // Keep the select in sync with the default target chosen in render().
+        selectedDeviceId = selectedDeviceId || devices[0].device_id;
+        deviceSelect.value = selectedDeviceId;
       }
     } catch {}
   })();
@@ -260,8 +263,18 @@ async function sendMessage(container) {
   try {
     // Send to the desktop agent. If a specific device is selected, include it
     // in the message context so the AI can target it with send_file_to_device.
-    const deviceCtx = selectedDeviceId ? `\n[Target device: ${selectedDeviceId}]` : '';
-    const agentMsg = attachedFile ? `${text}${deviceCtx}\n\n[Attached file: ${filePath}]` : `${text}${deviceCtx}`;
+    const deviceName = selectedDeviceId
+      ? (container.querySelector('#chat-device-select')?.selectedOptions?.[0]?.textContent || '')
+          .replace(/\s+—\s+(Online|Offline)$/, '')
+      : '';
+    const deviceCtx = selectedDeviceId
+      ? `\n[Target device: ${deviceName ? `${deviceName} ` : ''}${selectedDeviceId}]`
+      : '';
+    // Use the captured filePath — `attachedFile` is cleared above so the chip
+    // disappears immediately, which used to drop the attachment entirely.
+    const agentMsg = filePath
+      ? `${text}${deviceCtx}\n\n[Attached file: ${filePath}]`
+      : `${text}${deviceCtx}`;
     const response = await Promise.race([
       invoke('agent_send_message', { message: agentMsg }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Agent timed out after 30s')), 30000)),

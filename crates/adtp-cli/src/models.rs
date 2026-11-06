@@ -282,6 +282,12 @@ pub struct DeviceFileQueued {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceFileList {
+    pub files: Vec<DeviceFile>,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceMessage {
     pub id: String,
     pub device_id: String,
@@ -293,4 +299,10 @@ pub struct DeviceMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceMessageQueued {
     pub message: DeviceMessage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceMessageList {
+    pub messages: Vec<DeviceMessage>,
+    pub total: i64,
 }

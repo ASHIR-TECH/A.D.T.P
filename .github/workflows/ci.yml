@@ -102,7 +102,7 @@ jobs:
           # real one from the desktop at runtime.
           ADTP_API_TOKEN: "0123456789abcdef0123456789abcdef"
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --name adtp-api \
+          python -m PyInstaller --noconfirm --clean --onedir --name adtp-api \
             --distpath dist/gateway --workpath build/gateway --specpath build/gateway \
             --collect-submodules uvicorn \
             --collect-submodules adtp_api \
@@ -121,7 +121,7 @@ jobs:
           ADTP_API_TOKEN="$token" \
           ADTP_DATA_DIR="$data" \
           ADTP_AUDIT_DB="$data/client-audit.db" \
-            ./dist/gateway/adtp-api >gateway-smoke.log 2>&1 &
+            ./dist/gateway/adtp-api/adtp-api >gateway-smoke.log 2>&1 &
           pid=$!
           ok=0
           for _ in $(seq 1 40); do
@@ -141,6 +141,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: adtp-api-linux
+          # onedir: ship the whole folder (single process at runtime, lower RAM
+          # than the onefile bootloader + child pair).
           path: dist/gateway/adtp-api
           if-no-files-found: error
 
@@ -197,8 +199,6 @@ jobs:
         with:
           name: adtp-api-linux
           path: dist/gateway
-      - name: Install gateway sidecar next to the desktop binary
-        run: install -m 755 dist/gateway/adtp-api target/release/adtp-api
       - name: Package as .deb with desktop entry and icons
         run: |
           PKG_DIR="dist/linux-deb"
@@ -215,8 +215,14 @@ jobs:
           # Binary
           cp target/release/adtp-desktop "$PKG_DIR/usr/bin/adtp-desktop"
           chmod 755 "$PKG_DIR/usr/bin/adtp-desktop"
-          # Phone-facing gateway sidecar — the desktop finds it next to itself.
-          cp target/release/adtp-api "$PKG_DIR/usr/bin/adtp-api"
+          # Phone-facing gateway sidecar. The Linux build is a PyInstaller
+          # `--onedir` tree: one process, no /tmp extraction, lower idle RAM.
+          # Install it under /usr/lib and expose a thin `exec` wrapper so the
+          # desktop's `adtp-api` lookup and the CLI both keep working.
+          mkdir -p "$PKG_DIR/usr/lib/adtp"
+          cp -a dist/gateway/adtp-api "$PKG_DIR/usr/lib/adtp/adtp-api"
+          chmod 755 "$PKG_DIR/usr/lib/adtp/adtp-api/adtp-api"
+          printf '#!/bin/sh\nexec /usr/lib/adtp/adtp-api/adtp-api "$@"\n' > "$PKG_DIR/usr/bin/adtp-api"
           chmod 755 "$PKG_DIR/usr/bin/adtp-api"
 
           # Icons
@@ -292,9 +298,14 @@ jobs:
           cp artifacts/adtp-desktop_1.0.0_amd64.deb release/ 2>/dev/null || true
           cp artifacts/adtp-desktop.exe release/ 2>/dev/null || true
           # Standalone gateway binaries (also bundled inside the .deb/.exe zip).
-          cp artifacts/adtp-api release/ 2>/dev/null || true
+          # Linux is an onedir tree, so publish it as a tarball.
+          if [ -d artifacts/adtp-api ]; then
+            tar -czf release/adtp-api-linux.tar.gz -C artifacts adtp-api
+          elif [ -f artifacts/adtp-api ]; then
+            cp artifacts/adtp-api release/ 2>/dev/null || true
+            chmod 755 release/adtp-api 2>/dev/null || true
+          fi
           cp artifacts/adtp-api.exe release/ 2>/dev/null || true
-          chmod 755 release/adtp-api 2>/dev/null || true
           echo "=== Release files ==="
           ls -lh release/
       - name: Create release tag for this commit
@@ -308,7 +319,7 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
       - name: Generate release notes
         run: |
-          printf '# Mars v1.0.0 - ADTP Desktop Release\n\n## Overview\n\nADTP (Agent Direct Transfer Protocol) Desktop - a secure peer-to-peer file transfer desktop application with encrypted QUIC transport, cryptographic audit chains, Trust-On-First-Use TLS verification, and mobile companion (MARS) pairing support.\n\nBuilt from branch **%s**.\n\n## Commit\n\n%s\n\nAuthor: %s\n\n## Installation\n\n### Linux (.deb)\n\n```bash\nsudo dpkg -i adtp-desktop_1.0.0_amd64.deb\nsudo apt-get install -f\n```\n\n### Remove ADTP Desktop (Linux)\n\n```bash\nsudo apt remove adtp-desktop\n```\n\n### Windows (.exe)\n\nDownload `adtp-desktop.exe` **and** `adtp-api.exe` into the same folder and run the desktop app. The gateway starts automatically; keep both files together.\n\n## Assets\n\n| Platform | File |\n|----------|------|\n| Linux | `adtp-desktop_1.0.0_amd64.deb` (includes `adtp-api`) |\n| Windows | `adtp-desktop.exe` + `adtp-api.exe` |\n| Gateway | `adtp-api` / `adtp-api.exe` (standalone) |\n\n## Security\n\nAll dependencies audited with `cargo audit`.\n\n---\n\n*Automated release created by the ADTP Build & Release workflow.*\n' "${GITHUB_REF_NAME}" "${{ github.event.head_commit.message }}" "${{ github.event.head_commit.author.name }}" > notes.md
+          printf '# Mars v1.0.0 - ADTP Desktop Release\n\n## Overview\n\nADTP (Agent Direct Transfer Protocol) Desktop - a secure peer-to-peer file transfer desktop application with encrypted QUIC transport, cryptographic audit chains, Trust-On-First-Use TLS verification, and mobile companion (MARS) pairing support.\n\nBuilt from branch **%s**.\n\n## Commit\n\n%s\n\nAuthor: %s\n\n## Installation\n\n### Linux (.deb)\n\n```bash\nsudo dpkg -i adtp-desktop_1.0.0_amd64.deb\nsudo apt-get install -f\n```\n\n### Remove ADTP Desktop (Linux)\n\n```bash\nsudo apt remove adtp-desktop\n```\n\n### Windows (.exe)\n\nDownload `adtp-desktop.exe` **and** `adtp-api.exe` into the same folder and run the desktop app. The gateway starts automatically; keep both files together.\n\n## Assets\n\n| Platform | File |\n|----------|------|\n| Linux | `adtp-desktop_1.0.0_amd64.deb` (includes `adtp-api`) |\n| Windows | `adtp-desktop.exe` + `adtp-api.exe` |\n| Gateway | `adtp-api-linux.tar.gz` / `adtp-api.exe` (standalone) |\n\n## Security\n\nAll dependencies audited with `cargo audit`.\n\n---\n\n*Automated release created by the ADTP Build & Release workflow.*\n' "${GITHUB_REF_NAME}" "${{ github.event.head_commit.message }}" "${{ github.event.head_commit.author.name }}" > notes.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}

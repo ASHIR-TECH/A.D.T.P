@@ -39,45 +39,252 @@ const START_TIMEOUT: Duration = Duration::from_secs(25);
 const TOTAL_START_BUDGET: Duration = Duration::from_secs(90);
 const PROBE_TIMEOUT: Duration = Duration::from_millis(1200);
 
-/// Path to the PID file that tracks the gateway process this desktop spawned.
-/// Used to prevent multiple gateways from running simultaneously and to clean
-/// up on exit.
-fn gateway_pid_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("adtp").join("gateway.pid"))
+/// Persisted record of the gateway this user's desktop started. Keeping the
+/// *URL* (not just a PID) is what lets a later launch adopt a gateway that
+/// ended up on an ephemeral port instead of blindly spawning another one.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct GatewayRecord {
+    pid: u32,
+    /// Process-group / session id. `spawn_detached` calls `setsid()`, so the
+    /// child leads its own group; this is what lets us reap PyInstaller's
+    /// bootloader **and** the Python child it forks.
+    #[serde(default)]
+    pgid: Option<i32>,
+    url: String,
 }
 
-/// Read the PID from the PID file, if it exists and the process is still alive.
-fn read_gateway_pid() -> Option<u32> {
-    let path = gateway_pid_path()?;
-    let contents = fs::read_to_string(&path).ok()?;
-    let pid: u32 = contents.trim().parse().ok()?;
-    // Verify the process is actually alive (Unix: /proc/<pid> exists).
-    if cfg!(unix) {
-        Path::new(&format!("/proc/{}", pid)).exists().then_some(pid)
-    } else {
-        // On Windows we can't easily check without an API call; trust the PID file.
-        Some(pid)
+fn adtp_data_dir() -> Option<PathBuf> {
+    // Overridable for portable installs and tests; otherwise the same XDG
+    // location the rest of the app uses.
+    if let Some(dir) = std::env::var_os("ADTP_DATA_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    dirs::data_dir().map(|d| d.join("adtp"))
+}
+
+fn gateway_record_path() -> Option<PathBuf> {
+    adtp_data_dir().map(|d| d.join("gateway.json"))
+}
+
+/// Legacy PID file written by earlier builds. Removed once a record exists.
+fn legacy_pid_path() -> Option<PathBuf> {
+    adtp_data_dir().map(|d| d.join("gateway.pid"))
+}
+
+fn gateway_lock_path() -> Option<PathBuf> {
+    adtp_data_dir().map(|d| d.join("gateway.lock"))
+}
+
+fn read_gateway_record() -> Option<GatewayRecord> {
+    let raw = fs::read_to_string(gateway_record_path()?).ok()?;
+    let record: GatewayRecord = serde_json::from_str(&raw).ok()?;
+    if record.url.is_empty() {
+        return None;
+    }
+    Some(record)
+}
+
+/// Atomic write: a half-written record must never make the next launch think
+/// the gateway is broken and start a second one.
+fn write_gateway_record(record: &GatewayRecord) {
+    let Some(path) = gateway_record_path() else {
+        return;
+    };
+    let Some(dir) = path.parent() else {
+        return;
+    };
+    let _ = fs::create_dir_all(dir);
+    let Ok(bytes) = serde_json::to_vec(record) else {
+        return;
+    };
+    let tmp = path.with_extension("json.tmp");
+    if fs::write(&tmp, bytes).is_ok() && fs::rename(&tmp, &path).is_err() {
+        let _ = fs::remove_file(&tmp);
     }
 }
 
-/// Write our PID to the PID file so other desktop instances know a gateway is running.
-fn write_gateway_pid(pid: u32) -> Option<()> {
-    let path = gateway_pid_path()?;
-    fs::create_dir_all(path.parent()?).ok()?;
-    fs::write(&path, pid.to_string()).ok();
-    Some(())
-}
-
-/// Remove the PID file (called on exit).
-fn remove_gateway_pid() {
-    if let Some(path) = gateway_pid_path() {
-        let _ = fs::remove_file(&path);
+fn clear_gateway_record() {
+    if let Some(path) = gateway_record_path() {
+        let _ = fs::remove_file(path);
+    }
+    if let Some(path) = legacy_pid_path() {
+        let _ = fs::remove_file(path);
     }
 }
 
-/// True if a gateway PID file exists and the process is alive.
-fn gateway_pid_alive() -> bool {
-    read_gateway_pid().is_some()
+/// Is this process still around?
+fn pid_alive(pid: u32) -> bool {
+    if pid <= 1 {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(unix))]
+    {
+        // Best effort: Windows has no /proc. The HTTP probe is the real
+        // liveness check; this only guards stale cleanup.
+        let _ = pid;
+        true
+    }
+}
+
+/// Ask the gateway's whole process group to stop, then force it after a short
+/// grace period. Killing only `Child::kill()` (the PyInstaller bootloader)
+/// leaves the actual Python listener running as an orphan — that is exactly
+/// how a single launch used to accumulate 20+ `adtp-api` processes.
+fn terminate_gateway(record: &GatewayRecord) {
+    #[cfg(unix)]
+    {
+        if record.pid <= 1 {
+            return;
+        }
+        let pgid = record.pgid.unwrap_or(record.pid as i32);
+        if pgid > 1 {
+            unsafe {
+                libc::kill(-pgid, libc::SIGTERM);
+            }
+            for _ in 0..20 {
+                if !pid_alive(record.pid) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            unsafe {
+                libc::kill(-pgid, libc::SIGKILL);
+            }
+        }
+        if record.pid > 1 && pid_alive(record.pid) {
+            unsafe {
+                libc::kill(record.pid as i32, libc::SIGKILL);
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &record.pid.to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
+/// Cross-process mutex around the "probe → spawn → record" sequence.
+///
+/// Without this, the startup task, the QR panel and the Settings button (each
+/// in its own desktop process) all saw "no gateway" at the same time and each
+/// spawned one. On Unix this is an advisory `flock`, which the kernel releases
+/// even if the owner crashes; on Windows it is an atomic exclusive-create file
+/// with a stale-owner check.
+struct GatewayStartLock {
+    path: PathBuf,
+    #[cfg(unix)]
+    file: fs::File,
+}
+
+impl GatewayStartLock {
+    fn acquire(timeout: Duration) -> Option<Self> {
+        let path = gateway_lock_path()?;
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let file = fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(&path)
+                .ok()?;
+            let deadline = Instant::now() + timeout;
+            loop {
+                let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+                if rc == 0 {
+                    return Some(Self { path, file });
+                }
+                let error = std::io::Error::last_os_error();
+                let would_block = matches!(
+                    error.raw_os_error(),
+                    Some(code)
+                        if code == libc::EWOULDBLOCK
+                            || code == libc::EAGAIN
+                            || code == libc::EINTR
+                );
+                if !would_block || Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            let deadline = Instant::now() + timeout;
+            loop {
+                match fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                {
+                    Ok(mut file) => {
+                        let _ = writeln!(file, "{}", std::process::id());
+                        return Some(Self { path });
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                        if lock_is_stale(&path) {
+                            let _ = fs::remove_file(&path);
+                            continue;
+                        }
+                        if Instant::now() >= deadline {
+                            return None;
+                        }
+                        std::thread::sleep(Duration::from_millis(150));
+                    }
+                    Err(_) => return None,
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn lock_is_stale(path: &Path) -> bool {
+    let holder = fs::read_to_string(path)
+        .ok()
+        .and_then(|contents| contents.trim().parse::<u32>().ok());
+    if let Some(pid) = holder {
+        if !pid_alive(pid) {
+            return true;
+        }
+    }
+    let old = fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .map(|age| age > Duration::from_secs(180))
+        .unwrap_or(false);
+    old
+}
+
+impl Drop for GatewayStartLock {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let _ = unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
+            let _ = &self.path;
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -229,6 +436,24 @@ fn probe(url: &str, token: &str) -> Probe {
     }
 }
 
+/// A single missed probe must not make us kill a perfectly healthy gateway.
+/// Under load (or right after the OS resumes) one TCP/TLS attempt can time
+/// out; retrying briefly avoids a needless restart and the process churn that
+/// comes with it.
+fn probe_retrying(url: &str, token: &str, attempts: u32) -> Probe {
+    let mut last = Probe::Offline;
+    for attempt in 0..attempts.max(1) {
+        last = probe(url, token);
+        if last != Probe::Offline {
+            return last;
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+    last
+}
+
 /// Read a token written by the desktop (`~/.config/adtp/api.env`) or by the
 /// systemd installer. Keeping one canonical token means a listener started
 /// before the desktop UI still accepts the QR the desktop shows.
@@ -333,10 +558,29 @@ fn exe_dir() -> Option<PathBuf> {
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
 }
 
+/// Resolve a launcher program to a stable identity so the same binary reached
+/// via `PATH`, an absolute path and a symlink is only tried once.
+fn resolve_program(program: &str) -> PathBuf {
+    let path = Path::new(program);
+    if path.is_absolute() || program.contains(std::path::MAIN_SEPARATOR) {
+        return fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    }
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join(program);
+            if candidate.is_file() {
+                return fs::canonicalize(&candidate).unwrap_or(candidate);
+            }
+        }
+    }
+    PathBuf::from(program)
+}
+
 fn push_unique(out: &mut Vec<Launcher>, launcher: Launcher) {
-    let duplicate = out
-        .iter()
-        .any(|existing| existing.program == launcher.program && existing.args == launcher.args);
+    let key = resolve_program(&launcher.program);
+    let duplicate = out.iter().any(|existing| {
+        resolve_program(&existing.program) == key && existing.args == launcher.args
+    });
     if !duplicate {
         out.push(launcher);
     }
@@ -354,10 +598,13 @@ fn gateway_paths() -> Vec<PathBuf> {
     if let Some(dir) = exe_dir() {
         for name in ["adtp-api", "adtp-api.exe"] {
             paths.push(dir.join(name));
+            // `--onedir` layout: the launcher lives inside the folder.
+            paths.push(dir.join("adtp-api").join(name));
         }
         for sub in ["resources", "binaries"] {
             for name in ["adtp-api", "adtp-api.exe"] {
                 paths.push(dir.join(sub).join(name));
+                paths.push(dir.join(sub).join("adtp-api").join(name));
             }
         }
     }
@@ -366,6 +613,8 @@ fn gateway_paths() -> Vec<PathBuf> {
         let adtp = data.join("adtp");
         paths.push(adtp.join("adtp-api"));
         paths.push(adtp.join("adtp-api.exe"));
+        paths.push(adtp.join("adtp-api").join("adtp-api"));
+        paths.push(adtp.join("adtp-api").join("adtp-api.exe"));
         paths.push(adtp.join("venv").join("bin").join("adtp-api"));
         paths.push(adtp.join("venv").join("Scripts").join("adtp-api.exe"));
     }
@@ -387,7 +636,9 @@ fn gateway_paths() -> Vec<PathBuf> {
         "/usr/local/bin/adtp-api",
         "/usr/bin/adtp-api",
         "/usr/lib/adtp/adtp-api",
+        "/usr/lib/adtp/adtp-api/adtp-api",
         "/opt/adtp/bin/adtp-api",
+        "/opt/adtp/adtp-api/adtp-api",
     ] {
         paths.push(PathBuf::from(fixed));
     }
@@ -418,16 +669,30 @@ fn launchers(repo: Option<&Path>) -> Vec<Launcher> {
 
     // Development checkout: the repo-local interpreter is the fastest path.
     if let Some(repo) = repo {
-        for name in ["python3.13", "python3.12", "python3.11", "python"] {
-            let python = repo.join(".venv").join("bin").join(name);
-            if python.is_file() && python_usable(&python, repo) {
-                push_unique(
-                    &mut out,
-                    Launcher::new(python.to_string_lossy().to_string())
-                        .args(vec!["-m".into(), "adtp_api.main".into()])
-                        .env("PYTHONPATH", python_path(repo)),
-                );
-                break;
+        // Both the package-specific environment (`uv sync` in packages/adtp-api)
+        // and the legacy repo-root one are valid; try whichever is healthy.
+        let venvs = [
+            repo.join("packages").join("adtp-api").join(".venv"),
+            repo.join(".venv"),
+        ];
+        for venv in &venvs {
+            for name in [
+                "python3.14",
+                "python3.13",
+                "python3.12",
+                "python3.11",
+                "python",
+            ] {
+                let python = venv.join("bin").join(name);
+                if python.is_file() && python_usable(&python, repo) {
+                    push_unique(
+                        &mut out,
+                        Launcher::new(python.to_string_lossy().to_string())
+                            .args(vec!["-m".into(), "adtp_api.main".into()])
+                            .env("PYTHONPATH", python_path(repo)),
+                    );
+                    break;
+                }
             }
         }
 
@@ -509,6 +774,12 @@ fn spawn_detached(
         .env("ADTP_API_PORT", port.to_string())
         .env("ADTP_API_TOKEN", token)
         .env("ADTP_LOG_LEVEL", "INFO")
+        // Keep the idle footprint small: glibc otherwise creates one malloc
+        // arena per thread (uvicorn + aiosqlite + pydantic can spawn several),
+        // each reserving tens of MB of virtual address space.
+        .env("MALLOC_ARENA_MAX", "2")
+        .env("PYTHONUNBUFFERED", "1")
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
         .stderr(Stdio::from(log_err));
@@ -542,7 +813,43 @@ fn spawn_detached(
     command.spawn()
 }
 
+/// Point settings, the CLI config and `api.env` at the gateway we are using so
+/// the QR, the agent tools and the next launch all agree on the same URL.
+fn adopt_running(
+    app: &AppHandle,
+    url: String,
+    token: &str,
+    message: impl Into<String>,
+) -> ApiStatus {
+    let app_settings = settings::read_settings(app);
+    if app_settings.api_url.trim_end_matches('/') != url {
+        let mut updated = app_settings;
+        updated.api_url = url.clone();
+        let _ = settings::write_settings(app, &updated);
+    }
+    if let Some((_, port, _)) = parse_http_addr(&url) {
+        let _ = write_env_file(token, port);
+    }
+    let _ = settings::write_cli_config(token, &url);
+    if let Some(legacy) = legacy_pid_path() {
+        let _ = fs::remove_file(legacy);
+    }
+    let phone_url = crate::commands::advertised_api_url(Some(url.as_str()));
+    ApiStatus {
+        running: true,
+        url,
+        phone_url,
+        message: message.into(),
+    }
+}
+
 /// Start the gateway if it is not already answering, then wait for health.
+///
+/// Single-owner invariant: at most one gateway is started per user. A launch
+/// first *adopts* whatever is already healthy (recorded URL, then configured
+/// URL); only if nothing answers does it take a cross-process lock and spawn
+/// exactly one candidate, reaping the whole process group of every failed
+/// candidate before trying the next launcher.
 pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     let app_settings = settings::read_settings(app);
     let configured_url = app_settings.api_url.trim_end_matches('/').to_string();
@@ -553,6 +860,94 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
 
     let (host, configured_port, _) = parse_http_addr(&configured_url)
         .ok_or_else(|| format!("Invalid desktop API URL: {configured_url}"))?;
+
+    // 1. Adopt the gateway recorded by a previous launch, whatever port it
+    //    chose. This is the normal path after the first run, and it is why a
+    //    desktop restart no longer leaves a second gateway behind.
+    if let Some(record) = read_gateway_record() {
+        match probe_retrying(&record.url, &token, 3) {
+            Probe::Healthy => {
+                let status = adopt_running(app, record.url, &token, "Gateway already running");
+                let _ = app.emit("api-status", status.clone());
+                return Ok(status);
+            }
+            Probe::Unauthorized => {
+                // Our token rotated; this gateway can never serve us.
+                terminate_gateway(&record);
+                clear_gateway_record();
+            }
+            Probe::Offline => {
+                // Hung or half-started leftover from an older build. Reap the
+                // whole group before starting a replacement.
+                if pid_alive(record.pid) {
+                    terminate_gateway(&record);
+                }
+                clear_gateway_record();
+            }
+        }
+    }
+
+    // 2. A listener we did not spawn (systemd, pipx, an older build) may still
+    //    be running on the configured URL.
+    match probe(&configured_url, &token) {
+        Probe::Healthy => {
+            let status = adopt_running(
+                app,
+                configured_url.clone(),
+                &token,
+                "Gateway already running",
+            );
+            let _ = app.emit("api-status", status.clone());
+            return Ok(status);
+        }
+        Probe::Unauthorized => {
+            return Err(format!(
+                "A gateway is already listening on {configured_url} but rejects this desktop's \
+                 pairing token. Stop it (systemctl --user stop adtp-api) or save the same token \
+                 in Settings → Authentication."
+            ));
+        }
+        Probe::Offline => {}
+    }
+
+    // 3. Serialize startup across desktop processes and concurrent commands.
+    //    Without the lock, `setup`, the QR panel and the Settings button each
+    //    saw "offline" and each spawned a gateway.
+    let start_lock = GatewayStartLock::acquire(Duration::from_secs(120));
+
+    // Another process may have finished starting while we waited. Re-check
+    // under the lock before spawning anything.
+    if let Some(record) = read_gateway_record() {
+        match probe_retrying(&record.url, &token, 3) {
+            Probe::Healthy => {
+                let status = adopt_running(app, record.url, &token, "Gateway already running");
+                let _ = app.emit("api-status", status.clone());
+                return Ok(status);
+            }
+            Probe::Unauthorized | Probe::Offline => {
+                if pid_alive(record.pid) {
+                    terminate_gateway(&record);
+                }
+                clear_gateway_record();
+            }
+        }
+    }
+    if let Probe::Healthy = probe(&configured_url, &token) {
+        let status = adopt_running(
+            app,
+            configured_url.clone(),
+            &token,
+            "Gateway already running",
+        );
+        let _ = app.emit("api-status", status.clone());
+        return Ok(status);
+    }
+
+    if start_lock.is_none() {
+        return Err(
+            "Another ADTP process is still starting the gateway. Try again in a moment.".into(),
+        );
+    }
 
     // Pick a port the gateway can actually bind. If the configured port is
     // taken (firewall, another process), fall back to an ephemeral port so the
@@ -570,50 +965,12 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     // Persist the resolved port so the phone's QR, the CLI config and the next
     // launch all agree with the gateway that is actually running.
     if port != configured_port {
-        let mut updated = app_settings.clone();
+        let mut updated = app_settings;
         updated.api_url = url.clone();
         let _ = settings::write_settings(app, &updated);
     }
     let _ = write_env_file(&token, port);
     let phone_url = crate::commands::advertised_api_url(Some(url.as_str()));
-
-    // If a gateway PID file exists and the process is alive, another desktop
-    // instance already owns the gateway — reuse it instead of spawning a duplicate.
-    if gateway_pid_alive() {
-        if let Probe::Healthy = probe(&url, &token) {
-            let status = ApiStatus {
-                running: true,
-                url,
-                phone_url,
-                message: "Gateway already running (owned by another instance)".into(),
-            };
-            let _ = app.emit("api-status", status.clone());
-            return Ok(status);
-        }
-        // Stale PID file — the process died, clean it up and proceed to spawn.
-        remove_gateway_pid();
-    }
-
-    match probe(&url, &token) {
-        Probe::Healthy => {
-            let status = ApiStatus {
-                running: true,
-                url,
-                phone_url,
-                message: "Gateway already running".into(),
-            };
-            let _ = app.emit("api-status", status.clone());
-            return Ok(status);
-        }
-        Probe::Unauthorized => {
-            return Err(format!(
-                "A gateway is already listening on {url} but rejects this desktop's pairing \
-                 token. Stop it (systemctl --user stop adtp-api) or save the same token in \
-                 Settings → Authentication."
-            ));
-        }
-        Probe::Offline => {}
-    }
 
     let log_path = dirs::data_dir()
         .unwrap_or_else(std::env::temp_dir)
@@ -646,12 +1003,27 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
             }
         };
 
+        let pid = child.id();
+        #[cfg(unix)]
+        let pgid = Some(pid as i32);
+        #[cfg(not(unix))]
+        let pgid = None;
+
+        // Every failed attempt must be reaped as a *group*: PyInstaller's
+        // one-file bootloader forks the real Python listener, so `child.kill()`
+        // alone would leave an orphan holding the port and the DB.
         let deadline = Instant::now() + START_TIMEOUT;
         loop {
             match probe(&url, &token) {
                 Probe::Healthy => {
-                    let pid = child.id();
-                    write_gateway_pid(pid);
+                    write_gateway_record(&GatewayRecord {
+                        pid,
+                        pgid,
+                        url: url.clone(),
+                    });
+                    if let Some(legacy) = legacy_pid_path() {
+                        let _ = fs::remove_file(legacy);
+                    }
                     let status = ApiStatus {
                         running: true,
                         url,
@@ -662,7 +1034,6 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
                     return Ok(status);
                 }
                 Probe::Unauthorized => {
-                    let _ = child.kill();
                     failures.push(format!(
                         "{} started but another process on port {port} uses a different token",
                         launcher.label
@@ -684,7 +1055,6 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
             }
 
             if Instant::now() >= deadline {
-                let _ = child.kill();
                 failures.push(format!(
                     "{} did not become healthy within {} s (log: {})",
                     launcher.label,
@@ -695,6 +1065,17 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
             }
             std::thread::sleep(Duration::from_millis(400));
         }
+
+        // Reaching here means this candidate never became healthy. Reap the
+        // whole group before the next launcher starts, so a bad attempt can
+        // never leave a listener (or a bootloader) behind.
+        terminate_gateway(&GatewayRecord {
+            pid,
+            pgid,
+            url: url.clone(),
+        });
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     let message = format!(
@@ -718,7 +1099,6 @@ pub fn ensure_api_running(app: &AppHandle) -> Result<ApiStatus, String> {
     let _ = app.emit("api-status", status);
     Err(message)
 }
-
 #[tauri::command]
 pub fn get_api_status(app: AppHandle) -> ApiStatus {
     let app_settings = settings::read_settings(&app);
@@ -773,5 +1153,79 @@ mod tests {
     fn rejects_non_http_urls() {
         assert_eq!(parse_http_addr("ws://127.0.0.1:40003"), None);
         assert_eq!(parse_http_addr("not a url"), None);
+    }
+
+    #[test]
+    fn gateway_record_roundtrips_with_optional_pgid() {
+        let record = GatewayRecord {
+            pid: 4242,
+            pgid: Some(4242),
+            url: "http://127.0.0.1:41000".into(),
+        };
+        let json = serde_json::to_string(&record).expect("serialize");
+        let back: GatewayRecord = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.pid, 4242);
+        assert_eq!(back.pgid, Some(4242));
+        assert_eq!(back.url, record.url);
+
+        // Older records may not carry a pgid; it must default to None.
+        let legacy: GatewayRecord =
+            serde_json::from_str(r#"{"pid":7,"url":"http://127.0.0.1:40003"}"#).expect("legacy");
+        assert_eq!(legacy.pgid, None);
+    }
+
+    #[test]
+    fn push_unique_skips_duplicate_launchers() {
+        let mut out = Vec::new();
+        push_unique(&mut out, Launcher::new("adtp-api"));
+        push_unique(&mut out, Launcher::new("adtp-api"));
+        assert_eq!(out.len(), 1);
+
+        push_unique(
+            &mut out,
+            Launcher::new("adtp-api").args(vec!["--flag".into()]),
+        );
+        assert_eq!(out.len(), 2, "different args are a different launcher");
+    }
+
+    #[test]
+    fn terminating_a_bogus_pid_is_a_noop() {
+        // pgid <= 1 would signal our own process group; the guard must prevent
+        // that. This test would kill the test runner if the guard regressed.
+        terminate_gateway(&GatewayRecord {
+            pid: 0,
+            pgid: Some(0),
+            url: "http://127.0.0.1:40003".into(),
+        });
+        terminate_gateway(&GatewayRecord {
+            pid: 1,
+            pgid: Some(1),
+            url: "http://127.0.0.1:40003".into(),
+        });
+    }
+
+    #[test]
+    fn start_lock_serializes_concurrent_starters() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::env::set_var("ADTP_DATA_DIR", dir.path());
+
+        let first = GatewayStartLock::acquire(Duration::from_secs(2)).expect("first lock");
+        let handle = std::thread::spawn(|| {
+            let start = Instant::now();
+            let second = GatewayStartLock::acquire(Duration::from_secs(5)).expect("second lock");
+            (start.elapsed(), second)
+        });
+
+        // Give the second starter time to block on the lock, then release it.
+        std::thread::sleep(Duration::from_millis(400));
+        drop(first);
+
+        let (waited, second) = handle.join().expect("join");
+        assert!(
+            waited >= Duration::from_millis(200),
+            "second starter did not wait for the lock (waited {waited:?})"
+        );
+        drop(second);
+        std::env::remove_var("ADTP_DATA_DIR");
     }
 }

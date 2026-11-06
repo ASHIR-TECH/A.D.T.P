@@ -34,6 +34,18 @@ pub trait ToolExecutor: Send + Sync {
         let _ = (file_path, device_id);
         Err("Sending to paired devices is not available".into())
     }
+
+    /// Send a chat message to a paired phone (durable inbox + live relay push).
+    async fn send_message_to_device(&self, text: &str, device_id: &str) -> Result<String, String> {
+        let _ = (text, device_id);
+        Err("Messaging paired devices is not available".into())
+    }
+
+    /// List paired phones with identity, presence and telemetry. The agent uses
+    /// this to answer "what devices are connected?" instead of guessing.
+    async fn list_devices(&self) -> Result<String, String> {
+        self.list_peers().await
+    }
 }
 
 pub struct AgentRuntime {
@@ -101,9 +113,29 @@ impl AgentRuntime {
                     "type": "object",
                     "properties": {
                         "file_path": {"type": "string", "description": "Absolute path (or ~/path) to the file on this machine"},
-                        "device_id": {"type": "string", "description": "ID of the paired phone from list_peers. Optional when only one phone is paired."},
+                        "device_id": {"type": "string", "description": "ID of the paired phone from list_devices. Optional when only one phone is paired."},
                     },
                     "required": ["file_path"],
+                }),
+            },
+            ToolDefinition {
+                name: "send_message_to_device".into(),
+                description: "Send a chat message to a paired phone (MARS). Use this whenever the user asks you to message, text, tell, or reply to their phone. Omit `device_id` when only one phone is paired.".into(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string", "description": "Message text to deliver to the phone"},
+                        "device_id": {"type": "string", "description": "ID of the paired phone from list_devices. Optional when only one phone is paired."},
+                    },
+                    "required": ["text"],
+                }),
+            },
+            ToolDefinition {
+                name: "list_devices".into(),
+                description: "List the paired phones (MARS) with their name, device_id, online state, OS, battery, CPU and RAM. ALWAYS call this when the user asks about connected devices, paired phones, or a device by name.".into(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
                 }),
             },
             ToolDefinition {
@@ -436,6 +468,32 @@ impl AgentRuntime {
                     None => Err("Gateway client is not initialized. Cannot send files.".into()),
                 }
             }
+            "send_message_to_device" => {
+                let text = call
+                    .arguments
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .ok_or("send_message_to_device: missing 'text' argument")?;
+                let device_id = call
+                    .arguments
+                    .get("device_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                match executor {
+                    Some(exe) => exe.send_message_to_device(text, &device_id).await,
+                    None => {
+                        Err("Gateway client is not initialized. Cannot message devices.".into())
+                    }
+                }
+            }
+            "list_devices" => match executor {
+                Some(exe) => exe.list_devices().await,
+                None => Ok(
+                    "No gateway client is connected, so no paired devices are available.".into(),
+                ),
+            },
             "list_transfers" => {
                 let status = call.arguments.get("status").and_then(|v| v.as_str());
                 match executor {
@@ -778,6 +836,8 @@ impl AgentRuntime {
 You have access to the following tools:
 - send_file: Send a file to another computer by peer ID (requires file_path and peer_id)
 - send_file_to_device: Send a file to a paired phone (MARS). Requires file_path; device_id is optional when only one phone is paired
+- send_message_to_device: Send a chat message to a paired phone (MARS). Requires text; device_id is optional when only one phone is paired
+- list_devices: List paired phones (name, device_id, online state, OS, battery, CPU and RAM)
 - list_peers: List known remote peers and the paired phones (device_id + online status)
 - list_transfers: List recent file transfers (optionally filter by status: completed, failed, in_progress)
 - get_own_peer_id: Get this computer's own peer ID
@@ -792,9 +852,19 @@ When the user asks to send a file to another computer:
 3. After sending, tell the user the result
 
 When the user asks to send a file to their phone / MARS / this app:
-1. Use list_peers to find the paired phone (device_id)
+1. Use list_devices (or list_peers) to find the paired phone (device_id)
 2. Use send_file_to_device with the absolute file_path; omit device_id when only one phone is paired
 3. The phone downloads it from its inbox and can also tap it in the chat. Tell the user the filename and that it is ready on the phone.
+
+When the user asks about connected devices, paired phones, MARS, or a device by name (for example "Kali"):
+1. ALWAYS call list_devices first. Its output is the source of truth for names, ids, online state, battery, CPU and RAM.
+2. Answer using only devices from that output. Never invent a device and never claim you cannot see them.
+3. If the user then asks to message or send something, use send_message_to_device and/or send_file_to_device with the matching device_id (omit it when only one is paired).
+
+When the user asks you to message, text, tell, or reply to a phone:
+1. Use list_devices to resolve the target (or omit device_id when only one is paired).
+2. Call send_message_to_device with the exact text the user wants delivered.
+3. If they also attached or named a file, call send_file_to_device in the same turn.
 
 When the user says "send me", "send to my phone", "attach it", or references a file they just attached:
 - Files attached from the phone are saved in the upload intake and are listed in the prompt.
