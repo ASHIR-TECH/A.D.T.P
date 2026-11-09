@@ -142,8 +142,10 @@ jobs:
         with:
           name: adtp-api-linux
           # onedir: ship the whole folder (single process at runtime, lower RAM
-          # than the onefile bootloader + child pair).
-          path: dist/gateway/adtp-api
+          # than the onefile bootloader + child pair). Upload the parent so the
+          # `adtp-api/` folder itself survives; uploading the folder directly
+          # flattens its contents to the artifact root.
+          path: dist/gateway
           if-no-files-found: error
 
   gateway-windows:
@@ -220,7 +222,15 @@ jobs:
           # Install it under /usr/lib and expose a thin `exec` wrapper so the
           # desktop's `adtp-api` lookup and the CLI both keep working.
           mkdir -p "$PKG_DIR/usr/lib/adtp"
-          cp -a dist/gateway/adtp-api "$PKG_DIR/usr/lib/adtp/adtp-api"
+          # `actions/upload-artifact` strips a single directory path, so a
+          # "folder" artifact can arrive flattened. Handle both shapes: the
+          # normal onedir tree, or the executable + _internal at the root.
+          if [ -d dist/gateway/adtp-api ]; then
+            cp -a dist/gateway/adtp-api "$PKG_DIR/usr/lib/adtp/adtp-api"
+          else
+            mkdir -p "$PKG_DIR/usr/lib/adtp/adtp-api"
+            cp -a dist/gateway/. "$PKG_DIR/usr/lib/adtp/adtp-api/"
+          fi
           chmod 755 "$PKG_DIR/usr/lib/adtp/adtp-api/adtp-api"
           printf '#!/bin/sh\nexec /usr/lib/adtp/adtp-api/adtp-api "$@"\n' > "$PKG_DIR/usr/bin/adtp-api"
           chmod 755 "$PKG_DIR/usr/bin/adtp-api"
