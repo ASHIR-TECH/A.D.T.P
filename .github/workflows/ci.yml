@@ -95,7 +95,12 @@ jobs:
       - name: Install gateway build dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e packages/adtp-mcp -e packages/adtp-api pyinstaller
+          python -m pip install -e packages/adtp-mcp -e packages/adtp-api pyinstaller pytest pytest-asyncio
+      - name: Test gateway
+        # The Rust workspace job does not touch the Python gateway, so its
+        # validation (device registration, relay, transfers) runs here before
+        # the freeze. A broken gateway must not reach the release.
+        run: python -m pytest packages/adtp-api/tests -q
       - name: Freeze gateway
         env:
           # Import-time validation requires a token; the frozen app reads the
