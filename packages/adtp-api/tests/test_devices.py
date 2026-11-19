@@ -193,6 +193,84 @@ async def test_device_id_is_validated_for_on_disk_paths(client):
 
 
 @pytest.mark.asyncio
+async def test_validation_failure_names_the_bad_field(client):
+    bad = await client.post(
+        "/api/v1/devices/register",
+        json=_registration(device_id="../escape"),
+        headers=_auth(),
+    )
+    assert bad.status_code == 422
+    body = bad.json()
+    assert "device_id" in body["detail"]
+    assert body["errors"][0]["loc"] == ["body", "device_id"]
+
+
+@pytest.mark.asyncio
+async def test_register_tolerates_messy_phone_telemetry(client):
+    """Older MARS builds send sloppy telemetry; pairing must still succeed."""
+    created = await client.post(
+        "/api/v1/devices/register",
+        json=_registration(
+            device_id="  phone-abc123  ",
+            name="Pixel 9\n(work profile)",
+            os_version=15,
+            battery_percent=-1,
+            battery_charging="true",
+            capabilities="chat, files ,system-info",
+        ),
+        headers=_auth(),
+    )
+    assert created.status_code == 201, created.text
+    device = created.json()["device"]
+    assert device["device_id"] == "phone-abc123"
+    assert device["name"] == "Pixel 9 (work profile)"
+    assert device["os_version"] == "15"
+    assert device["battery_percent"] is None
+    assert device["battery_charging"] is True
+    assert device["capabilities"] == ["chat", "files", "system-info"]
+
+
+@pytest.mark.asyncio
+async def test_register_accepts_fractional_battery_and_oversized_fields(client):
+    created = await client.post(
+        "/api/v1/devices/register",
+        json=_registration(
+            battery_percent=0.76,
+            name="N" * 400,
+            capabilities={"chat": True},  # not a list -> ignored
+        ),
+        headers=_auth(),
+    )
+    assert created.status_code == 201, created.text
+    device = created.json()["device"]
+    assert device["battery_percent"] == 76.0
+    assert len(device["name"]) == 120
+    assert device["capabilities"] == []
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_tolerates_messy_phone_telemetry(client):
+    await client.post(
+        "/api/v1/devices/register", json=_registration(), headers=_auth()
+    )
+    beat = await client.post(
+        f"/api/v1/devices/{DEVICE_ID}/heartbeat",
+        json={
+            "name": "  Pixel 9  ",
+            "battery_percent": "42",
+            "battery_charging": 0,
+            "capabilities": None,
+        },
+        headers=_auth(),
+    )
+    assert beat.status_code == 200, beat.text
+    record = beat.json()
+    assert record["name"] == "Pixel 9"
+    assert record["battery_percent"] == 42.0
+    assert record["battery_charging"] is False
+
+
+@pytest.mark.asyncio
 async def test_desktop_message_is_queued_and_can_be_marked_delivered(client):
     await client.post("/api/v1/devices/register", json=_registration(), headers=_auth())
 
