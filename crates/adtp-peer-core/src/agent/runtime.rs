@@ -661,10 +661,7 @@ impl AgentRuntime {
                         return true;
                     }
                     let name = entry.file_name().to_string_lossy().to_string();
-                    if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
-                        return false;
-                    }
-                    true
+                    !(name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()))
                 });
             for entry in walker.filter_map(|e| e.ok()) {
                 if !entry.file_type().is_file() {
