@@ -46,6 +46,13 @@ pub trait ToolExecutor: Send + Sync {
     async fn list_devices(&self) -> Result<String, String> {
         self.list_peers().await
     }
+
+    /// Compress a local file, store it in Upstash Blob and return the MediaRef
+    /// as a JSON string. MARS parses this tool result and renders the thumbnail
+    /// + download link. Default keeps existing executor implementations compiling.
+    async fn upload_media(&self, _file_path: &str) -> Result<String, String> {
+        Err("Media upload is not available on this node".into())
+    }
 }
 
 pub struct AgentRuntime {
@@ -128,6 +135,17 @@ impl AgentRuntime {
                         "device_id": {"type": "string", "description": "ID of the paired phone from list_devices. Optional when only one phone is paired."},
                     },
                     "required": ["text"],
+                }),
+            },
+            ToolDefinition {
+                name: "send_media_to_device".into(),
+                description: "Compress a local media file (image, video, audio, document), store it in the shared cloud blob and return a MediaRef with a thumbnail and download link. Use this whenever the user asks you to send/send an image, photo, screenshot, video or any file to their phone, or to attach media to your reply. Omit nothing: file_path is required.".into(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string", "description": "Absolute path (or ~/path) to the media file on this machine"},
+                    },
+                    "required": ["file_path"],
                 }),
             },
             ToolDefinition {
@@ -486,6 +504,29 @@ impl AgentRuntime {
                     None => {
                         Err("Gateway client is not initialized. Cannot message devices.".into())
                     }
+                }
+            }
+            "send_media_to_device" => {
+                let file_path = call
+                    .arguments
+                    .get("file_path")
+                    .and_then(|v| v.as_str())
+                    .ok_or("send_media_to_device: missing 'file_path' argument")?;
+                let file_path = crate::agent::permissions::expand_path(file_path)
+                    .to_string_lossy()
+                    .to_string();
+                match self
+                    .permission_store
+                    .check_read_path(std::path::Path::new(&file_path))
+                {
+                    crate::agent::permissions::PermissionCheck::Allowed => {}
+                    crate::agent::permissions::PermissionCheck::Denied { reason } => {
+                        return Err(format!("Permission denied: {}", reason));
+                    }
+                }
+                match executor {
+                    Some(exe) => exe.upload_media(&file_path).await,
+                    None => Err("Gateway client is not initialized. Cannot upload media.".into()),
                 }
             }
             "list_devices" => match executor {

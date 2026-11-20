@@ -269,6 +269,8 @@ class DeviceMessageCreate(BaseModel):
     """Desktop → phone text (chat reply, notification, AI note)."""
 
     text: str = Field(min_length=1, max_length=4000)
+    # Optional blob media reference (compressed + stored before delivery).
+    media: dict | None = None
 
 
 class DeviceMessage(BaseModel):
@@ -277,6 +279,8 @@ class DeviceMessage(BaseModel):
     text: str
     created_at: str
     delivered_at: str | None = None
+    # Mirrors MARS ChatMessage.media — metadata only, never bytes.
+    media: dict | None = None
 
 
 class DeviceMessageList(BaseModel):

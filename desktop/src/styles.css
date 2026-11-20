@@ -2092,6 +2092,58 @@ body.device-chat-open { overflow: hidden; }
   color: var(--interactive-muted);
 }
 
+/* Shared blob-media card (same thumbnail/download contract as MARS). */
+.chat-media-card,
+.device-chat-media {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  margin: 6px 0;
+  padding: 7px;
+  border: 1px solid rgba(232, 163, 77, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.chat-media-thumb,
+.device-chat-media-thumb {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(232, 163, 77, 0.18);
+}
+.chat-media-thumb img,
+.device-chat-media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.chat-media-detail,
+.device-chat-media-info { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.chat-media-name,
+.device-chat-media .device-chat-file-name {
+  font-size: 12px;
+  color: var(--text-primary, #fff);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-media-meta,
+.device-chat-media .device-chat-file-size {
+  font-size: 10px;
+  opacity: 0.6;
+}
+.chat-media-download,
+.device-chat-media-download {
+  font-size: 11px;
+  color: #ffc46b;
+  text-decoration: none;
+  margin-top: 2px;
+}
+.chat-media-download:hover,
+.device-chat-media-download:hover { text-decoration: underline; }
+
 @media (max-width: 640px) {
   .device-chat-drawer { width: 100vw; border-left: none; }
 }

@@ -125,7 +125,7 @@ async def queue_device_message(
     The durable row is the source of truth: if the phone is offline the gateway
     keeps the message until the phone polls its inbox.
     """
-    record = await device_service.queue_message(db, device_id, body.text)
+    record = await device_service.queue_message(db, device_id, body.text, body.media)
     from adtp_api.relay import notify_device
 
     await notify_device(

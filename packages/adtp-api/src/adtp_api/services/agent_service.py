@@ -20,6 +20,7 @@ AGENT_MESSAGES_SCHEMA = """CREATE TABLE IF NOT EXISTS agent_messages (
     provider TEXT,
     model TEXT,
     tool_calls TEXT NOT NULL DEFAULT '[]',
+    media TEXT,
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -37,6 +38,11 @@ def _now() -> str:
 
 async def ensure_agent_messages_table(db: aiosqlite.Connection) -> None:
     await db.execute(AGENT_MESSAGES_SCHEMA)
+    # CREATE TABLE IF NOT EXISTS won't add a column to an existing install.
+    try:
+        await db.execute("ALTER TABLE agent_messages ADD COLUMN media TEXT")
+    except Exception:  # noqa: BLE001 - already present
+        pass
     await db.commit()
 
 
@@ -190,12 +196,21 @@ async def _dispatch_message(
         if not isinstance(tool_calls, list):
             tool_calls = []
 
+        # AI-originated media arrives either explicitly or inside a completed
+        # tool result. Persist only the MediaRef (never bytes).
+        from adtp_api.models.media import media_from_tool_calls, normalize_media_ref
+
+        media = normalize_media_ref(data.get("media"))
+        if not media:
+            media = media_from_tool_calls(tool_calls)
+        media_json = json.dumps(media.model_dump()) if media else None
+
         db = await _connect(db_path)
         try:
             await db.execute(
                 "UPDATE agent_messages SET status = 'completed', text = ?, provider = ?, model = ?, "
-                "tool_calls = ?, error = NULL, updated_at = ? WHERE id = ?",
-                (text, provider, model, json.dumps(tool_calls), _now(), message_id),
+                "tool_calls = ?, media = ?, error = NULL, updated_at = ? WHERE id = ?",
+                (text, provider, model, json.dumps(tool_calls), media_json, _now(), message_id),
             )
             await db.commit()
         finally:
@@ -227,6 +242,17 @@ async def get_message(db: aiosqlite.Connection, message_id: str) -> dict:
     if not isinstance(tool_calls, list):
         tool_calls = []
 
+    from adtp_api.models.media import media_from_tool_calls, normalize_media_ref
+
+    media = None
+    if "media" in row.keys() and row["media"]:
+        try:
+            media = normalize_media_ref(json.loads(row["media"]))
+        except (ValueError, TypeError):
+            media = None
+    if not media:
+        media = media_from_tool_calls(tool_calls)
+
     return {
         "id": row["id"],
         "status": row["status"],
@@ -236,6 +262,7 @@ async def get_message(db: aiosqlite.Connection, message_id: str) -> dict:
         "provider": row["provider"] if "provider" in row.keys() else None,
         "model": row["model"] if "model" in row.keys() else None,
         "tool_calls": tool_calls,
+        "media": media.model_dump() if media else None,
         "conversation_id": row["conversation_id"] or None,
         "error": row["error"] if "error" in row.keys() else None,
         "created_at": row["created_at"],

@@ -2,7 +2,7 @@ use adtp_cli::client::ApiClient;
 use adtp_cli::config::CliConfig;
 use adtp_cli::models::{
     AuditLogList, ChainVerifyResult, ContextBlock, DeviceFileList, DeviceFileQueued,
-    DeviceMessageList, DeviceMessageQueued, PairedDeviceList, SessionList, TransferList,
+    DeviceMessageList, DeviceMessageQueued, MediaRef, PairedDeviceList, SessionList, TransferList,
     TransferSendResponse, TransferStatus, WatchList, WatchResponse,
 };
 use adtp_peer_core::agent::permissions::PermissionConfig;
@@ -238,6 +238,21 @@ pub async fn save_settings(
 ) -> Result<bool, String> {
     settings::write_settings(&app, &new_settings)?;
     Ok(true)
+}
+
+/// Compress + upload a local file to the shared blob bucket via the gateway.
+/// Returns the MediaRef that the desktop UI embeds in chat messages.
+#[tauri::command]
+pub async fn upload_media(
+    app: AppHandle,
+    path: String,
+    sender: Option<String>,
+) -> Result<MediaRef, String> {
+    let client = make_client(&app)?;
+    client
+        .upload_media(&path, sender.as_deref().unwrap_or("adtp-desktop"))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

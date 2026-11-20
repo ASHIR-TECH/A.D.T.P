@@ -228,6 +228,53 @@ impl ApiClient {
         })
     }
 
+    /// Upload a local file to the shared media pipeline. Returns a MediaRef
+    /// (metadata only) — the gateway compresses it and stores bytes in Blob.
+    pub async fn upload_media(
+        &self,
+        file_path: &str,
+        sender: &str,
+    ) -> Result<crate::models::MediaRef, CliError> {
+        let bytes = tokio::fs::read(file_path)
+            .await
+            .map_err(|e| CliError::Http {
+                message: format!("Cannot read {file_path}: {e}"),
+            })?;
+        let filename = std::path::Path::new(file_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file.bin".into());
+        let mime = guess_mime(file_path, &bytes);
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(filename)
+            .mime_str(&mime)
+            .map_err(|e| CliError::Http {
+                message: format!("Invalid MIME type {mime}: {e}"),
+            })?;
+        let form = reqwest::multipart::Form::new()
+            .part("file", part)
+            .text("sender", sender.to_string());
+
+        let resp = self
+            .client
+            .post(self.url("/api/v1/media/upload"))
+            .headers(self.auth_headers())
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| map_http_error(e, &self.base_url))?;
+        let status = resp.status().as_u16();
+        if status >= 400 {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(map_api_error(status, &body));
+        }
+        resp.json::<crate::models::MediaRef>()
+            .await
+            .map_err(|e| CliError::Http {
+                message: format!("Failed to parse media response: {e}"),
+            })
+    }
+
     /// Auth-only header map: multipart sets its own Content-Type boundary.
     fn auth_headers(&self) -> reqwest::header::HeaderMap {
         let mut h = reqwest::header::HeaderMap::new();
