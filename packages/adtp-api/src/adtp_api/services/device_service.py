@@ -60,7 +60,8 @@ DEVICE_MESSAGES_SCHEMA = """CREATE TABLE IF NOT EXISTS device_messages (
     device_id TEXT NOT NULL,
     text TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    delivered_at TEXT
+    delivered_at TEXT,
+    media TEXT
 )"""
 
 
@@ -72,6 +73,11 @@ async def ensure_device_tables(db: aiosqlite.Connection) -> None:
     await db.execute(DEVICES_SCHEMA)
     await db.execute(DEVICE_FILES_SCHEMA)
     await db.execute(DEVICE_MESSAGES_SCHEMA)
+    # CREATE TABLE IF NOT EXISTS won't add a column to an existing install.
+    try:
+        await db.execute("ALTER TABLE device_messages ADD COLUMN media TEXT")
+    except aiosqlite.OperationalError:
+        pass  # column already exists
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_device_files_device "
         "ON device_files (device_id, created_at)"
@@ -164,12 +170,22 @@ def _row_to_file(row: aiosqlite.Row) -> DeviceFile:
 
 
 def _row_to_message(row: aiosqlite.Row) -> DeviceMessage:
+    media = None
+    raw = row["media"] if "media" in row.keys() else None
+    if raw:
+        from adtp_api.models.media import normalize_media_ref
+        import json
+        try:
+            media = normalize_media_ref(json.loads(raw))
+        except (ValueError, TypeError):
+            media = None
     return DeviceMessage(
         id=row["id"],
         device_id=row["device_id"],
         text=row["text"],
         created_at=row["created_at"],
         delivered_at=row["delivered_at"],
+        media=media.model_dump() if media else None,
     )
 
 
@@ -419,20 +435,26 @@ async def open_file(
 
 
 async def queue_message(
-    db: aiosqlite.Connection, device_id: str, text: str
+    db: aiosqlite.Connection, device_id: str, text: str, media: dict | None = None
 ) -> DeviceMessage:
     """Store a desktop → phone message, then return it for live delivery."""
+    import json
+    from adtp_api.models.media import normalize_media_ref
+
     await get_device(db, device_id)
+    normalized = normalize_media_ref(media)
     record = DeviceMessage(
         id=uuid.uuid4().hex,
         device_id=device_id,
         text=text.strip(),
         created_at=_now(),
+        media=normalized.model_dump() if normalized else None,
     )
     await db.execute(
-        "INSERT INTO device_messages (id, device_id, text, created_at) "
-        "VALUES (?, ?, ?, ?)",
-        (record.id, device_id, record.text, record.created_at),
+        "INSERT INTO device_messages (id, device_id, text, created_at, media) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (record.id, device_id, record.text, record.created_at,
+         json.dumps(record.media) if record.media else None),
     )
     await db.commit()
     return record
