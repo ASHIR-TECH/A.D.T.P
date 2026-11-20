@@ -565,4 +565,21 @@ impl ToolExecutor for GatewayToolExecutor {
     async fn list_transfers(&self, _status: Option<&str>) -> Result<String, String> {
         Ok("Transfer history is shown in the ADTP Desktop dashboard.".into())
     }
+
+    async fn upload_media(&self, file_path: &str) -> Result<String, String> {
+        upload_media_via_gateway(file_path, "adtp-ai").await
+    }
+}
+
+/// Compress + upload a local media file through the gateway, returning the
+/// MediaRef as JSON. The result is stored in the tool call so MARS can render
+/// the thumbnail and download link alongside the AI's reply.
+pub async fn upload_media_via_gateway(file_path: &str, sender: &str) -> Result<String, String> {
+    let client = gateway_client().map_err(|e| format!("Gateway client unavailable: {e}"))?;
+    let media = client
+        .upload_media(file_path, sender)
+        .await
+        .map_err(|e| format!("Media upload failed: {e}"))?;
+    // MARS' mediaFromToolCalls() reads `parsed.media ?? parsed`.
+    serde_json::to_string(&serde_json::json!({ "media": media })).map_err(|e| e.to_string())
 }
