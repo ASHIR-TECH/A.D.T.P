@@ -287,6 +287,45 @@ pub struct DeviceFileList {
     pub total: i64,
 }
 
+/// Media reference shared with the MARS mobile app (mobile/src/media/types.ts).
+/// Only this metadata travels in chat/device messages; bytes live in the blob.
+// Field names intentionally match the MARS wire format (camelCase).
+#[allow(non_snake_case)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaRef {
+    pub id: String,
+    pub serviceUrl: String,
+    pub name: String,
+    #[serde(default = "default_mime")]
+    pub mimeType: String,
+    #[serde(default)]
+    pub size: i64,
+    #[serde(default)]
+    pub compressedSize: i64,
+    #[serde(default)]
+    pub width: Option<i64>,
+    #[serde(default)]
+    pub height: Option<i64>,
+    #[serde(default)]
+    pub durationMs: Option<i64>,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub sender: Option<String>,
+    #[serde(default)]
+    pub sessionId: Option<String>,
+    #[serde(default)]
+    pub compressed: bool,
+    #[serde(default)]
+    pub hasThumbnail: bool,
+    #[serde(default)]
+    pub createdAt: String,
+}
+
+fn default_mime() -> String {
+    "application/octet-stream".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceMessage {
     pub id: String,
@@ -294,6 +333,9 @@ pub struct DeviceMessage {
     pub text: String,
     pub created_at: String,
     pub delivered_at: Option<String>,
+    /// Optional blob media (compressed + stored before delivery).
+    #[serde(default)]
+    pub media: Option<MediaRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
