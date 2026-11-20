@@ -226,6 +226,7 @@ pub fn run() {
             commands::export_audit,
             commands::pick_file,
             commands::pick_save_folder,
+            commands::upload_media,
             commands::save_settings,
             commands::load_settings,
             commands::save_api_token,
