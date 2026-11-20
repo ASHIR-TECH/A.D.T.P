@@ -226,6 +226,7 @@ function renderThread(state, { forceScroll = false } = {}) {
       id: m.id,
       createdAt: m.created_at,
       text: m.text,
+      media: m.media,
       delivered: !!m.delivered_at,
     })),
     ...state.files.map(f => ({
@@ -266,9 +267,38 @@ function renderThread(state, { forceScroll = false } = {}) {
   thread.dataset.rendered = '1';
 }
 
+function mediaCardHtml(media) {
+  if (!media || !media.id || !media.serviceUrl) return '';
+  const base = media.serviceUrl.replace(/\/$/, '');
+  const thumb = media.hasThumbnail
+    ? `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=thumbnail`
+    : '';
+  const download = `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=original&download=1`;
+  return `
+    <div class="device-chat-media">
+      <div class="device-chat-media-thumb">${thumb
+        ? `<img src="${esc(thumb)}" alt="${esc(media.name || 'media')}" />`
+        : '<span>🖼</span>'}</div>
+      <div class="device-chat-media-info">
+        <div class="device-chat-file-name">${esc(media.name || 'media')}</div>
+        <div class="device-chat-file-size">${formatBytes(media.compressedSize || media.size)}</div>
+        <a class="device-chat-media-download" href="${esc(download)}" target="_blank" rel="noopener">⬇ Download</a>
+      </div>
+    </div>`;
+}
+
 function renderItem(item, deviceName) {
   const time = formatTime(item.createdAt);
   const tick = item.delivered ? '<span class="device-chat-tick delivered" title="Delivered">✓✓</span>' : '<span class="device-chat-tick" title="Queued">✓</span>';
+  if (item.kind === 'media') {
+    return `
+      <div class="device-chat-bubble-row out">
+        <div class="device-chat-bubble file">
+          ${mediaCardHtml(item.media)}
+          <div class="device-chat-bubble-meta">${time}${tick}</div>
+        </div>
+      </div>`;
+  }
   if (item.kind === 'file') {
     return `
       <div class="device-chat-bubble-row out">
@@ -288,6 +318,7 @@ function renderItem(item, deviceName) {
     <div class="device-chat-bubble-row out">
       <div class="device-chat-bubble">
         <div class="device-chat-bubble-text">${esc(item.text)}</div>
+        ${mediaCardHtml(item.media)}
         <div class="device-chat-bubble-meta">${time}${tick}</div>
       </div>
     </div>`;
@@ -365,9 +396,19 @@ async function sendDirect(state, text, file) {
 
 async function sendViaAgent(state, text, file) {
   const name = state.device.name || state.deviceId;
+  let attachedMedia = null;
+  if (file) {
+    try {
+      attachedMedia = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop' });
+    } catch (err) {
+      console.warn('Media upload failed; falling back to local path', err);
+    }
+  }
   const context = [
     `[Target device: ${name} ${state.deviceId}]`,
-    file ? `[Attached file: ${file.path}]` : '',
+    attachedMedia
+      ? `[Attached media: ${attachedMedia.name} — ${attachedMedia.serviceUrl}/api/media/file/${attachedMedia.id}?kind=original&download=1]`
+      : file ? `[Attached file: ${file.path}]` : '',
     text ? '' : file ? `Send this file to ${name}.` : '',
   ].filter(Boolean).join('\n');
   const prompt = text ? `${text}\n\n${context}` : context;
