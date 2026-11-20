@@ -67,6 +67,13 @@ class Settings(BaseSettings):
     outbox_dir: str = ""
     # Seconds between `state_update` frames pushed over the /relay WebSocket.
     relay_state_interval: float = 5.0
+    # MARS relay that owns the private Upstash Blob bucket ("Mars"). ADTP never
+    # holds a bucket token: it authenticates server-to-server with media_token.
+    # relay_url  -> ADTP_RELAY_URL, media_token -> ADTP_MEDIA_TOKEN.
+    relay_url: str = ""
+    media_token: str = ""
+    # Refuse to compress/upload media larger than this (default 200 MiB).
+    max_media_size: int = 200 * 1024 * 1024
 
     model_config = {
         "env_prefix": "ADTP_",
