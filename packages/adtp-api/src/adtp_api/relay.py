@@ -228,12 +228,30 @@ class RelaySession:
             if isinstance(raw_attachments, list)
             else []
         )
-        if not text and not attachments:
+        # MARS sends a shared MediaRef with the message when a user attached
+        # media. Only metadata crosses the wire; bytes are already in the blob.
+        from adtp_api.models.media import normalize_media_ref
+
+        inbound_media = normalize_media_ref(message.get("media"))
+        if not text and not attachments and not inbound_media:
             return
 
-        reply_text, provider, tool_calls = await self._run_agent(
-            text, session_id or None, attachments
+        prompt = text
+        if inbound_media:
+            prompt = (
+                f"{text}\n\n[Attached media: {inbound_media.name} — "
+                f"{inbound_media.serviceUrl}/api/media/file/{inbound_media.id}"
+                f"?kind=original&download=1]"
+            ).strip()
+
+        reply_text, provider, tool_calls, media = await self._run_agent(
+            prompt, session_id or None, attachments
         )
+        # Echo the sender's media when the agent didn't produce its own so both
+        # ends render the same thumbnail + download link from one shared format.
+        # get_message() returns a plain dict, so normalize before serializing.
+        media = normalize_media_ref(media) if media else None
+        media = media or inbound_media
         await self.send(
             {
                 "type": "chat_response",
@@ -244,6 +262,7 @@ class RelaySession:
                 # Lets MARS render file tiles (AI-sent attachments) and the
                 # per-tool steps instead of only the final text.
                 "toolCalls": tool_calls,
+                "media": media.model_dump() if media else None,
             }
         )
 
@@ -252,7 +271,7 @@ class RelaySession:
         text: str,
         conversation_id: str | None,
         attachments: list[str] | None = None,
-    ) -> tuple[str, str | None, list[dict]]:
+    ) -> tuple[str, str | None, list[dict], object | None]:
         """Submit to the desktop's embedded agent and poll until it finishes."""
         db_path = self.app.state.audit_db
         agent_socket = getattr(self.app.state, "agent_socket", self.app.state.client_socket)
@@ -281,21 +300,24 @@ class RelaySession:
                         state.get("text") or "Done.",
                         state.get("provider"),
                         tool_calls,
+                        state.get("media"),
                     )
                 if status == "failed":
                     return (
                         state.get("error") or "The desktop agent failed.",
                         state.get("provider"),
                         tool_calls,
+                        None,
                     )
                 await asyncio.sleep(POLL_INTERVAL_SECS)
             return (
                 "The desktop agent is still working. Please try again.",
                 None,
                 [],
+                None,
             )
         except Exception as exc:  # noqa: BLE001 - report failures to the phone
-            return f"Desktop agent unreachable: {exc}", None, []
+            return f"Desktop agent unreachable: {exc}", None, [], None
         finally:
             await db.close()
 
