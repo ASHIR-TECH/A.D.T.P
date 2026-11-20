@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from adtp_api.models.media import MediaRef
+
 
 class AgentMessageCreate(BaseModel):
     message: str = Field(min_length=1)
@@ -40,3 +42,5 @@ class AgentMessageResponse(BaseModel):
     provider: str | None = None
     model: str | None = None
     tool_calls: list[AgentToolCall] = Field(default_factory=list)
+    # Media produced by the AI (blob metadata only), rendered by MARS and ADTP.
+    media: MediaRef | None = None
