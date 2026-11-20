@@ -41,7 +41,7 @@ export async function render(container) {
         <!-- Attached file chip -->
         <div id="chat-file-chip" class="chat-file-chip" style="display:none">
           <span class="chat-file-chip-icon">📎</span>
-          <span class="chat-file-chip-name" id="chat-file-chip-name"></span>
+          <span class="chat-file-chip-name" id="chat-file-chip-name"></span>All devices
           <button class="chat-file-chip-remove" id="chat-file-chip-remove">&times;</button>
         </div>
         <textarea class="chat-input" id="chat-input" placeholder="Message the agent…" rows="1" maxlength="4000" ${agentState !== 'active' ? 'disabled' : ''}></textarea>
@@ -63,6 +63,36 @@ function renderMessage(m) {
   const content = escapeHtml(m.content || '');
   const time = new Date(m.timestamp).toLocaleTimeString();
 
+  // Blob media (compressed, stored in Upstash Blob). Shared format with MARS:
+  // thumbnail from /api/media/file/{id}?kind=thumbnail, download from download=1.
+  let mediaHtml = '';
+  const media = m.media || m.media_ref;
+  if (media && media.id && media.serviceUrl) {
+    const base = media.serviceUrl.replace(/\/$/, '');
+    const thumbUrl = media.hasThumbnail
+      ? `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=thumbnail`
+      : '';
+    const downloadUrl = `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=original&download=1`;
+    const size = media.compressedSize || media.size || 0;
+    const sizeLabel = size > 1024 * 1024
+      ? `${(size / 1024 / 1024).toFixed(1)} MB`
+      : size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
+    mediaHtml = `
+      <div class="chat-media-card">
+        <div class="chat-media-thumb">
+          ${thumbUrl
+            ? `<img src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(media.name || 'media')}" />`
+            : '<span>🖼</span>'}
+        </div>
+        <div class="chat-media-detail">
+          <div class="chat-media-name">${escapeHtml(media.name || 'media')}</div>
+          <div class="chat-media-meta">${sizeLabel}${media.compressed ? ' · compressed' : ''}</div>
+          <a class="chat-media-download" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener">⬇ Download</a>
+        </div>
+      </div>
+    `;
+  }
+
   // Attached file info (if the message carried a file path)
   let fileHtml = '';
   if (m.file_path) {
@@ -80,6 +110,7 @@ function renderMessage(m) {
       <div class="chat-msg chat-msg-right">
         <div class="chat-msg-label">You</div>
         ${fileHtml}
+        ${mediaHtml}
         <div class="chat-msg-bubble">${content}</div>
         <div class="chat-msg-time">${time}</div>
       </div>
@@ -123,6 +154,7 @@ function renderMessage(m) {
     <div class="chat-msg chat-msg-left">
       <div class="chat-msg-label">Agent</div>
       ${fileHtml}
+      ${mediaHtml}
       <div class="chat-msg-bubble">${content}</div>
       ${transferHtml}
       ${toolSteps ? `<div class="chat-tool-steps">${toolSteps}</div>` : ''}
@@ -183,7 +215,7 @@ function setupChat(container) {
       const paired = await invoke('list_paired_devices');
       const devices = paired?.devices || [];
       if (devices.length > 0) {
-        deviceSelect.innerHTML = '<option value="">All devices</option>' +
+        deviceSelect.innerHTML = '<option value="">ope</option>' +
           devices.map(d => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.name)} — ${d.online ? 'Online' : 'Offline'}</option>`).join('');
         // Keep the select in sync with the default target chosen in render().
         selectedDeviceId = selectedDeviceId || devices[0].device_id;
@@ -260,7 +292,20 @@ async function sendMessage(container) {
   agentState = 'processing';
   updateChatUI(container);
 
+  let attachedMedia = null;
+
   try {
+    // Compress + upload the attachment to the shared blob bucket first. The
+    // agent then receives the same MediaRef shape MARS uses, so either side can
+    // render the thumbnail + download link from one wire format.
+    if (filePath) {
+      try {
+        attachedMedia = await invoke('upload_media', { path: filePath, sender: 'adtp-desktop' });
+      } catch (err) {
+        console.warn('Media upload failed; falling back to local path', err);
+      }
+    }
+
     // Send to the desktop agent. If a specific device is selected, include it
     // in the message context so the AI can target it with send_file_to_device.
     const deviceName = selectedDeviceId
@@ -272,14 +317,34 @@ async function sendMessage(container) {
       : '';
     // Use the captured filePath — `attachedFile` is cleared above so the chip
     // disappears immediately, which used to drop the attachment entirely.
-    const agentMsg = filePath
-      ? `${text}${deviceCtx}\n\n[Attached file: ${filePath}]`
-      : `${text}${deviceCtx}`;
-    const response = await Promise.race([
+    let agentMsg = `${text}${deviceCtx}`;
+    if (attachedMedia) {
+      agentMsg += `\n\n[Attached media: ${attachedMedia.name} — ${attachedMedia.serviceUrl}/api/media/file/${attachedMedia.id}?kind=original&download=1]`;
+    } else if (filePath) {
+      agentMsg += `\n\n[Attached file: ${filePath}]`;
+    }
+    const raw = await Promise.race([
       invoke('agent_send_message', { message: agentMsg }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Agent timed out after 30s')), 30000)),
     ]);
-    messages.push({ role: 'assistant', content: response, timestamp: Date.now() });
+    // The agent may reply with a JSON envelope carrying a MediaRef; render it
+    // with the same card as user media and keep the text readable.
+    let replyContent = raw;
+    let replyMedia = null;
+    if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && (parsed.media_ref || parsed.media)) {
+          replyMedia = parsed.media || parsed.media_ref;
+          replyContent = parsed.text || parsed.message || '';
+        }
+      } catch { /* plain text reply */ }
+    }
+    if (attachedMedia) {
+      const last = messages[messages.length - 1];
+      if (last && last.role === 'user') last.media = attachedMedia;
+    }
+    messages.push({ role: 'assistant', content: replyContent, timestamp: Date.now(), media: replyMedia });
     agentState = 'active';
   } catch (err) {
     messages.push({ role: 'assistant', content: `Error: ${err}`, timestamp: Date.now() });
