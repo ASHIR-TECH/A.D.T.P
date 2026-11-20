@@ -18,6 +18,7 @@ from adtp_api.routers import (
     audit,
     devices,
     health,
+    media,
     sessions,
     system,
     tasks,
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(agent.router)
     app.include_router(system.router)
     app.include_router(devices.router)
+    app.include_router(media.router)
 
     register_relay(app)
 
