@@ -110,8 +110,8 @@ async def get_transfer(transfer_id: str, db: aiosqlite.Connection = Depends(get_
 
 
 @router.delete("/{transfer_id}")
-async def cancel_transfer(transfer_id: str):
-    result = await transfer_service.cancel_transfer(transfer_id)
+async def cancel_transfer(transfer_id: str, db: aiosqlite.Connection = Depends(get_db)):
+    result = await transfer_service.cancel_transfer(db, transfer_id)
     return {"cancelled": result}
 
 
