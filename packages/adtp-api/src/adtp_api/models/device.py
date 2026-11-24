@@ -4,7 +4,7 @@ import math
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 # A paired phone is identified by a stable install id created by the mobile app.
 # The id is also used as a folder name, so path separators and traversal are
@@ -266,11 +266,17 @@ class DeviceFileQueued(BaseModel):
 
 
 class DeviceMessageCreate(BaseModel):
-    """Desktop → phone text (chat reply, notification, AI note)."""
+    """Desktop → phone text and/or blob media (chat reply, notification, note)."""
 
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(default="", max_length=4000)
     # Optional blob media reference (compressed + stored before delivery).
     media: dict | None = None
+
+    @model_validator(mode="after")
+    def require_text_or_media(self) -> "DeviceMessageCreate":
+        if not self.text.strip() and self.media is None:
+            raise ValueError("text or media is required")
+        return self
 
 
 class DeviceMessage(BaseModel):

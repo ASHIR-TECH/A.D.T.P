@@ -35,6 +35,25 @@ def default_intake_dir() -> Path:
     return default_data_dir() / "adtp" / "intake"
 
 
+def env_files() -> tuple[str, ...]:
+    """Dotenv files to load, most-specific last (pydantic lets it win).
+
+    The desktop spawns this gateway from an arbitrary working directory, so a
+    bare ".env" would silently drop ADTP_RELAY_URL / ADTP_MEDIA_TOKEN. Also look
+    for the checkout root that contains this package.
+    """
+    found: list[str] = []
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / ".env"
+        if (parent / "packages" / "adtp-api").is_dir() and candidate.is_file():
+            found.append(str(candidate))
+            break
+    if Path(".env").is_file():
+        found.append(".env")
+    return tuple(dict.fromkeys(found)) or (".env",)
+
+
 class Settings(BaseSettings):
     # Bind address for the REST gateway. Set ADTP_API_HOST="0.0.0.0" so the
     # mobile companion can reach the desktop gateway over the LAN. The QR
@@ -77,7 +96,7 @@ class Settings(BaseSettings):
 
     model_config = {
         "env_prefix": "ADTP_",
-        "env_file": ".env",
+        "env_file": env_files(),
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

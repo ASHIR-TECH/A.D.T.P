@@ -338,7 +338,9 @@ impl P2PModule {
             return Vec::new();
         }
 
-        let mut lines = vec!["Paired phones (use device_id with send_file_to_device):".to_string()];
+        let mut lines = vec![
+            "Paired phones (use the name or device_id with the send tools):".to_string(),
+        ];
         for d in &list.devices {
             let state = if d.online { "online" } else { "offline" };
             lines.push(format!(
@@ -350,36 +352,123 @@ impl P2PModule {
     }
 }
 
-/// Resolve a phone target for agent tools. The model often omits `device_id`
-/// for "send it to my phone": one paired phone wins outright; with several,
-/// only an unambiguous online phone is chosen, otherwise the error lists ids.
+/// Resolve a phone target for agent tools. The prompt can contain either the
+/// friendly name ("kali") or the device id, so match both instead of trusting
+/// a name as an id (which made the gateway answer "device not found").
 async fn resolve_device_target(
     client: &adtp_cli::client::ApiClient,
-    device_id: &str,
+    target: &str,
 ) -> Result<String, String> {
-    if !device_id.trim().is_empty() {
-        return Ok(device_id.trim().to_string());
-    }
-    let list = client.list_devices().await.map_err(|e| e.to_string())?;
-    match list.devices.as_slice() {
-        [] => Err("No phone is paired yet. Pair MARS in ADTP Desktop → Mobile first.".into()),
-        [only] => Ok(only.device_id.clone()),
-        many => {
-            let online: Vec<_> = many.iter().filter(|d| d.online).collect();
-            if online.len() == 1 {
-                Ok(online[0].device_id.clone())
-            } else {
-                let ids = many
-                    .iter()
-                    .map(|d| format!("{} ({})", d.device_id, d.name))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                Err(format!(
-                    "Several phones are paired; pass device_id. Pairings: {ids}"
-                ))
+    let requested = target.trim();
+    let list = match client.list_devices().await {
+        Ok(list) => list,
+        Err(err) => {
+            // A concrete id doesn't need the directory; keep id-based sends
+            // working when the gateway's device list is briefly unavailable.
+            if !requested.is_empty() {
+                return Ok(requested.to_string());
             }
+            return Err(format!("Could not load paired devices: {err}"));
         }
+    };
+    if list.devices.is_empty() {
+        return Err("No phone is paired yet. Pair MARS in ADTP Desktop → Mobile first.".into());
     }
+
+    let pairings = || {
+        list.devices
+            .iter()
+            .map(|d| format!("{} (id={})", d.name, d.device_id))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    if requested.is_empty() {
+        return match list.devices.as_slice() {
+            [only] => Ok(only.device_id.clone()),
+            many => {
+                let online: Vec<_> = many.iter().filter(|d| d.online).collect();
+                if online.len() == 1 {
+                    Ok(online[0].device_id.clone())
+                } else {
+                    Err(format!(
+                        "Several phones are paired; pass a name or device_id. Pairings: {}",
+                        pairings()
+                    ))
+                }
+            }
+        };
+    }
+
+    // Exact id first, then exact name (case-insensitive), then an unambiguous
+    // substring so "kali" also matches "Kali-Phone".
+    if let Some(d) = list
+        .devices
+        .iter()
+        .find(|d| d.device_id.eq_ignore_ascii_case(requested))
+    {
+        return Ok(d.device_id.clone());
+    }
+    let needle = requested.to_lowercase();
+    let name_matches: Vec<_> = list
+        .devices
+        .iter()
+        .filter(|d| d.name.trim().to_lowercase() == needle)
+        .collect();
+    if name_matches.len() == 1 {
+        return Ok(name_matches[0].device_id.clone());
+    }
+    let partial: Vec<_> = list
+        .devices
+        .iter()
+        .filter(|d| {
+            d.name.trim().to_lowercase().contains(&needle)
+                || d.device_id.to_lowercase().contains(&needle)
+        })
+        .collect();
+    if partial.len() == 1 {
+        return Ok(partial[0].device_id.clone());
+    }
+    if partial.len() > 1 {
+        return Err(format!(
+            "More than one phone matches \"{}\": {}. Use the exact name or id.",
+            requested,
+            partial
+                .iter()
+                .map(|d| format!("{} (id={})", d.name, d.device_id))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    Err(format!(
+        "No paired phone matches \"{}\". Pairings: {}",
+        requested,
+        pairings()
+    ))
+}
+
+fn media_from_target(value: &str) -> Option<serde_json::Value> {
+    let trimmed = value.trim();
+    if trimmed.starts_with('{') {
+        return serde_json::from_str::<serde_json::Value>(trimmed).ok();
+    }
+    // MARS forwards the shareable link as text: "<serviceUrl>/api/media/file/<id>".
+    let mut parts = trimmed
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .rsplit("/api/media/file/");
+    let id = parts.next()?.trim().to_string();
+    let prefix = parts.next()?.trim().to_string();
+    if prefix.is_empty() || id.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({
+        "id": id,
+        "serviceUrl": prefix.trim_end_matches('/'),
+        "name": id,
+        "mimeType": "application/octet-stream",
+    }))
 }
 
 fn gateway_client() -> Result<adtp_cli::client::ApiClient, String> {
@@ -411,15 +500,19 @@ async fn send_file_via_gateway(file_path: &str, device_id: &str) -> Result<Strin
     .to_string())
 }
 
-async fn send_message_via_gateway(text: &str, device_id: &str) -> Result<String, String> {
+async fn send_message_via_gateway(
+    text: &str,
+    device_id: &str,
+    media: Option<&serde_json::Value>,
+) -> Result<String, String> {
     let text = text.trim();
-    if text.is_empty() {
+    if text.is_empty() && media.is_none() {
         return Err("send_message_to_device: text is empty".into());
     }
     let client = gateway_client()?;
     let target = resolve_device_target(&client, device_id).await?;
     let queued = client
-        .send_device_message(&target, text)
+        .send_device_message(&target, text, media)
         .await
         .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
@@ -427,9 +520,21 @@ async fn send_message_via_gateway(text: &str, device_id: &str) -> Result<String,
         "device_id": target,
         "message_id": queued.message.id,
         "text": text,
+        "media": media,
         "message": format!("Sent to {} — it will appear in the phone's chat.", target),
     })
     .to_string())
+}
+
+/// Forward media the user already attached in MARS to a paired phone by name.
+/// Bytes never move through the agent: the shared MediaRef is queued in the
+/// target's inbox, which renders as a thumbnail + download link in MARS chat.
+async fn forward_media_via_gateway(media: &str, device_id: &str) -> Result<String, String> {
+    let parsed = media_from_target(media).ok_or_else(|| {
+        "forward_media_to_device: expected a MediaRef JSON or a /api/media/file/<id> link"
+            .to_string()
+    })?;
+    send_message_via_gateway("", device_id, Some(&parsed)).await
 }
 
 async fn list_devices_via_gateway() -> Result<String, String> {
@@ -485,7 +590,15 @@ impl ToolExecutor for P2PModule {
     }
 
     async fn send_message_to_device(&self, text: &str, device_id: &str) -> Result<String, String> {
-        send_message_via_gateway(text, device_id).await
+        send_message_via_gateway(text, device_id, None).await
+    }
+
+    async fn forward_media_to_device(
+        &self,
+        media: &str,
+        device_id: &str,
+    ) -> Result<String, String> {
+        forward_media_via_gateway(media, device_id).await
     }
 
     async fn list_devices(&self) -> Result<String, String> {
@@ -551,7 +664,15 @@ impl ToolExecutor for GatewayToolExecutor {
     }
 
     async fn send_message_to_device(&self, text: &str, device_id: &str) -> Result<String, String> {
-        send_message_via_gateway(text, device_id).await
+        send_message_via_gateway(text, device_id, None).await
+    }
+
+    async fn forward_media_to_device(
+        &self,
+        media: &str,
+        device_id: &str,
+    ) -> Result<String, String> {
+        forward_media_via_gateway(media, device_id).await
     }
 
     async fn list_devices(&self) -> Result<String, String> {

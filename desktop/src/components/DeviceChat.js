@@ -382,15 +382,35 @@ async function send(state) {
 
 async function sendDirect(state, text, file) {
   const name = state.device.name || state.deviceId;
+  if (file) {
+    // Shared blob pipeline first: a MediaRef travels inside the durable device
+    // message, so MARS chat renders a thumbnail + download link (text-only
+    // files used to land in the inbox with no chat bubble at all).
+    let media = null;
+    try {
+      media = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop' });
+    } catch (err) {
+      console.warn('Media upload failed; falling back to a plain inbox file', err);
+    }
+    if (media) {
+      try {
+        await invoke('send_message_to_device', {
+          deviceId: state.deviceId,
+          text,
+          media,
+        });
+        if (!text) show(`Sent ${file.name} to ${name}`, 'success', 'top-right');
+        return;
+      } catch (err) {
+        console.warn('Media message failed; falling back to a plain inbox file', err);
+      }
+    }
+  }
   if (text) {
     await invoke('send_message_to_device', { deviceId: state.deviceId, text });
   }
   if (file) {
     await invoke('send_file_to_device', { deviceId: state.deviceId, filePath: file.path });
-  }
-  if (!text && file) {
-    // No message body, but the drawer should still confirm what happened.
-    show(`Sent ${file.name} to ${name}`, 'success', 'top-right');
   }
 }
 
@@ -407,9 +427,12 @@ async function sendViaAgent(state, text, file) {
   const context = [
     `[Target device: ${name} ${state.deviceId}]`,
     attachedMedia
-      ? `[Attached media: ${attachedMedia.name} — ${attachedMedia.serviceUrl}/api/media/file/${attachedMedia.id}?kind=original&download=1]`
+      ? `[Attached media: ${attachedMedia.name} — ${attachedMedia.serviceUrl}/api/media/file/${attachedMedia.id}?kind=original&download=1]\n[Attached media ref: ${JSON.stringify(attachedMedia)}]`
       : file ? `[Attached file: ${file.path}]` : '',
     text ? '' : file ? `Send this file to ${name}.` : '',
+    file
+      ? `To deliver the attached media to ${name}, call forward_media_to_device with device_id "${state.deviceId}" (the name "${name}" also works).`
+      : '',
   ].filter(Boolean).join('\n');
   const prompt = text ? `${text}\n\n${context}` : context;
   const response = await invoke('agent_send_message', { message: prompt });

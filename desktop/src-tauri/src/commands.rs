@@ -536,10 +536,11 @@ pub async fn send_message_to_device(
     app: AppHandle,
     device_id: String,
     text: String,
+    media: Option<serde_json::Value>,
 ) -> Result<DeviceMessageQueued, String> {
     let client = make_client(&app)?;
     client
-        .send_device_message(&device_id, &text)
+        .send_device_message(&device_id, &text, media.as_ref())
         .await
         .map_err(|e| e.to_string())
 }

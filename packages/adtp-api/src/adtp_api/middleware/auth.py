@@ -18,6 +18,9 @@ def register_auth_middleware(app: FastAPI) -> None:
         path = request.url.path
         if (
             path in EXEMPT_PATHS
+            # Blob media reads: the random UUID is the capability, so <Image>
+            # can load a thumbnail without sending a bearer header.
+            or path.startswith("/api/media/file/")
             or path.startswith("/docs")
             or path.startswith("/redoc")
             or path.startswith("/openapi")
