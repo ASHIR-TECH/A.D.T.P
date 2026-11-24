@@ -417,11 +417,25 @@ async function sendDirect(state, text, file) {
 async function sendViaAgent(state, text, file) {
   const name = state.device.name || state.deviceId;
   let attachedMedia = null;
+  let deliveredMedia = false;
   if (file) {
     try {
       attachedMedia = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop' });
     } catch (err) {
       console.warn('Media upload failed; falling back to local path', err);
+    }
+  }
+  if (attachedMedia) {
+    // Deliver the blob directly, independent of whether the agent chooses a tool.
+    try {
+      await invoke('send_message_to_device', {
+        deviceId: state.deviceId,
+        text: text || '',
+        media: attachedMedia,
+      });
+      deliveredMedia = true;
+    } catch (err) {
+      console.warn('Direct media delivery failed; asking the agent to retry', err);
     }
   }
   const context = [
@@ -430,9 +444,10 @@ async function sendViaAgent(state, text, file) {
       ? `[Attached media: ${attachedMedia.name} — ${attachedMedia.serviceUrl}/api/media/file/${attachedMedia.id}?kind=original&download=1]\n[Attached media ref: ${JSON.stringify(attachedMedia)}]`
       : file ? `[Attached file: ${file.path}]` : '',
     text ? '' : file ? `Send this file to ${name}.` : '',
-    file
+    file && !deliveredMedia
       ? `To deliver the attached media to ${name}, call forward_media_to_device with device_id "${state.deviceId}" (the name "${name}" also works).`
       : '',
+    deliveredMedia ? 'The media was already delivered to the phone — do not send it again.' : '',
   ].filter(Boolean).join('\n');
   const prompt = text ? `${text}\n\n${context}` : context;
   const response = await invoke('agent_send_message', { message: prompt });
