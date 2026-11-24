@@ -8,11 +8,27 @@ from pathlib import Path
 
 import aiosqlite
 
-from adtp_api.errors import FileNotFoundError_, FileTooLargeError, TransferNotFoundError
+from adtp_api.errors import (
+    DaemonUnreachableError,
+    FileNotFoundError_,
+    FileTooLargeError,
+    TransferInProgressError,
+    TransferNotFoundError,
+)
 from adtp_api.mime_types import guess_mime
 from adtp_api.models.transfer import TransferRecord, TransferList, TransferStatus
 from adtp_api.config import settings
 from adtp_api.services.system_service import resolved_intake_dir
+
+
+async def _daemon_call(fn, *args, **kwargs):
+    """Translate a missing client daemon into a clean 503 instead of a 500."""
+    from adtp_mcp.bridge.base import BridgeError
+
+    try:
+        return await fn(*args, **kwargs)
+    except (BridgeError, OSError) as exc:
+        raise DaemonUnreachableError() from exc
 
 
 async def send_file(
@@ -29,7 +45,7 @@ async def send_file(
     if path.stat().st_size > settings.max_file_size:
         raise FileTooLargeError(settings.max_file_size)
 
-    return await bridge_client.enqueue_send(file_path, agent_name, priority)
+    return await _daemon_call(bridge_client.enqueue_send, file_path, agent_name, priority)
 
 
 async def push_file(
@@ -188,7 +204,7 @@ async def get_transfer(db: aiosqlite.Connection, transfer_id: str) -> TransferRe
 async def get_transfer_status(transfer_id: str) -> TransferStatus:
     from adtp_mcp.bridge import client as bridge_client
 
-    return await bridge_client.get_status(transfer_id)
+    return await _daemon_call(bridge_client.get_status, transfer_id)
 
 
 async def get_transfer_context(
@@ -208,10 +224,25 @@ async def get_transfer_context(
     return None
 
 
-async def cancel_transfer(transfer_id: str) -> bool:
-    from adtp_mcp.bridge import client as bridge_client
+async def cancel_transfer(db: aiosqlite.Connection, transfer_id: str) -> bool:
+    """Cancel a queued transfer in the gateway's durable audit table.
 
-    return await bridge_client.cancel_transfer(transfer_id)
+    The client daemon has no cancel IPC command, so the gateway row is the
+    source of truth for cancellation state.
+    """
+    rows = await db.execute_fetchall(
+        "SELECT status FROM transfer_audit WHERE id = ?", [transfer_id]
+    )
+    if not rows:
+        raise TransferNotFoundError(transfer_id)
+    if rows[0][0] in ("completed", "delivered", "failed"):
+        raise TransferInProgressError()
+    await db.execute(
+        "UPDATE transfer_audit SET status = 'cancelled', completed_at = ? WHERE id = ?",
+        (datetime.now(timezone.utc).isoformat(), transfer_id),
+    )
+    await db.commit()
+    return True
 
 
 def _row_to_transfer(row) -> TransferRecord:
