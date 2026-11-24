@@ -41,6 +41,16 @@ pub trait ToolExecutor: Send + Sync {
         Err("Messaging paired devices is not available".into())
     }
 
+    /// Forward an already-uploaded MediaRef (or its share link) to a paired
+    /// phone so the media renders in MARS chat instead of as a raw URL.
+    async fn forward_media_to_device(
+        &self,
+        _media: &str,
+        _device_id: &str,
+    ) -> Result<String, String> {
+        Err("Forwarding media to paired devices is not available".into())
+    }
+
     /// List paired phones with identity, presence and telemetry. The agent uses
     /// this to answer "what devices are connected?" instead of guessing.
     async fn list_devices(&self) -> Result<String, String> {
@@ -135,6 +145,18 @@ impl AgentRuntime {
                         "device_id": {"type": "string", "description": "ID of the paired phone from list_devices. Optional when only one phone is paired."},
                     },
                     "required": ["text"],
+                }),
+            },
+            ToolDefinition {
+                name: "forward_media_to_device".into(),
+                description: "Forward media the user already attached (a MediaRef JSON or the /api/media/file/<id> link from the prompt) to a paired phone by name or id. The phone renders a thumbnail and download link in MARS chat. Use this instead of re-uploading an attached image.".into(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "media": {"type": "string", "description": "The attached media JSON or its share link from the [Attached media] line"},
+                        "device_id": {"type": "string", "description": "Name or id of the paired phone from list_devices. Optional when only one phone is paired."},
+                    },
+                    "required": ["media"],
                 }),
             },
             ToolDefinition {
@@ -506,6 +528,24 @@ impl AgentRuntime {
                     }
                 }
             }
+            "forward_media_to_device" => {
+                let media = call
+                    .arguments
+                    .get("media")
+                    .and_then(|v| v.as_str())
+                    .ok_or("forward_media_to_device: missing 'media' argument")?;
+                let device_id = call
+                    .arguments
+                    .get("device_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                match executor {
+                    Some(exe) => exe.forward_media_to_device(media, &device_id).await,
+                    None => Err("Gateway client is not initialized. Cannot forward media.".into()),
+                }
+            }
             "send_media_to_device" => {
                 let file_path = call
                     .arguments
@@ -875,6 +915,7 @@ You have access to the following tools:
 - send_file: Send a file to another computer by peer ID (requires file_path and peer_id)
 - send_file_to_device: Send a file to a paired phone (MARS). Requires file_path; device_id is optional when only one phone is paired
 - send_message_to_device: Send a chat message to a paired phone (MARS). Requires text; device_id is optional when only one phone is paired
+- forward_media_to_device: Forward an image/file the user already attached in MARS to a paired phone by name, rendering as a real media card. Requires media (the attached MediaRef JSON or its link); device_id is optional when only one phone is paired
 - list_devices: List paired phones (name, device_id, online state, OS, battery, CPU and RAM)
 - list_peers: List known remote peers and the paired phones (device_id + online status)
 - list_transfers: List recent file transfers (optionally filter by status: completed, failed, in_progress)
@@ -902,11 +943,12 @@ When the user asks about connected devices, paired phones, MARS, or a device by 
 When the user asks you to message, text, tell, or reply to a phone:
 1. Use list_devices to resolve the target (or omit device_id when only one is paired).
 2. Call send_message_to_device with the exact text the user wants delivered.
-3. If they also attached or named a file, call send_file_to_device in the same turn.
+3. If the user asks to send that media to a named device, call forward_media_to_device with media set to the attached MediaRef (or its link) and device_id set to that device's name or id. Names such as "Kali" are accepted; do not claim the device is missing because the user said a name instead of an id.
+4. If they also attached or named a local file, call send_file_to_device in the same turn.
 
 When the user says "send me", "send to my phone", "attach it", or references a file they just attached:
-- Files attached from the phone are saved in the upload intake and are listed in the prompt.
-- Use send_file_to_device to send them back (for example an image the user wants returned).
+- Files attached from the phone are saved in the upload intake and are listed in the prompt with a shareable link and (when available) a MediaRef JSON.
+- Use forward_media_to_device to send that attached media back to any paired phone by name (e.g. "Kali") or id; it arrives as a thumbnail + download link. Use send_file_to_device for local desktop files.
 - Images are binary: read_file returns name/MIME/size, which is enough to confirm the file; do not claim to describe pixel contents unless a tool provides them.
 
 When the user asks to find a file by name (for example "I want image.json"):
