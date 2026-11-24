@@ -118,3 +118,22 @@ def test_device_message_keeps_media_durably(app):
             f"/api/v1/devices/{device_id}/messages", headers=headers
         ).json()["messages"]
         assert messages[0]["media"]["id"] == MEDIA["id"]
+
+
+def test_media_only_device_message_is_accepted_and_durable(app):
+    """ADTP can send an image with no caption; MARS must still receive it."""
+    headers = {"Authorization": f"Bearer {VALID_TOKEN}"}
+    with TestClient(app) as client:
+        device_id = "phone-wire-media-only"
+        client.post("/api/v1/devices/register", headers=headers, json={"device_id": device_id})
+        response = client.post(
+            f"/api/v1/devices/{device_id}/messages",
+            headers=headers,
+            json={"text": "", "media": MEDIA},
+        )
+        assert response.status_code == 201
+        messages = client.get(
+            f"/api/v1/devices/{device_id}/messages", headers=headers
+        ).json()["messages"]
+        assert messages[0]["text"] == ""
+        assert messages[0]["media"]["id"] == MEDIA["id"]
