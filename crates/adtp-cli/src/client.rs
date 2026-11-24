@@ -313,12 +313,14 @@ impl ApiClient {
         &self,
         device_id: &str,
         text: &str,
+        media: Option<&serde_json::Value>,
     ) -> Result<crate::models::DeviceMessageQueued, CliError> {
-        self.post(
-            &format!("/api/v1/devices/{device_id}/messages"),
-            &serde_json::json!({ "text": text }),
-        )
-        .await
+        let mut body = serde_json::json!({ "text": text });
+        if let Some(media) = media {
+            body["media"] = media.clone();
+        }
+        self.post(&format!("/api/v1/devices/{device_id}/messages"), &body)
+            .await
     }
 
     /// Full desktop → phone message history for the device chat drawer.
