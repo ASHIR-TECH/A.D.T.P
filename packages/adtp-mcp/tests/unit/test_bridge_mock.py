@@ -21,6 +21,12 @@ class FakeWriter:
     def write(self, data: bytes):
         self.writes.append(data)
 
+    async def drain(self):
+        return None
+
+    def close(self):
+        self.closed = True
+
     async def wait_closed(self):
         return None
 
