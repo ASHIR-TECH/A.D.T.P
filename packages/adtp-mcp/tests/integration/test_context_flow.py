@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from adtp_mcp.context.packager import EXTRACTOR_TIMEOUT, build_context
-from adtp_mcp.context.extractors.csv import CsvExtractor
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
@@ -76,22 +75,26 @@ async def test_context_flow_generic():
 
 
 @pytest.mark.anyio
-async def test_timeout_handling():
-    """Extractor that sleeps past the timeout should not block the tool call."""
-    _original_extract = CsvExtractor.extract
+async def test_timeout_handling(monkeypatch):
+    """A slow extractor subprocess must not block the tool call.
 
-    def slow_extract(file_path):
-        import time
-        time.sleep(EXTRACTOR_TIMEOUT + 2)
-        return _original_extract(file_path)
+    Extraction runs in a child process, so patching the parent's class would
+    never exercise the timeout — patch the subprocess boundary instead.
+    """
+    import subprocess
 
-    CsvExtractor.extract = staticmethod(slow_extract)
-    try:
-        result = await build_context(str(FIXTURES / "sample.csv"), session_id="timeout-test")
-        assert result["schema"] is None
-        assert result["summary"] is None
-    finally:
-        CsvExtractor.extract = staticmethod(_original_extract)
+    from adtp_mcp.context import packager
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=args[0] if args else "python",
+            timeout=kwargs.get("timeout", EXTRACTOR_TIMEOUT),
+        )
+
+    monkeypatch.setattr(packager.subprocess, "run", fake_run)
+    result = await build_context(str(FIXTURES / "sample.csv"), session_id="timeout-test")
+    assert result["schema"] is None
+    assert result["summary"] is None
 
 
 @pytest.mark.anyio
