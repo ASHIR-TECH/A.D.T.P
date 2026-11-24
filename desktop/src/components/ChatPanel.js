@@ -306,6 +306,30 @@ async function sendMessage(container) {
       }
     }
 
+    let deliveredMedia = false;
+    if (attachedMedia && selectedDeviceId) {
+      // Deterministic delivery: don't rely on the model choosing a tool. Queue
+      // the already-compressed MediaRef straight into the target phone's inbox
+      // so MARS renders a real media card in chat.
+      try {
+        await invoke('send_message_to_device', {
+          deviceId: selectedDeviceId,
+          text: text || '',
+          media: attachedMedia,
+        });
+        deliveredMedia = true;
+      } catch (err) {
+        console.warn('Direct media delivery failed; asking the agent to retry', err);
+      }
+    } else if (filePath && selectedDeviceId && !attachedMedia) {
+      try {
+        await invoke('send_file_to_device', { deviceId: selectedDeviceId, filePath });
+        deliveredMedia = true;
+      } catch (err) {
+        console.warn('Plain file delivery failed', err);
+      }
+    }
+
     // Send to the desktop agent. If a specific device is selected, include it
     // in the message context so the AI can target it with send_file_to_device.
     const deviceName = selectedDeviceId
@@ -320,6 +344,9 @@ async function sendMessage(container) {
     let agentMsg = `${text}${deviceCtx}`;
     if (attachedMedia) {
       agentMsg += `\n\n[Attached media: ${attachedMedia.name} — ${attachedMedia.serviceUrl}/api/media/file/${attachedMedia.id}?kind=original&download=1]`;
+      if (deliveredMedia) {
+        agentMsg += '\n[The media has already been delivered to the selected phone. Do not send it again.]';
+      }
     } else if (filePath) {
       agentMsg += `\n\n[Attached file: ${filePath}]`;
     }
