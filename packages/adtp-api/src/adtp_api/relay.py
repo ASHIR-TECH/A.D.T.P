@@ -241,7 +241,9 @@ class RelaySession:
             prompt = (
                 f"{text}\n\n[Attached media: {inbound_media.name} — "
                 f"{inbound_media.serviceUrl}/api/media/file/{inbound_media.id}"
-                f"?kind=original&download=1]"
+                f"?kind=original&download=1]\n"
+                f"[Attached media ref (pass this to forward_media_to_device): "
+                f"{json.dumps(inbound_media.model_dump())}]"
             ).strip()
 
         reply_text, provider, tool_calls, media = await self._run_agent(
