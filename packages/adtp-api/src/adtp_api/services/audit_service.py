@@ -165,15 +165,18 @@ async def export_csv(
 
     where = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    rows = await db.execute_fetchall(
+    cursor = await db.execute(
         f"SELECT * FROM transfer_audit {where} ORDER BY initiated_at ASC", params
     )
+    rows = await cursor.fetchall()
 
     output = io.StringIO()
     if not rows:
         return output.getvalue()
 
-    fieldnames = [d[0] for d in db.description()] if rows else []
+    # Column names come from the cursor, not the connection. `db.description()`
+    # doesn't exist on aiosqlite and made every CSV export return HTTP 500.
+    fieldnames = [d[0] for d in (cursor.description or [])] or list(rows[0].keys())
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
     for r in rows:

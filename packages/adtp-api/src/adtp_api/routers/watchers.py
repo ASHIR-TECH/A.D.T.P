@@ -13,10 +13,15 @@ limiter = Limiter(key_func=get_remote_address)
 @router.post("", status_code=201)
 async def register_watch(body: WatchRequest):
     from adtp_mcp.bridge import client as bridge_client
+    from adtp_mcp.bridge.base import BridgeError
+    from adtp_api.errors import DaemonUnreachableError
 
-    result = await bridge_client.register_watch(
-        body.folder_path, body.file_pattern, body.trigger_action
-    )
+    try:
+        result = await bridge_client.register_watch(
+            body.folder_path, body.file_pattern, body.trigger_action
+        )
+    except (BridgeError, OSError) as exc:
+        raise DaemonUnreachableError() from exc
     return WatchResponse(
         watch_id=result.get("watch_id", ""),
         folder_path=body.folder_path,
@@ -28,9 +33,8 @@ async def register_watch(body: WatchRequest):
 
 @router.get("")
 async def list_watches():
-    from adtp_mcp.bridge import client as bridge_client
-
-    await bridge_client.get_transfers("all", 100)
+    # The gateway doesn't own watch state; the client daemon does. Returning an
+    # empty list keeps the UI usable when no daemon is running.
     return {"watchers": [], "total": 0}
 
 
@@ -42,6 +46,11 @@ async def get_watch(watch_id: str):
 @router.delete("/{watch_id}")
 async def remove_watch(watch_id: str):
     from adtp_mcp.bridge import client as bridge_client
+    from adtp_mcp.bridge.base import BridgeError
+    from adtp_api.errors import DaemonUnreachableError
 
-    await bridge_client.remove_watch(watch_id)
+    try:
+        await bridge_client.remove_watch(watch_id)
+    except (BridgeError, OSError) as exc:
+        raise DaemonUnreachableError() from exc
     return {"removed": True}

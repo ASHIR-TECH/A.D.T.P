@@ -215,7 +215,7 @@ function setupChat(container) {
       const paired = await invoke('list_paired_devices');
       const devices = paired?.devices || [];
       if (devices.length > 0) {
-        deviceSelect.innerHTML = '<option value="">ope</option>' +
+        deviceSelect.innerHTML = '<option value="">All devices</option>' +
           devices.map(d => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.name)} — ${d.online ? 'Online' : 'Offline'}</option>`).join('');
         // Keep the select in sync with the default target chosen in render().
         selectedDeviceId = selectedDeviceId || devices[0].device_id;
