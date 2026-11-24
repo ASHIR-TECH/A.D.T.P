@@ -8,10 +8,11 @@ async def test_send_file_validates_and_returns_result(tmp_path, monkeypatch):
     file_path = tmp_path / "report.txt"
     file_path.write_text("hello")
 
-    async def fake_enqueue_send(path, agent_name, priority):
+    async def fake_enqueue_send(path, agent_name, priority, context=None):
         assert path == str(file_path.resolve())
         assert agent_name == "default"
         assert priority == "normal"
+        assert context is not None
         return {"transfer_id": "abc", "status": "queued", "estimated_ms": 0}
 
     monkeypatch.setattr("adtp_mcp.bridge.client.enqueue_send", fake_enqueue_send)
