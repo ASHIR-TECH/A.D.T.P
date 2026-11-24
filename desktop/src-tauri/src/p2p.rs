@@ -338,9 +338,8 @@ impl P2PModule {
             return Vec::new();
         }
 
-        let mut lines = vec![
-            "Paired phones (use the name or device_id with the send tools):".to_string(),
-        ];
+        let mut lines =
+            vec!["Paired phones (use the name or device_id with the send tools):".to_string()];
         for d in &list.devices {
             let state = if d.online { "online" } else { "offline" };
             lines.push(format!(
