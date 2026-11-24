@@ -104,6 +104,8 @@ def create_app() -> FastAPI:
     app.include_router(system.router)
     app.include_router(devices.router)
     app.include_router(media.router)
+    # Header-free /api/media/file/:id, shared with the MARS relay wire format.
+    app.include_router(media.public_router)
 
     register_relay(app)
 
