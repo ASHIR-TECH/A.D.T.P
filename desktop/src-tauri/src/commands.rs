@@ -247,10 +247,19 @@ pub async fn upload_media(
     app: AppHandle,
     path: String,
     sender: Option<String>,
+    sessionId: Option<String>,
+    conversationId: Option<String>,
+    recipient: Option<String>,
 ) -> Result<MediaRef, String> {
     let client = make_client(&app)?;
     client
-        .upload_media(&path, sender.as_deref().unwrap_or("adtp-desktop"))
+        .upload_media(
+            &path,
+            sender.as_deref().unwrap_or("adtp-desktop"),
+            sessionId.as_deref(),
+            conversationId.as_deref(),
+            recipient.as_deref(),
+        )
         .await
         .map_err(|e| e.to_string())
 }
