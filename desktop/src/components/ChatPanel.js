@@ -1,5 +1,6 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
+import { mediaUnavailable, mediaStatusLabel } from '../lib/mediaCard.js';
 
 let messages = [];
 let agentState = 'inactive';
@@ -68,15 +69,12 @@ function renderMessage(m) {
   let mediaHtml = '';
   const media = m.media || m.media_ref;
   if (media && media.id && media.serviceUrl) {
+    const unavailable = mediaUnavailable(media);
     const base = media.serviceUrl.replace(/\/$/, '');
-    const thumbUrl = media.hasThumbnail
+    const thumbUrl = !unavailable && media.hasThumbnail
       ? `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=thumbnail`
       : '';
     const downloadUrl = `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=original&download=1`;
-    const size = media.compressedSize || media.size || 0;
-    const sizeLabel = size > 1024 * 1024
-      ? `${(size / 1024 / 1024).toFixed(1)} MB`
-      : size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
     mediaHtml = `
       <div class="chat-media-card">
         <div class="chat-media-thumb">
@@ -86,8 +84,8 @@ function renderMessage(m) {
         </div>
         <div class="chat-media-detail">
           <div class="chat-media-name">${escapeHtml(media.name || 'media')}</div>
-          <div class="chat-media-meta">${sizeLabel}${media.compressed ? ' · compressed' : ''}</div>
-          <a class="chat-media-download" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener">⬇ Download</a>
+          <div class="chat-media-meta">${escapeHtml(mediaStatusLabel(media))}</div>
+          ${unavailable ? '' : `<a class="chat-media-download" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer">⬇ Download</a>`}
         </div>
       </div>
     `;
@@ -300,7 +298,12 @@ async function sendMessage(container) {
     // render the thumbnail + download link from one wire format.
     if (filePath) {
       try {
-        attachedMedia = await invoke('upload_media', { path: filePath, sender: 'adtp-desktop' });
+        attachedMedia = await invoke('upload_media', {
+          path: filePath,
+          sender: 'adtp-desktop',
+          conversationId: 'default-session',
+          recipient: selectedDeviceId || undefined,
+        });
       } catch (err) {
         console.warn('Media upload failed; falling back to local path', err);
       }
