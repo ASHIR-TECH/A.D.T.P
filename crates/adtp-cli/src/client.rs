@@ -234,6 +234,9 @@ impl ApiClient {
         &self,
         file_path: &str,
         sender: &str,
+        session_id: Option<&str>,
+        conversation_id: Option<&str>,
+        recipient: Option<&str>,
     ) -> Result<crate::models::MediaRef, CliError> {
         let bytes = tokio::fs::read(file_path)
             .await
@@ -251,9 +254,18 @@ impl ApiClient {
             .map_err(|e| CliError::Http {
                 message: format!("Invalid MIME type {mime}: {e}"),
             })?;
-        let form = reqwest::multipart::Form::new()
+        let mut form = reqwest::multipart::Form::new()
             .part("file", part)
             .text("sender", sender.to_string());
+        if let Some(value) = session_id {
+            form = form.text("sessionId", value.to_string());
+        }
+        if let Some(value) = conversation_id {
+            form = form.text("conversationId", value.to_string());
+        }
+        if let Some(value) = recipient {
+            form = form.text("recipient", value.to_string());
+        }
 
         let resp = self
             .client
