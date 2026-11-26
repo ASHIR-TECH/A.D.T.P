@@ -42,18 +42,33 @@ pub fn validate_service_url(url: &str) -> Result<(), String> {
 
 /// Validate the whole reference at a trust boundary.
 pub fn validate_media_ref(media: &MediaRef) -> Result<(), String> {
-    if media.id.is_empty() || media.id.len() > 2048 {
-        return Err("media id must be a non-empty bounded string".into());
+    if media.id.is_empty() || media.id.len() > 255 {
+        return Err("media id must be a non-empty string of at most 255 chars".into());
     }
-    if media.name.is_empty() || media.name.len() > 2048 {
-        return Err("media name must be a non-empty bounded string".into());
+    if media.name.is_empty() || media.name.len() > 255 {
+        return Err("media name must be a non-empty string of at most 255 chars".into());
+    }
+    for value in [&media.id, &media.name] {
+        if value
+            .chars()
+            .any(|c| c == '/' || c == '\\' || c.is_control())
+        {
+            return Err("media ids and names must not contain separators or control chars".into());
+        }
     }
     validate_service_url(&media.service_url)?;
     if media.size < 0 || media.stored_size < 0 {
         return Err("media sizes must be non-negative".into());
     }
-    if !media.mime_type.contains('/') || media.mime_type.len() > 200 {
+    if !media.mime_type.contains('/') || media.mime_type.len() > 150 {
         return Err("invalid media MIME type".into());
+    }
+    if let Some(checksum) = &media.sha256 {
+        let valid =
+            (32..=128).contains(&checksum.len()) && checksum.bytes().all(|b| b.is_ascii_hexdigit());
+        if !valid {
+            return Err("sha256 must be 32-128 hex characters".into());
+        }
     }
     if !MEDIA_STATUSES.contains(&media.status.as_str()) {
         return Err("unknown media status".into());
