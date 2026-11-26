@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Literal
+import re
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -83,7 +84,7 @@ class MediaRef(BaseModel):
         if "compressedSize" not in data and "storedSize" in data:
             data["compressedSize"] = data["storedSize"]
         if "schemaVersion" not in data:
-            data["schemaVersion"] = 1 if "compressedSize" in value else 2
+            data["schemaVersion"] = 1
         # The deployed relay uses `pending` / `complete`; map them onto the
         # canonical state machine so v1 messages keep normalising.
         status = data.get("status")
@@ -93,11 +94,27 @@ class MediaRef(BaseModel):
             data["status"] = "ready"
         return data
 
-    @field_validator("id", "name", "serviceUrl")
+    @field_validator("id", "name")
     @classmethod
     def _non_empty(cls, value: str) -> str:
-        if not value or len(value) > 2048:
-            raise ValueError("must be a non-empty bounded string")
+        if not value or len(value) > 255:
+            raise ValueError("must be a non-empty string of at most 255 chars")
+        if any(ch in value for ch in ("/", "\\")) or any(ord(ch) < 32 for ch in value):
+            raise ValueError("must not contain path separators or control characters")
+        return value
+
+    @field_validator("mimeType")
+    @classmethod
+    def _mime_type(cls, value: str) -> str:
+        if "/" not in value or len(value) > 150:
+            raise ValueError("invalid media MIME type")
+        return value
+
+    @field_validator("sha256")
+    @classmethod
+    def _checksum(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[a-fA-F0-9]{32,128}", value):
+            raise ValueError("sha256 must be 32-128 hex characters")
         return value
 
     @field_validator("serviceUrl")
