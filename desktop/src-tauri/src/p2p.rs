@@ -697,7 +697,7 @@ impl ToolExecutor for GatewayToolExecutor {
 pub async fn upload_media_via_gateway(file_path: &str, sender: &str) -> Result<String, String> {
     let client = gateway_client().map_err(|e| format!("Gateway client unavailable: {e}"))?;
     let media = client
-        .upload_media(file_path, sender)
+        .upload_media(file_path, sender, None, None, None)
         .await
         .map_err(|e| format!("Media upload failed: {e}"))?;
     // MARS' mediaFromToolCalls() reads `parsed.media ?? parsed`.
