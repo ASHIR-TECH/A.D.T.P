@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     # relay_url  -> ADTP_RELAY_URL, media_token -> ADTP_MEDIA_TOKEN.
     relay_url: str = ""
     media_token: str = ""
+    # Optional comma-separated host allowlist for MediaRef.serviceUrl. Empty
+    # keeps the existing trusted-relay behaviour; set it when the relay URL is
+    # not the only trusted media host. Never contains tokens or signed URLs.
+    media_allowed_hosts: str = ""
     # Refuse to compress/upload media larger than this (default 200 MiB).
     max_media_size: int = 200 * 1024 * 1024
 

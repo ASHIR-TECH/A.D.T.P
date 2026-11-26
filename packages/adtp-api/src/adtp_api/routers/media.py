@@ -68,6 +68,8 @@ async def upload_media(
     file: UploadFile = File(...),
     sender: str | None = Form(None),
     sessionId: str | None = Form(None),
+    conversationId: str | None = Form(None),
+    recipient: str | None = Form(None),
     generateThumbnail: bool = Form(True),
 ) -> MediaRef:
     """Accept a local file, compress it and store it in the blob bucket."""
@@ -75,6 +77,8 @@ async def upload_media(
         file,
         sender=sender or "adtp-desktop",
         session_id=sessionId,
+        conversation_id=conversationId,
+        recipient=recipient,
         generate_thumbnail=generateThumbnail,
     )
     return _through_gateway(media, request)
