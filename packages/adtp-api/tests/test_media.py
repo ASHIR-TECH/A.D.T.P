@@ -243,6 +243,8 @@ async def test_store_emits_v2_reference_using_the_mars_relay_shape(monkeypatch):
             captured.setdefault("gets", []).append(url)
             return _FakeResponse({"media": mars_ref(captured["sign"])})
 
+    monkeypatch.setattr(settings, "relay_url", "https://relay.example")
+    monkeypatch.setattr(settings, "media_token", "server-token")
     monkeypatch.setattr(media_service.httpx, "AsyncClient", FakeClient)
     image = Image.new("RGB", (40, 30), (11, 22, 33))
     buffer = io.BytesIO()
