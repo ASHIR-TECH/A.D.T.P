@@ -1,5 +1,6 @@
 const { invoke } = window.__TAURI__.core;
 import { show } from './Toast.js';
+import { mediaUnavailable, mediaStatusLabel } from '../lib/mediaCard.js';
 
 /**
  * Per-device chat drawer.
@@ -270,7 +271,8 @@ function renderThread(state, { forceScroll = false } = {}) {
 function mediaCardHtml(media) {
   if (!media || !media.id || !media.serviceUrl) return '';
   const base = media.serviceUrl.replace(/\/$/, '');
-  const thumb = media.hasThumbnail
+  const unavailable = mediaUnavailable(media);
+  const thumb = !unavailable && media.hasThumbnail
     ? `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=thumbnail`
     : '';
   const download = `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=original&download=1`;
@@ -281,8 +283,8 @@ function mediaCardHtml(media) {
         : '<span>🖼</span>'}</div>
       <div class="device-chat-media-info">
         <div class="device-chat-file-name">${esc(media.name || 'media')}</div>
-        <div class="device-chat-file-size">${formatBytes(media.compressedSize || media.size)}</div>
-        <a class="device-chat-media-download" href="${esc(download)}" target="_blank" rel="noopener">⬇ Download</a>
+        <div class="device-chat-file-size">${esc(mediaStatusLabel(media))}</div>
+        ${unavailable ? '' : `<a class="device-chat-media-download" href="${esc(download)}" target="_blank" rel="noopener noreferrer">⬇ Download</a>`}
       </div>
     </div>`;
 }
@@ -388,7 +390,7 @@ async function sendDirect(state, text, file) {
     // files used to land in the inbox with no chat bubble at all).
     let media = null;
     try {
-      media = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop' });
+      media = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop', recipient: state.deviceId });
     } catch (err) {
       console.warn('Media upload failed; falling back to a plain inbox file', err);
     }
@@ -420,7 +422,7 @@ async function sendViaAgent(state, text, file) {
   let deliveredMedia = false;
   if (file) {
     try {
-      attachedMedia = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop' });
+      attachedMedia = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop', recipient: state.deviceId });
     } catch (err) {
       console.warn('Media upload failed; falling back to local path', err);
     }
