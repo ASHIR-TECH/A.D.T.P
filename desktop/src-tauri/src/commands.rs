@@ -243,6 +243,9 @@ pub async fn save_settings(
 /// Compress + upload a local file to the shared blob bucket via the gateway.
 /// Returns the MediaRef that the desktop UI embeds in chat messages.
 #[tauri::command]
+// The JS side invokes this with camelCase keys; keep the Rust signature names
+// aligned with the wire format while silencing the style lint.
+#[allow(non_snake_case)]
 pub async fn upload_media(
     app: AppHandle,
     path: String,
