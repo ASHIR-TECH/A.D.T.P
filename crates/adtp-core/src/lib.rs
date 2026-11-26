@@ -25,6 +25,7 @@
 pub mod encryption;
 pub mod errors;
 pub mod integrity;
+pub mod media;
 pub mod protocol;
 pub mod session;
 pub mod tofu;
