@@ -375,6 +375,8 @@ async def store(
     height: int | None = None,
     sender: str | None = None,
     session_id: str | None = None,
+    conversation_id: str | None = None,
+    recipient: str | None = None,
     generate_thumbnail: bool = True,
 ) -> MediaRef:
     """Compatibility wrapper for callers that already hold bounded bytes."""
@@ -396,6 +398,8 @@ async def store(
             height=height,
             sender=sender,
             session_id=session_id,
+            conversation_id=conversation_id,
+            recipient=recipient,
             generate_thumbnail=generate_thumbnail,
         )
     finally:

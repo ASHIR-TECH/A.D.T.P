@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import io
 import json
+from types import SimpleNamespace
 
+import httpx
 import pytest
 from PIL import Image
 
@@ -160,3 +162,111 @@ async def test_spool_upload_streams_hash_and_size(monkeypatch):
         assert sha == media_service.digest(b"abcdef")
     finally:
         await media_service._remove(path)
+
+
+class _FakeHttpError(httpx.HTTPError):
+    def __init__(self, status: int):
+        super().__init__(f"status {status}")
+        self.response = SimpleNamespace(status_code=status)
+
+
+class _FakeResponse:
+    def __init__(self, data: dict, status: int = 200):
+        self._data = data
+        self._status = status
+
+    def raise_for_status(self) -> None:
+        if self._status >= 400:
+            raise _FakeHttpError(self._status)
+
+    def json(self) -> dict:
+        return self._data
+
+
+@pytest.mark.asyncio
+async def test_store_emits_v2_reference_using_the_mars_relay_shape(monkeypatch):
+    """End-to-end ADTP sender check against a v2-shaped relay response."""
+    captured: dict = {}
+
+    def mars_ref(sign: dict) -> dict:
+        stored = sign["storedSize"]
+        return {
+            "schemaVersion": 2,
+            "id": "media-1",
+            "serviceUrl": "https://relay.example",
+            "name": sign["name"],
+            "mimeType": sign["mimeType"],
+            "size": sign["size"],
+            "compressedSize": stored,
+            "storedSize": stored,
+            "sha256": sign["sha256"],
+            "sender": sign["sender"],
+            "recipient": sign.get("recipient"),
+            "conversationId": sign.get("conversationId"),
+            "sessionId": sign.get("sessionId"),
+            "compressed": sign["compressed"],
+            "hasThumbnail": True,
+            "createdAt": "2026-11-26T10:00:00Z",
+            "expiresAt": "2026-11-27T10:00:00Z",
+            "status": "ready",
+        }
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            if url.endswith("/sign"):
+                captured["sign"] = json
+                return _FakeResponse({
+                    "id": "media-1",
+                    "original": {"url": "https://blob.example/original", "headers": {}},
+                    "thumbnail": {"url": "https://blob.example/thumb", "headers": {}},
+                })
+            if url.endswith("/complete"):
+                captured["complete"] = json
+                return _FakeResponse({"media": mars_ref(captured["sign"])})
+            raise AssertionError(f"unexpected POST {url}")
+
+        async def put(self, url, headers=None, content=None):
+            body = content if isinstance(content, bytes) else b"".join([c async for c in content])
+            captured.setdefault("puts", []).append((url, body))
+            return _FakeResponse({})
+
+        async def get(self, url, headers=None):
+            captured.setdefault("gets", []).append(url)
+            return _FakeResponse({"media": mars_ref(captured["sign"])})
+
+    monkeypatch.setattr(media_service.httpx, "AsyncClient", FakeClient)
+    image = Image.new("RGB", (40, 30), (11, 22, 33))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    ref = await media_service.store(
+        buffer.getvalue(),
+        name="capture.png",
+        mime_type="image/png",
+        sender="adtp-desktop",
+        conversation_id="default-session",
+        recipient="phone-1",
+    )
+
+    original = next(body for url, body in captured["puts"] if url.endswith("original"))
+    assert captured["sign"]["mimeType"] == "image/jpeg"
+    assert captured["sign"]["name"] == "capture.jpg"
+    assert captured["sign"]["storedSize"] == len(original)
+    assert captured["sign"]["recipient"] == "phone-1"
+    assert captured["sign"]["conversationId"] == "default-session"
+    assert captured["complete"]["sha256"] == media_service.digest(original)
+    assert captured["gets"]
+    assert ref.schemaVersion == 2
+    assert ref.expiresAt == "2026-11-27T10:00:00Z"
+    assert ref.status == "ready"
+    assert ref.storedSize == ref.compressedSize == len(original)
+    assert ref.sha256 == media_service.digest(original)
