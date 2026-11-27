@@ -19,8 +19,8 @@ export async function render(container) {
       </div>
     </div>
     <div id="verify-result"></div>
-    <div class="data-table">
-      <div class="table-header" style="grid-template-columns:1.5fr 1.5fr 1.5fr 1fr 1.5fr 1fr">
+    <div class="data-table history-table">
+      <div class="table-header history-header">
         <span>Log ID</span>
         <span>Timestamp (UTC)</span>
         <span>Session ID</span>
@@ -54,17 +54,26 @@ async function loadPage(container) {
       rows.innerHTML = '<div class="table-empty">No audit entries found</div>';
     } else {
       rows.innerHTML = items.map(entry => {
-        const statusText = entry.status || 'pending';
+        const statusText = String(pick(entry, ['status'], 'pending'));
         const badgeVariant = statusText === 'delivered' || entry.integrity_verified ? 'verified' :
                              statusText === 'failed' ? 'alerted' : 'pending';
+        const timestamp = formatUtc(pick(entry, ['timestamp', 'created_at', 'initiated_at', 'completed_at']));
+        const logId = String(pick(entry, ['id', 'log_id'], '—'));
+        const session = String(pick(entry, ['session_id', 'sender_peer_id', 'peer_id'], '—'));
+        const action = String(pick(entry, ['action', 'event', 'transfer_type'], 'transfer'));
+        const actor = String(pick(entry, ['actor', 'actor_name', 'initiated_by', 'device_name', 'sender_peer_id', 'peer_id'], '—'));
+        const ip = String(pick(entry, ['ip', 'ip_address', 'actor_ip', 'source_ip', 'remote_addr', 'peer_addr', 'host'], '—'));
         return `
-          <div class="table-row" style="grid-template-columns:1.5fr 1.5fr 1.5fr 1fr 1.5fr 1fr">
-            <span style="font-family:monospace;font-size:12px;color:var(--interactive-muted)">${(entry.id || entry.log_id || '—').toString().slice(0,16)}</span>
-            <span style="color:var(--interactive-muted)">${entry.timestamp || entry.created_at ? new Date(entry.timestamp || entry.created_at).toISOString() : '—'}</span>
-            <span style="font-family:monospace;font-size:12px;color:var(--interactive-muted)">${(entry.session_id || entry.peer_id || '—').slice(0,16)}</span>
-            <span>${entry.action || entry.event || 'transfer'}</span>
-            <span style="color:var(--interactive-muted)">${entry.actor || entry.peer_id || '—'}</span>
-            <span>${renderBadge(badgeVariant, statusText)}</span>
+          <div class="table-row history-row">
+            <span class="history-cell history-id" title="${esc(logId)}">${esc(logId.slice(0, 16))}</span>
+            <span class="history-cell history-time" title="${esc(timestamp.title)}">${esc(timestamp.label)}</span>
+            <span class="history-cell history-id" title="${esc(session)}">${esc(session.slice(0, 16))}</span>
+            <span class="history-cell">${esc(action)}</span>
+            <span class="history-actor-cell">
+              <span class="history-actor" title="${esc(actor)}">${esc(actor)}</span>
+              <span class="history-ip" title="${esc(ip)}">IP ${esc(ip)}</span>
+            </span>
+            <span class="history-cell">${renderBadge(badgeVariant, esc(statusText))}</span>
           </div>
         `;
       }).join('');
@@ -76,6 +85,35 @@ async function loadPage(container) {
   } catch (err) {
     container.querySelector('#audit-rows').innerHTML = `<div class="table-empty">History unavailable — daemon may be offline</div>`;
   }
+}
+
+function pick(entry, keys, fallback = '') {
+  if (!entry) return fallback;
+  for (const key of keys) {
+    if (entry[key] != null && entry[key] !== '') return entry[key];
+  }
+  return fallback;
+}
+
+function esc(value) {
+  const node = document.createElement('div');
+  node.textContent = value == null ? '' : String(value);
+  return node.innerHTML;
+}
+
+/** One-line UTC stamp: 2026-11-27 09:41:23Z, with the full value as a tooltip. */
+function formatUtc(value) {
+  if (!value) return { label: '—', title: '' };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const raw = String(value);
+    return { label: raw.slice(0, 24), title: raw };
+  }
+  const iso = date.toISOString();
+  return {
+    label: iso.replace('T', ' ').replace(/\.\d{3}Z$/, 'Z'),
+    title: iso,
+  };
 }
 
 function setupActions(container) {
