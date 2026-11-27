@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 
 from adtp_api.main import create_app
+from adtp_api.version import __version__
 
 
 VALID_TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -32,7 +33,7 @@ async def test_health_ok(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.1.0"
+    assert data["version"] == __version__
     assert "uptime_seconds" in data
 
 

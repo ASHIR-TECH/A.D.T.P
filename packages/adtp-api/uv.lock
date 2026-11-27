@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "adtp-api"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "adtp-mcp" },
@@ -52,7 +52,7 @@ provides-extras = ["test", "metrics"]
 
 [[package]]
 name = "adtp-mcp"
-version = "0.2.0"
+version = "1.0.0"
 source = { directory = "/home/contractor/Koding/A.D.T.P/packages/adtp-mcp" }
 dependencies = [
     { name = "aiofiles" },
