@@ -61,7 +61,8 @@ DEVICE_MESSAGES_SCHEMA = """CREATE TABLE IF NOT EXISTS device_messages (
     text TEXT NOT NULL,
     created_at TEXT NOT NULL,
     delivered_at TEXT,
-    media TEXT
+    media TEXT,
+    direction TEXT NOT NULL DEFAULT 'outbound'
 )"""
 
 
@@ -73,11 +74,15 @@ async def ensure_device_tables(db: aiosqlite.Connection) -> None:
     await db.execute(DEVICES_SCHEMA)
     await db.execute(DEVICE_FILES_SCHEMA)
     await db.execute(DEVICE_MESSAGES_SCHEMA)
-    # CREATE TABLE IF NOT EXISTS won't add a column to an existing install.
-    try:
-        await db.execute("ALTER TABLE device_messages ADD COLUMN media TEXT")
-    except aiosqlite.OperationalError:
-        pass  # column already exists
+    # Existing installs predate the media and direction columns.
+    for column, definition in (
+        ("media", "TEXT"),
+        ("direction", "TEXT NOT NULL DEFAULT 'outbound'"),
+    ):
+        try:
+            await db.execute(f"ALTER TABLE device_messages ADD COLUMN {column} {definition}")
+        except aiosqlite.OperationalError:
+            pass
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_device_files_device "
         "ON device_files (device_id, created_at)"
@@ -186,6 +191,7 @@ def _row_to_message(row: aiosqlite.Row) -> DeviceMessage:
         created_at=row["created_at"],
         delivered_at=row["delivered_at"],
         media=media.model_dump() if media else None,
+        direction=str(row["direction"]) if "direction" in row.keys() and row["direction"] else "outbound",
     )
 
 
@@ -474,6 +480,50 @@ async def queue_message(
         "VALUES (?, ?, ?, ?, ?)",
         (record.id, device_id, record.text, record.created_at,
          json.dumps(record.media) if record.media else None),
+    )
+    await db.commit()
+    return record
+
+
+async def queue_inbound_message(
+    db: aiosqlite.Connection,
+    device_id: str,
+    text: str,
+    media: dict | None = None,
+    delivered_at: str | None = None,
+) -> DeviceMessage:
+    """Record a phone → desktop chat artifact in the same durable inbox.
+
+    Unlike ``queue_message`` this does not require a registered paired-device
+    row: the sender may be the phone that just uploaded a file, and the chat
+    history still needs to show it.
+    """
+    import json
+    from adtp_api.models.media import normalize_media_ref
+
+    normalized = normalize_media_ref(media)
+    record = DeviceMessage(
+        id=uuid.uuid4().hex,
+        device_id=device_id,
+        text=text.strip(),
+        created_at=_now(),
+        delivered_at=delivered_at or _now(),
+        media=normalized.model_dump() if normalized else None,
+        direction="inbound",
+    )
+    await db.execute(
+        "INSERT INTO device_messages "
+        "(id, device_id, text, created_at, delivered_at, media, direction) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            record.id,
+            device_id,
+            record.text,
+            record.created_at,
+            record.delivered_at,
+            json.dumps(record.media) if record.media else None,
+            "inbound",
+        ),
     )
     await db.commit()
     return record

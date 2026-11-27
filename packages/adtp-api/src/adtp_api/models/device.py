@@ -287,6 +287,7 @@ class DeviceMessage(BaseModel):
     delivered_at: str | None = None
     # Mirrors MARS ChatMessage.media — metadata only, never bytes.
     media: dict | None = None
+    direction: str = "outbound"
 
 
 class DeviceMessageList(BaseModel):

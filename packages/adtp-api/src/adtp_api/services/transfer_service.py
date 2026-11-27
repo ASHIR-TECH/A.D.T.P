@@ -78,7 +78,10 @@ def _unique_destination(directory: Path, filename: str) -> Path:
 
 
 async def receive_upload(
-    upload, db: aiosqlite.Connection | None = None, device_id: str | None = None
+    upload,
+    db: aiosqlite.Connection | None = None,
+    device_id: str | None = None,
+    client_ip: str = "",
 ) -> dict:
     """Stream a multipart upload into the intake dir, hash it and audit it.
 
@@ -137,8 +140,39 @@ async def receive_upload(
                 "receiver_peer_id": "",
                 "context": json.dumps({"path": str(destination), "direction": "inbound"}),
                 "timestamp": received_at,
+                "actor": device_id or "mars-mobile",
+                "ip": client_ip,
                 "agent_action": "received",
             },
+        )
+
+        # The phone's file is also a chat artifact. Without this row the bytes
+        # land in the intake directory and the audit log, but never appear in
+        # either desktop chat surface and cannot be downloaded from the UI.
+        from adtp_api.services.device_service import queue_inbound_message
+
+        await queue_inbound_message(
+            db,
+            device_id or "mars-mobile",
+            f"📎 {destination.name}",
+            {
+                "schemaVersion": 2,
+                "id": transfer_id,
+                # Loopback is rewritten by the desktop client to its gateway
+                # base URL; the gateway serves the file on this stable route.
+                "serviceUrl": f"http://127.0.0.1:{settings.api_port}",
+                "name": destination.name,
+                "mimeType": mime_type,
+                "size": size,
+                "storedSize": size,
+                "compressedSize": size,
+                "compressed": False,
+                "hasThumbnail": False,
+                "createdAt": received_at,
+                "status": "ready",
+                "sender": device_id or "mars-mobile",
+            },
+            delivered_at=received_at,
         )
 
     return {

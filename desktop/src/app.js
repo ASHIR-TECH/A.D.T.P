@@ -3,6 +3,7 @@ const { listen } = window.__TAURI__.event;
 
 import { render as renderSidebar } from './components/Sidebar.js';
 import { render as renderTopBar } from './components/TopBar.js';
+import { initChatEvents } from './lib/chatStore.js';
 
 let currentTab = 'dashboard';
 let notificationCount = 0;
@@ -204,6 +205,9 @@ async function revealUI() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // The conversation is app-wide, so its event stream is bound once here.
+  initChatEvents();
+
   renderSidebar(document.getElementById('sidebar'), currentTab, activateTab);
 
   const topbar = document.createElement('div');

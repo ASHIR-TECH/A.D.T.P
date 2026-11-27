@@ -1,17 +1,20 @@
 const { invoke } = window.__TAURI__.core;
 import { show } from './Toast.js';
-import { mediaUnavailable, mediaStatusLabel } from '../lib/mediaCard.js';
+import { chatStore, initChatEvents } from '../lib/chatStore.js';
+import { renderConversation, bindToolToggles } from '../lib/chatView.js';
+import { escapeHtml } from '../lib/chatFormat.js';
 
 /**
- * Per-device chat drawer.
+ * Paired-phone chat drawer.
  *
- * Replaces the old `window.prompt` flow: one composer carries both text and a
- * file attachment, and every message is written to the same durable queue the
- * AI uses (`send_message_to_device` / `send_file_to_device`). The phone sees
- * both in MARS chat.
+ * This is a view of the same conversation the dashboard shows. It still owns
+ * its invokes (picking files, durable queues, agent calls), but messages,
+ * target and attachment come from `chatStore`, so a send here appears in the
+ * dashboard immediately and vice versa.
  */
 
-let active = null; // { deviceId, root, timer, mode, attachedFile }
+let active = null;
+const expandedTools = new Set();
 
 const DIRECT = 'direct';
 const AI = 'ai';
@@ -19,6 +22,16 @@ const AI = 'ai';
 export function openDeviceChat(device) {
   if (!device || !device.device_id) return;
   closeDeviceChat();
+  initChatEvents();
+  chatStore.emit('chat-target', device.device_id);
+
+  // Make sure the target pickers agree even if the dashboard was never opened.
+  void (async () => {
+    try {
+      const paired = await invoke('list_paired_devices');
+      chatStore.emit('device-list', paired?.devices || []);
+    } catch {}
+  })();
 
   const root = document.createElement('div');
   root.className = 'device-chat-overlay';
@@ -32,14 +45,20 @@ export function openDeviceChat(device) {
     root,
     timer: null,
     mode: DIRECT,
-    attachedFile: null,
-    messages: [],
-    files: [],
     sending: false,
+    unsubscribe: null,
   };
   active = state;
 
   bind(state);
+  state.unsubscribe = chatStore.subscribe(current => {
+    if (!document.body.contains(root)) {
+      closeDeviceChat();
+      return;
+    }
+    sync(state, current);
+  });
+
   void refreshThread(state);
   state.timer = setInterval(() => {
     if (!document.body.contains(root)) return;
@@ -54,8 +73,9 @@ export function openDeviceChat(device) {
 
 export function closeDeviceChat() {
   if (!active) return;
-  const { root, timer } = active;
+  const { root, timer, unsubscribe } = active;
   clearInterval(timer);
+  if (unsubscribe) unsubscribe();
   active = null;
   document.removeEventListener('keydown', escListener);
   document.body.classList.remove('device-chat-open');
@@ -70,16 +90,16 @@ function shell(device) {
   const initial = name.trim().charAt(0).toUpperCase() || 'P';
   return `
     <div class="device-chat-scrim" data-close="1"></div>
-    <aside class="device-chat-drawer" role="dialog" aria-label="Chat with ${esc(name)}">
+    <aside class="device-chat-drawer" role="dialog" aria-label="Chat with ${escapeHtml(name)}">
       <header class="device-chat-head">
-        <div class="device-chat-avatar">${esc(initial)}</div>
+        <div class="device-chat-avatar">${escapeHtml(initial)}</div>
         <div class="device-chat-identity">
-          <div class="device-chat-name">${esc(name)}</div>
+          <div class="device-chat-name">${escapeHtml(name)}</div>
           <div class="device-chat-meta">
             <span class="device-chat-presence ${online ? 'online' : 'offline'}">
               <span class="device-chat-presence-dot"></span>${online ? 'Online' : 'Offline'}
             </span>
-            ${os ? `<span class="device-chat-sep">·</span><span>${esc(os)}</span>` : ''}
+            ${os ? `<span class="device-chat-sep">·</span><span>${escapeHtml(os)}</span>` : ''}
             ${batteryLabel(device)}
           </div>
         </div>
@@ -92,19 +112,26 @@ function shell(device) {
         <span class="device-chat-mode-hint" id="device-chat-mode-hint">Sends straight to the phone</span>
       </div>
 
-      <div class="device-chat-thread" id="device-chat-thread">
+      <div class="device-chat-target-row">
+        <label for="device-chat-target">Message target</label>
+        <select id="device-chat-target" class="chat-device-select" aria-label="Message target">
+          <option value="">All devices</option>
+        </select>
+      </div>
+
+      <div class="device-chat-thread" id="device-chat-thread" role="log" aria-live="polite">
         <div class="device-chat-loading">Loading conversation…</div>
       </div>
 
       <div class="device-chat-composer">
         <div class="device-chat-attach-chip" id="device-chat-attach-chip" hidden>
-          <span class="device-chat-attach-icon">📎</span>
+          <span class="device-chat-attach-icon" aria-hidden="true">📎</span>
           <span class="device-chat-attach-name" id="device-chat-attach-name"></span>
-          <button class="device-chat-attach-remove" id="device-chat-attach-remove" title="Remove attachment">&times;</button>
+          <button class="device-chat-attach-remove" id="device-chat-attach-remove" title="Remove attachment" aria-label="Remove attachment">&times;</button>
         </div>
         <div class="device-chat-input-row">
           <button class="device-chat-attach-btn" id="device-chat-attach" title="Attach a file" aria-label="Attach a file">📎</button>
-          <textarea id="device-chat-input" rows="1" maxlength="4000" placeholder="Message ${esc(name)}…"></textarea>
+          <textarea id="device-chat-input" rows="1" maxlength="4000" placeholder="Message ${escapeHtml(name)}…"></textarea>
           <button class="device-chat-send" id="device-chat-send" title="Send" aria-label="Send">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
           </button>
@@ -116,6 +143,50 @@ function shell(device) {
       </div>
     </aside>
   `;
+}
+
+function sync(state, current) {
+  const { root } = state;
+  const select = root.querySelector('#device-chat-target');
+  const deviceKey = current.devices.map(d => `${d.device_id}|${d.name}|${d.online}`).join(';');
+  if (select && select.dataset.deviceKey !== deviceKey) {
+    select.dataset.deviceKey = deviceKey;
+    select.innerHTML = '<option value="">All devices</option>' +
+      current.devices.map(d => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.name || d.device_id)} — ${d.online ? 'Online' : 'Offline'}</option>`).join('');
+  }
+  if (select) select.value = current.selectedDeviceId || '';
+
+  const paired = current.devices.find(d => d.device_id === state.deviceId);
+  if (paired) {
+    const name = root.querySelector('.device-chat-name');
+    if (name) name.textContent = paired.name || state.deviceId;
+    const presence = root.querySelector('.device-chat-presence');
+    if (presence) {
+      presence.className = `device-chat-presence ${paired.online ? 'online' : 'offline'}`;
+      presence.innerHTML = `<span class="device-chat-presence-dot"></span>${paired.online ? 'Online' : 'Offline'}`;
+    }
+  }
+
+  const chip = root.querySelector('#device-chat-attach-chip');
+  const chipName = root.querySelector('#device-chat-attach-name');
+  if (chip) chip.hidden = !current.attachedFile;
+  if (chipName) chipName.textContent = current.attachedFile?.name || '';
+
+  const input = root.querySelector('#device-chat-input');
+  const sendBtn = root.querySelector('#device-chat-send');
+  if (sendBtn) sendBtn.disabled = state.sending || !(input?.value.trim() || current.attachedFile);
+
+  const thread = root.querySelector('#device-chat-thread');
+  if (!thread) return;
+  const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
+  const firstRender = thread.dataset.rendered !== '1';
+  thread.innerHTML = renderConversation(current.messages, {
+    expandedTools,
+    devices: current.devices,
+  });
+  bindToolToggles(thread, expandedTools);
+  if (firstRender || atBottom) thread.scrollTop = thread.scrollHeight;
+  thread.dataset.rendered = '1';
 }
 
 function bind(state) {
@@ -138,13 +209,17 @@ function bind(state) {
     });
   });
 
+  root.querySelector('#device-chat-target')?.addEventListener('change', e => {
+    chatStore.emit('chat-target', e.target.value || null);
+  });
+
   const input = root.querySelector('#device-chat-input');
   const sendBtn = root.querySelector('#device-chat-send');
 
   const resize = () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 132) + 'px';
-    sendBtn.disabled = !input.value.trim() && !state.attachedFile;
+    sendBtn.disabled = state.sending || !input.value.trim() && !chatStore.getState().attachedFile;
   };
 
   input.addEventListener('input', resize);
@@ -165,9 +240,7 @@ function bind(state) {
       const path = await invoke('pick_file');
       if (!path) return;
       const name = path.split('/').pop() || path.split('\\').pop() || path;
-      state.attachedFile = { name, path };
-      root.querySelector('#device-chat-attach-name').textContent = name;
-      root.querySelector('#device-chat-attach-chip').hidden = false;
+      chatStore.emit('chat-attachment', { name, path });
       resize();
     } catch (err) {
       show(`File picker error: ${err}`, 'error');
@@ -175,8 +248,7 @@ function bind(state) {
   });
 
   root.querySelector('#device-chat-attach-remove')?.addEventListener('click', () => {
-    state.attachedFile = null;
-    root.querySelector('#device-chat-attach-chip').hidden = true;
+    chatStore.emit('chat-attachment', null);
     resize();
   });
 
@@ -202,205 +274,87 @@ async function refreshThread(state, { quiet } = {}) {
     ]);
     // A newer drawer may have opened while these were in flight.
     if (!active || active !== state) return;
-    state.messages = messageList?.messages || [];
-    state.files = fileList?.files || [];
-    renderThread(state);
+    chatStore.emit('device-thread', {
+      deviceId: state.deviceId,
+      messages: messageList?.messages || [],
+      files: fileList?.files || [],
+    });
   } catch (err) {
     if (!quiet) {
       const thread = state.root.querySelector('#device-chat-thread');
       if (thread) {
-        thread.innerHTML = `<div class="device-chat-error">Could not load this conversation.<br><span>${esc(String(err))}</span></div>`;
+        thread.innerHTML = `<div class="device-chat-error">Could not load this conversation.<br><span>${escapeHtml(String(err))}</span></div>`;
       }
     }
   }
-}
-
-function renderThread(state, { forceScroll = false } = {}) {
-  const thread = state.root.querySelector('#device-chat-thread');
-  if (!thread) return;
-  const atBottom =
-    thread.scrollHeight - thread.scrollTop - thread.clientHeight < 48;
-
-  const items = [
-    ...state.messages.map(m => ({
-      kind: 'text',
-      id: m.id,
-      createdAt: m.created_at,
-      text: m.text,
-      media: m.media,
-      delivered: !!m.delivered_at,
-    })),
-    ...state.files.map(f => ({
-      kind: 'file',
-      id: f.id,
-      createdAt: f.created_at,
-      filename: f.filename,
-      size: f.file_size,
-      delivered: !!f.delivered_at,
-    })),
-  ].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-  if (items.length === 0) {
-    thread.innerHTML = `
-      <div class="device-chat-empty">
-        <div class="device-chat-empty-icon">💬</div>
-        <div class="device-chat-empty-title">Start the conversation</div>
-        <div class="device-chat-empty-text">Messages and files you send here appear in MARS on ${esc(state.device.name || 'your phone')}.</div>
-      </div>`;
-    return;
-  }
-
-  let lastDay = '';
-  const firstRender = thread.dataset.rendered !== '1';
-  thread.innerHTML = items.map(item => {
-    const date = new Date(item.createdAt);
-    const day = Number.isNaN(date.getTime()) ? '' : date.toDateString();
-    const dayLabel = day && day !== lastDay
-      ? `<div class="device-chat-day">${esc(formatDay(date))}</div>`
-      : '';
-    lastDay = day || lastDay;
-    return dayLabel + renderItem(item, state.device.name);
-  }).join('');
-  // Don't yank the thread to the bottom while the user is reading history.
-  if (forceScroll || firstRender || atBottom) {
-    thread.scrollTop = thread.scrollHeight;
-  }
-  thread.dataset.rendered = '1';
-}
-
-function mediaCardHtml(media) {
-  if (!media || !media.id || !media.serviceUrl) return '';
-  const base = media.serviceUrl.replace(/\/$/, '');
-  const unavailable = mediaUnavailable(media);
-  const thumb = !unavailable && media.hasThumbnail
-    ? `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=thumbnail`
-    : '';
-  const download = `${base}/api/media/file/${encodeURIComponent(media.id)}?kind=original&download=1`;
-  return `
-    <div class="device-chat-media">
-      <div class="device-chat-media-thumb">${thumb
-        ? `<img src="${esc(thumb)}" alt="${esc(media.name || 'media')}" />`
-        : '<span>🖼</span>'}</div>
-      <div class="device-chat-media-info">
-        <div class="device-chat-file-name">${esc(media.name || 'media')}</div>
-        <div class="device-chat-file-size">${esc(mediaStatusLabel(media))}</div>
-        ${unavailable ? '' : `<a class="device-chat-media-download" href="${esc(download)}" target="_blank" rel="noopener noreferrer">⬇ Download</a>`}
-      </div>
-    </div>`;
-}
-
-function renderItem(item, deviceName) {
-  const time = formatTime(item.createdAt);
-  const tick = item.delivered ? '<span class="device-chat-tick delivered" title="Delivered">✓✓</span>' : '<span class="device-chat-tick" title="Queued">✓</span>';
-  if (item.kind === 'media') {
-    return `
-      <div class="device-chat-bubble-row out">
-        <div class="device-chat-bubble file">
-          ${mediaCardHtml(item.media)}
-          <div class="device-chat-bubble-meta">${time}${tick}</div>
-        </div>
-      </div>`;
-  }
-  if (item.kind === 'file') {
-    return `
-      <div class="device-chat-bubble-row out">
-        <div class="device-chat-bubble file">
-          <div class="device-chat-file-tile">
-            <div class="device-chat-file-icon">📄</div>
-            <div class="device-chat-file-info">
-              <div class="device-chat-file-name">${esc(item.filename || 'file')}</div>
-              <div class="device-chat-file-size">${formatBytes(item.size)}</div>
-            </div>
-          </div>
-          <div class="device-chat-bubble-meta">${time}${tick}</div>
-        </div>
-      </div>`;
-  }
-  return `
-    <div class="device-chat-bubble-row out">
-      <div class="device-chat-bubble">
-        <div class="device-chat-bubble-text">${esc(item.text)}</div>
-        ${mediaCardHtml(item.media)}
-        <div class="device-chat-bubble-meta">${time}${tick}</div>
-      </div>
-    </div>`;
-}
-
-function appendOptimistic(state, item) {
-  const thread = state.root.querySelector('#device-chat-thread');
-  if (!thread) return;
-  const empty = thread.querySelector('.device-chat-empty');
-  if (empty) thread.innerHTML = '';
-  thread.insertAdjacentHTML('beforeend', renderItem({ delivered: false, ...item }, state.device.name));
-  thread.scrollTop = thread.scrollHeight;
 }
 
 async function send(state) {
   if (state.sending) return;
   const input = state.root.querySelector('#device-chat-input');
   const statusEl = state.root.querySelector('#device-chat-status');
+  const current = chatStore.getState();
   const text = input.value.trim();
-  const file = state.attachedFile;
+  const file = current.attachedFile;
   if (!text && !file) return;
 
+  const targetId = current.selectedDeviceId || state.deviceId;
+  const name = state.device.name || targetId;
   state.sending = true;
   state.root.querySelector('#device-chat-send').disabled = true;
   if (statusEl) statusEl.textContent = state.mode === AI ? 'Asking ADTP AI…' : 'Sending…';
 
-  if (text) appendOptimistic(state, { kind: 'text', text, createdAt: new Date().toISOString() });
-  if (file) {
-    appendOptimistic(state, {
-      kind: 'file',
-      filename: file.name,
-      size: 0,
-      createdAt: new Date().toISOString(),
-    });
-  }
+  // Single optimistic row, reconciled with the durable row on the next poll.
+  const optimisticId = chatStore.addMessage({
+    role: 'user',
+    origin: state.mode === AI ? 'agent' : 'device',
+    deviceId: targetId,
+    kind: file ? 'file' : 'text',
+    text: text || `📎 ${file.name}`,
+    filename: file?.name || null,
+    file_path: file?.path || null,
+    pending: true,
+    status: 'sending',
+  });
 
   input.value = '';
   input.style.height = 'auto';
-  state.attachedFile = null;
-  const chip = state.root.querySelector('#device-chat-attach-chip');
-  if (chip) chip.hidden = true;
+  chatStore.emit('chat-attachment', null);
 
   try {
     if (state.mode === AI) {
-      await sendViaAgent(state, text, file);
+      await sendViaAgent(targetId, name, text, file);
     } else {
-      await sendDirect(state, text, file);
+      await sendDirect(targetId, name, text, file);
     }
+    chatStore.patchMessage(optimisticId, { delivered: true, status: 'sent', pending: false });
     if (statusEl) statusEl.textContent = 'Sent';
     setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 1600);
   } catch (err) {
+    chatStore.patchMessage(optimisticId, { status: 'failed', error: String(err) });
     if (statusEl) statusEl.textContent = 'Failed';
     show(`Send failed: ${err}`, 'error', 'top-right');
   } finally {
     state.sending = false;
     const sendBtn = state.root.querySelector('#device-chat-send');
-    if (sendBtn) sendBtn.disabled = !input.value.trim() && !state.attachedFile;
+    if (sendBtn) sendBtn.disabled = !input.value.trim() && !chatStore.getState().attachedFile;
     void refreshThread(state, { quiet: true });
   }
 }
 
-async function sendDirect(state, text, file) {
-  const name = state.device.name || state.deviceId;
+async function sendDirect(deviceId, name, text, file) {
   if (file) {
     // Shared blob pipeline first: a MediaRef travels inside the durable device
-    // message, so MARS chat renders a thumbnail + download link (text-only
-    // files used to land in the inbox with no chat bubble at all).
+    // message, so MARS chat renders a thumbnail + download link.
     let media = null;
     try {
-      media = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop', recipient: state.deviceId });
+      media = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop', recipient: deviceId });
     } catch (err) {
       console.warn('Media upload failed; using the staged-file chat fallback', err);
     }
     if (media) {
       try {
-        await invoke('send_message_to_device', {
-          deviceId: state.deviceId,
-          text,
-          media,
-        });
+        await invoke('send_message_to_device', { deviceId, text, media });
         if (!text) show(`Sent ${file.name} to ${name}`, 'success', 'top-right');
         return;
       } catch (err) {
@@ -413,14 +367,10 @@ async function sendDirect(state, text, file) {
 
   let inboxMedia = null;
   if (file) {
-    // The blob relay is optional locally. Stage the bytes in the phone's
-    // inbox, then still emit a chat message carrying a MediaRef that points at
-    // this gateway, so MARS renders a real media card instead of an invisible
-    // file. The gateway serves staged inbox files on /api/media/file/:id.
-    const queued = await invoke('send_file_to_device', {
-      deviceId: state.deviceId,
-      filePath: file.path,
-    });
+    // Stage the bytes in the phone's inbox, then still emit a chat message
+    // carrying a MediaRef that points at this gateway, so both surfaces render
+    // a real media card.
+    const queued = await invoke('send_file_to_device', { deviceId, filePath: file.path });
     try {
       const status = await invoke('get_api_status');
       const base = status?.phone_url || status?.url;
@@ -447,28 +397,26 @@ async function sendDirect(state, text, file) {
   }
 
   await invoke('send_message_to_device', {
-    deviceId: state.deviceId,
+    deviceId,
     text: text || (file ? `📎 ${file.name}` : ''),
     ...(inboxMedia ? { media: inboxMedia } : {}),
   });
 }
 
-async function sendViaAgent(state, text, file) {
-  const name = state.device.name || state.deviceId;
+async function sendViaAgent(deviceId, name, text, file) {
   let attachedMedia = null;
   let deliveredMedia = false;
   if (file) {
     try {
-      attachedMedia = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop', recipient: state.deviceId });
+      attachedMedia = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop', recipient: deviceId });
     } catch (err) {
       console.warn('Media upload failed; falling back to local path', err);
     }
   }
   if (attachedMedia) {
-    // Deliver the blob directly, independent of whether the agent chooses a tool.
     try {
       await invoke('send_message_to_device', {
-        deviceId: state.deviceId,
+        deviceId,
         text: text || '',
         media: attachedMedia,
       });
@@ -478,45 +426,17 @@ async function sendViaAgent(state, text, file) {
     }
   }
   const context = [
-    `[Target device: ${name} ${state.deviceId}]`,
+    `[Target device: ${name} ${deviceId}]`,
     attachedMedia
       ? `[Attached media: ${attachedMedia.name} — ${attachedMedia.serviceUrl}/api/media/file/${attachedMedia.id}?kind=original&download=1]\n[Attached media ref: ${JSON.stringify(attachedMedia)}]`
       : file ? `[Attached file: ${file.path}]` : '',
     text ? '' : file ? `Send this file to ${name}.` : '',
     file && !deliveredMedia
-      ? `To deliver the attached media to ${name}, call forward_media_to_device with device_id "${state.deviceId}" (the name "${name}" also works).`
+      ? `To deliver the attached media to ${name}, call forward_media_to_device with device_id "${deviceId}" (the name "${name}" also works).`
       : '',
     deliveredMedia ? 'The media was already delivered to the phone — do not send it again.' : '',
   ].filter(Boolean).join('\n');
   const prompt = text ? `${text}\n\n${context}` : context;
   const response = await invoke('agent_send_message', { message: prompt });
   if (response) show(response, 'info', 'top-right');
-}
-
-function formatTime(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatDay(date) {
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
-
-function formatBytes(bytes) {
-  if (!bytes || Number.isNaN(bytes)) return 'File';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
 }

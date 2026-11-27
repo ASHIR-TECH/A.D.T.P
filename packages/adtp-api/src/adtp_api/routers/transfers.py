@@ -53,7 +53,9 @@ async def upload_file(
     desktop AI can act on the uploaded file. The optional `device_id` links the
     upload to the phone that sent it (and to its audit entry).
     """
-    return await transfer_service.receive_upload(file, db, device_id)
+    return await transfer_service.receive_upload(
+        file, db, device_id, request.client.host if request.client else ""
+    )
 
 
 @router.get("/{transfer_id}/download")
