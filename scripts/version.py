@@ -12,8 +12,10 @@ Usage (from anywhere, with any Python 3.9+):
     python3 scripts/version.py check
     python3 scripts/version.py bump patch --dry-run
     python3 scripts/version.py bump minor
+    python3 scripts/version.py bump minor --commit   # one commit, no manual adds
     python3 scripts/version.py set 1.2.3 --dry-run
-    python3 scripts/version.py set 1.2.3
+    python3 scripts/version.py set 1.2.3 --commit
+    python3 scripts/version.py commit                # commit an already-made bump
 
 See docs/VERSIONING.md for the policy behind the numbers.
 """
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -226,6 +229,45 @@ def _print_plan(changes: list[Change], target: Version, root: Path) -> None:
         print(f"  {rel}: {summary} ({len(change.found)} declaration(s))")
 
 
+def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=root,
+        text=True,
+        capture_output=True,
+    )
+    if check and result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise VersionError(f"git {' '.join(args)} failed: {detail}")
+    return result
+
+
+def version_paths(root: Path) -> list[Path]:
+    """Every file that may carry the product version, including VERSION."""
+    paths = [root / VERSION_FILE]
+    paths.extend(root / rule.path for rule in build_rules())
+    # A path can be covered by two rules (pyproject.toml); de-duplicate.
+    return list(dict.fromkeys(paths))
+
+
+def commit_version_changes(root: Path, target: Version, paths: list[Path]) -> bool:
+    """Stage and commit only version files. Returns False if nothing changed."""
+    _git(root, "rev-parse", "--is-inside-work-tree")
+    changed: list[str] = []
+    for path in paths:
+        rel = path.relative_to(root).as_posix()
+        status = _git(root, "status", "--porcelain", "--", rel).stdout.strip()
+        if status:
+            changed.append(rel)
+    if not changed:
+        print("No version changes to commit.")
+        return False
+    _git(root, "add", "--", *changed)
+    _git(root, "commit", "-m", f"chore(release): bump version to {target}")
+    print(f"Committed {len(changed)} version file(s) as one commit: {target}")
+    return True
+
+
 def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -256,6 +298,14 @@ def main(argv: list[str] | None = None) -> int:
             help="show what would change without writing any files",
         )
 
+    def commit_flag(subparser: argparse.ArgumentParser) -> None:
+        subparser.add_argument(
+            "--commit",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="stage and commit every version file as one commit",
+        )
+
     show_cmd = commands.add_parser("show", help="print the product version")
     dry_run_flag(show_cmd)
     check_cmd = commands.add_parser("check", help="validate VERSION and every mirror")
@@ -263,9 +313,14 @@ def main(argv: list[str] | None = None) -> int:
     bump = commands.add_parser("bump", help="increment major, minor or patch")
     bump.add_argument("part", choices=PARTS)
     dry_run_flag(bump)
+    commit_flag(bump)
     set_cmd = commands.add_parser("set", help="pin an exact version")
     set_cmd.add_argument("version", help="MAJOR.MINOR.PATCH, e.g. 1.2.3")
     dry_run_flag(set_cmd)
+    commit_flag(set_cmd)
+    commit_cmd = commands.add_parser(
+        "commit", help="commit pending version changes as one commit"
+    )
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
@@ -284,11 +339,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"VERSION = {version} — all mirrors in sync")
             return 0
 
+        if args.command == "commit":
+            target = read_product_version(root)
+            commit_version_changes(root, target, version_paths(root))
+            return 0
+
         current = read_product_version(root)
         if args.command == "bump":
             target = current.bump(args.part)
         else:
             target = Version.parse(args.version)
+        if args.dry_run and getattr(args, "commit", False):
+            raise VersionError("--dry-run and --commit cannot be used together")
         changes = plan_changes(root, target)
         print(f"{current} -> {target}{' (dry run, nothing written)' if args.dry_run else ''}")
         _print_plan(changes, target, root)
@@ -297,6 +359,8 @@ def main(argv: list[str] | None = None) -> int:
         for change in changes:
             change.path.write_text(change.text, encoding="utf-8")
         print(f"Updated {len(changes)} files to {target}.")
+        if getattr(args, "commit", False):
+            commit_version_changes(root, target, [change.path for change in changes])
         return 0
     except (VersionError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)

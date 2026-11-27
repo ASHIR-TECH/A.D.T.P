@@ -73,6 +73,14 @@ python3 scripts/version.py bump minor               # 1.0.1 -> 1.1.0
 python3 scripts/version.py bump major --dry-run
 python3 scripts/version.py bump major               # 1.1.0 -> 2.0.0
 python3 scripts/version.py set 1.2.3 --dry-run      # pin an exact baseline
+
+# One-command release bump: writes every mirror AND commits them together
+python3 scripts/version.py bump patch --commit       # 1.0.0 -> 1.0.1, one commit
+python3 scripts/version.py bump minor --commit       # 1.0.1 -> 1.1.0, one commit
+python3 scripts/version.py set 1.2.3 --commit        # pin + commit
+
+# If you already bumped without --commit, commit all mirrors in one shot:
+python3 scripts/version.py commit
 ```
 
 Unit tests (stdlib `unittest`, no installs):
@@ -83,20 +91,23 @@ python3 -m pytest scripts/test_version.py -q        # optional; pytest just coll
 ```
 
 `--dry-run` prints each file and the old→new values but makes no writes.
-`check` exits non-zero with a per-file list on drift.
+`check` exits non-zero with a per-file list on drift. `--commit` stages **only**
+version files (the 21 mirrors listed above) and creates a single commit — you
+never add or commit them one by one. It refuses to run together with
+`--dry-run`. The `commit` subcommand does the same for a bump you already made
+by hand.
 
 ## Release procedure
 
 1. Decide the bump using the table above (a wire change means MAJOR).
 2. Preview: `python3 scripts/version.py bump <part> --dry-run`.
-3. Apply: `python3 scripts/version.py bump <part>`.
+3. Apply and commit in one step: `python3 scripts/version.py bump <part> --commit`.
+   (If you already applied it: `python3 scripts/version.py commit`.)
 4. Verify: `python3 scripts/version.py check && python3 scripts/version.py show`.
 5. Move the `Unreleased` section of `CHANGELOG.md` into a `## <version>` heading
    with the bump date; add the new empty `Unreleased` section.
-6. Commit the version change and tag it `adtp-v<version>` (e.g.
-   `git tag -a adtp-v1.1.0 -m "ADTP v1.1.0"`). The script does not commit or tag.
-7. Push, let CI build, and confirm the artifacts and GitHub release show the
-   same version.
+6. Push. CI creates the `adtp-v<version>-<sha>` tag and the GitHub release; you
+   do not need to create tags manually.
 
 ### CI handoff (not changed here)
 
