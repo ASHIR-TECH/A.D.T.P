@@ -1,6 +1,6 @@
 [package]
 name = "adtp-rendezvous"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "ADTP rendezvous server — STUN reflection, token issuance, punch coordination, wake signal forwarding"
 license = "MIT"
