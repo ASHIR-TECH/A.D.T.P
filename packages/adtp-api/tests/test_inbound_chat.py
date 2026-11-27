@@ -87,3 +87,49 @@ async def test_phone_upload_appears_in_chat_and_is_downloadable(client):
     assert entry["timestamp"]
     assert entry["actor"] == DEVICE_ID
     assert isinstance(entry["ip"], str)
+
+
+@pytest.mark.asyncio
+async def test_older_uploads_are_backfilled_into_chat(client, tmp_path):
+    """Files received before this feature still show up in the conversation."""
+    import json
+
+    import aiosqlite
+
+    from adtp_api.services import audit_service, device_service
+
+    registered = await client.post(
+        "/api/v1/devices/register",
+        headers=_auth(),
+        json={"device_id": DEVICE_ID, "name": "MARS", "platform": "android"},
+    )
+    assert registered.status_code == 201
+
+    old_file = tmp_path / "old-phone-file.jpg"
+    old_file.write_bytes(b"older upload")
+    db = await aiosqlite.connect(str(tmp_path / "audit.db"))
+    db.row_factory = aiosqlite.Row
+    await audit_service.append_transfer_audit(
+        db,
+        {
+            "id": "older-transfer-1",
+            "session_id": f"device-{DEVICE_ID}",
+            "transfer_type": "push",
+            "filename": old_file.name,
+            "mime_type": "image/jpeg",
+            "file_size": old_file.stat().st_size,
+            "status": "delivered",
+            "initiated_at": "2026-11-20T10:00:00Z",
+            "sender_peer_id": DEVICE_ID,
+            "context": json.dumps({"path": str(old_file), "direction": "inbound"}),
+        },
+    )
+    added = await device_service.backfill_inbound_from_audit(db)
+    await db.close()
+    assert added >= 1
+
+    messages = await client.get(
+        f"/api/v1/devices/{DEVICE_ID}/messages?include_delivered=true", headers=_auth()
+    )
+    inbound = [m for m in messages.json()["messages"] if m["media"] and m["media"]["id"] == "older-transfer-1"]
+    assert len(inbound) == 1

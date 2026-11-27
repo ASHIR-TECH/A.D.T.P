@@ -529,6 +529,72 @@ async def queue_inbound_message(
     return record
 
 
+async def backfill_inbound_from_audit(db: aiosqlite.Connection) -> int:
+    """Give uploads from earlier installs a chat row too.
+
+    The file bytes and audit row already existed before inbound chat rows were
+    introduced; without this migration the user's previously received files
+    stay invisible in both chat surfaces.
+    """
+    import json
+    from pathlib import Path
+
+    rows = await db.execute_fetchall(
+        "SELECT id, filename, mime_type, file_size, sender_peer_id, "
+        "initiated_at, context FROM transfer_audit "
+        "WHERE transfer_type = 'push' ORDER BY initiated_at ASC"
+    )
+    if not rows:
+        return 0
+
+    existing = set()
+    for row in await db.execute_fetchall(
+        "SELECT media FROM device_messages WHERE media IS NOT NULL"
+    ):
+        try:
+            media = json.loads(row["media"])
+        except (ValueError, TypeError):
+            continue
+        if isinstance(media, dict) and media.get("id"):
+            existing.add(str(media["id"]))
+
+    added = 0
+    for row in rows:
+        transfer_id = str(row["id"])
+        if transfer_id in existing:
+            continue
+        try:
+            context = json.loads(row["context"] or "{}")
+        except (ValueError, TypeError):
+            context = {}
+        if not Path(str(context.get("path", ""))).is_file():
+            continue
+        created = str(row["initiated_at"] or _now())
+        await queue_inbound_message(
+            db,
+            str(row["sender_peer_id"] or "mars-mobile"),
+            f"📎 {row['filename']}",
+            {
+                "schemaVersion": 2,
+                "id": transfer_id,
+                "serviceUrl": f"http://127.0.0.1:{settings.api_port}",
+                "name": row["filename"],
+                "mimeType": row["mime_type"] or "application/octet-stream",
+                "size": int(row["file_size"] or 0),
+                "storedSize": int(row["file_size"] or 0),
+                "compressedSize": int(row["file_size"] or 0),
+                "compressed": False,
+                "hasThumbnail": False,
+                "createdAt": created,
+                "status": "ready",
+                "sender": row["sender_peer_id"] or "mars-mobile",
+            },
+            delivered_at=created,
+        )
+        added += 1
+    return added
+
+
 async def list_messages(
     db: aiosqlite.Connection, device_id: str, include_delivered: bool = False
 ) -> DeviceMessageList:

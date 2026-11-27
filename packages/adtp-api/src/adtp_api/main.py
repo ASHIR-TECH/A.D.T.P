@@ -68,7 +68,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def init_tasks_db():
         from adtp_api.services.audit_service import ensure_transfer_audit_table
-        from adtp_api.services.device_service import ensure_device_tables
+        from adtp_api.services.device_service import (
+            backfill_inbound_from_audit,
+            ensure_device_tables,
+        )
 
         db_path = Path(audit_db)
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,6 +95,7 @@ def create_app() -> FastAPI:
         await db.commit()
         await ensure_transfer_audit_table(db)
         await ensure_device_tables(db)
+        await backfill_inbound_from_audit(db)
         await db.close()
 
     app.include_router(health.router)
