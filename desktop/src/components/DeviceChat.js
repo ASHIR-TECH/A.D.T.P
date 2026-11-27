@@ -392,7 +392,7 @@ async function sendDirect(state, text, file) {
     try {
       media = await invoke('upload_media', { path: file.path, sender: 'adtp-desktop', recipient: state.deviceId });
     } catch (err) {
-      console.warn('Media upload failed; falling back to a plain inbox file', err);
+      console.warn('Media upload failed; using the staged-file chat fallback', err);
     }
     if (media) {
       try {
@@ -404,16 +404,53 @@ async function sendDirect(state, text, file) {
         if (!text) show(`Sent ${file.name} to ${name}`, 'success', 'top-right');
         return;
       } catch (err) {
-        console.warn('Media message failed; falling back to a plain inbox file', err);
+        console.warn('Media message failed; using the staged-file chat fallback', err);
       }
     }
   }
-  if (text) {
-    await invoke('send_message_to_device', { deviceId: state.deviceId, text });
-  }
+
+  if (!text && !file) return;
+
+  let inboxMedia = null;
   if (file) {
-    await invoke('send_file_to_device', { deviceId: state.deviceId, filePath: file.path });
+    // The blob relay is optional locally. Stage the bytes in the phone's
+    // inbox, then still emit a chat message carrying a MediaRef that points at
+    // this gateway, so MARS renders a real media card instead of an invisible
+    // file. The gateway serves staged inbox files on /api/media/file/:id.
+    const queued = await invoke('send_file_to_device', {
+      deviceId: state.deviceId,
+      filePath: file.path,
+    });
+    try {
+      const status = await invoke('get_api_status');
+      const base = status?.phone_url || status?.url;
+      const record = queued?.file;
+      if (base && record?.id) {
+        inboxMedia = {
+          schemaVersion: 2,
+          id: record.id,
+          serviceUrl: String(base).replace(/\/$/, ''),
+          name: record.filename || file.name,
+          mimeType: record.mime_type || 'application/octet-stream',
+          size: record.file_size || 0,
+          storedSize: record.file_size || 0,
+          compressedSize: record.file_size || 0,
+          compressed: false,
+          hasThumbnail: false,
+          createdAt: record.created_at || new Date().toISOString(),
+          status: 'ready',
+        };
+      }
+    } catch (err) {
+      console.warn('Could not build an inbox media card; sending text only', err);
+    }
   }
+
+  await invoke('send_message_to_device', {
+    deviceId: state.deviceId,
+    text: text || (file ? `📎 ${file.name}` : ''),
+    ...(inboxMedia ? { media: inboxMedia } : {}),
+  });
 }
 
 async function sendViaAgent(state, text, file) {

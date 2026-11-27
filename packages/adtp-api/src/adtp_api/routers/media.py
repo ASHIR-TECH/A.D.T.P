@@ -12,11 +12,13 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse
+import aiosqlite
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 
+from adtp_api.dependencies import get_db
 from adtp_api.models.media import MediaRef
-from adtp_api.services import media_service
+from adtp_api.services import device_service, media_service
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
 # Header-free compat path that mirrors the MARS relay wire format. The id is a
@@ -97,10 +99,27 @@ async def media_file(media_id: str, kind: str = "original", download: bool = Fal
 
 
 @public_router.get("/file/{media_id}")
-async def public_media_file(media_id: str, kind: str = "original", download: bool = False):
-    """Header-free thumbnail/original redirect for the phone's <Image>.
+async def public_media_file(
+    media_id: str,
+    kind: str = "original",
+    download: bool = False,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """Header-free media redirect for the phone's <Image> / download action.
 
     `/api/media/file/:id` is the exact path MARS builds from a MediaRef's
-    `serviceUrl`, so a MediaRef minted here renders on both platforms.
+    `serviceUrl`. Prefer a staged desktop → phone inbox file (the fallback
+    used when the blob relay is unavailable); otherwise redirect to the relay
+    for a freshly signed blob URL. Both keep the bucket/token server-side.
     """
+    if kind == "original":
+        staged = await device_service.find_staged_file(db, media_id)
+        if staged is not None:
+            record, path = staged
+            return FileResponse(
+                path=str(path),
+                filename=record.filename,
+                media_type=record.mime_type or "application/octet-stream",
+                headers={"Cache-Control": "no-store"},
+            )
     return _relay_redirect(media_id, kind, download)

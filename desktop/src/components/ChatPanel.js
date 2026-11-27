@@ -326,7 +326,39 @@ async function sendMessage(container) {
       }
     } else if (filePath && selectedDeviceId && !attachedMedia) {
       try {
-        await invoke('send_file_to_device', { deviceId: selectedDeviceId, filePath });
+        const queued = await invoke('send_file_to_device', { deviceId: selectedDeviceId, filePath });
+        // Even without the blob relay, the phone must see a chat card. Stage
+        // the bytes in its inbox and point a MediaRef at this gateway, which
+        // serves staged files on /api/media/file/:id.
+        let inboxMedia = null;
+        try {
+          const status = await invoke('get_api_status');
+          const base = status?.phone_url || status?.url;
+          const record = queued?.file;
+          if (base && record?.id) {
+            inboxMedia = {
+              schemaVersion: 2,
+              id: record.id,
+              serviceUrl: String(base).replace(/\/$/, ''),
+              name: record.filename || fileName,
+              mimeType: record.mime_type || 'application/octet-stream',
+              size: record.file_size || 0,
+              storedSize: record.file_size || 0,
+              compressedSize: record.file_size || 0,
+              compressed: false,
+              hasThumbnail: false,
+              createdAt: record.created_at || new Date().toISOString(),
+              status: 'ready',
+            };
+          }
+        } catch (err) {
+          console.warn('Could not build an inbox media card', err);
+        }
+        await invoke('send_message_to_device', {
+          deviceId: selectedDeviceId,
+          text: text || `📎 ${fileName}`,
+          ...(inboxMedia ? { media: inboxMedia } : {}),
+        });
         deliveredMedia = true;
       } catch (err) {
         console.warn('Plain file delivery failed', err);

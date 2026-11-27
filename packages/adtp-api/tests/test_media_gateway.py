@@ -80,3 +80,48 @@ def test_private_media_routes_still_require_auth(app):
     with TestClient(app) as client:
         assert client.get("/api/v1/media/uuid-gateway-1").status_code == 401
         assert client.post("/api/v1/media/upload", files={"file": ("x.png", b"x", "image/png")}).status_code == 401
+
+
+def test_staged_file_is_served_and_appears_as_chat_media(app):
+    """Desktop file sends without a blob relay still become chat media cards."""
+    device_id = "phone-media-card-1"
+    with TestClient(app) as client:
+        assert client.post(
+            "/api/v1/devices/register",
+            headers=AUTH,
+            json={"device_id": device_id, "name": "Test Phone", "platform": "android"},
+        ).status_code == 201
+
+        uploaded = client.post(
+            f"/api/v1/devices/{device_id}/files",
+            headers=AUTH,
+            files={"file": ("note.txt", b"hello from adtp", "text/plain")},
+        )
+        assert uploaded.status_code == 201
+        file_id = uploaded.json()["file"]["id"]
+
+        media = {
+            "schemaVersion": 2,
+            "id": file_id,
+            "serviceUrl": "http://gateway.example",
+            "name": "note.txt",
+            "mimeType": "text/plain",
+            "size": 15,
+            "storedSize": 15,
+            "compressedSize": 15,
+            "compressed": False,
+            "hasThumbnail": False,
+            "status": "ready",
+        }
+        posted = client.post(
+            f"/api/v1/devices/{device_id}/messages",
+            headers=AUTH,
+            json={"text": "📎 note.txt", "media": media},
+        )
+        assert posted.status_code == 201
+        assert posted.json()["message"]["media"]["id"] == file_id
+
+        # Header-free route used by the phone's MediaCard download action.
+        response = client.get(f"/api/media/file/{file_id}?download=1", follow_redirects=False)
+        assert response.status_code == 200
+        assert response.content == b"hello from adtp"
