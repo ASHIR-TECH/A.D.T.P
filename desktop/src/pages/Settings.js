@@ -3,6 +3,7 @@ import { show } from '../components/Toast.js';
 import { showBanner } from '../components/Banner.js';
 import { render as renderAgentStatus } from '../components/AgentStatusCard.js';
 import { openDeviceChat } from '../components/DeviceChat.js';
+import { chatStore } from '../lib/chatStore.js';
 
 let advancedOpen = false;
 let liveTimer = null;
@@ -55,6 +56,9 @@ export async function render(container) {
     const paired = await invoke('list_paired_devices');
     devices = paired?.devices || [];
   } catch {}
+  // Keep the paired-phone list in the shared chat state up to date, so the
+  // dashboard target picker and the drawer always agree on online state.
+  chatStore.emit('device-list', devices);
 
   let apiStatus = null;
   try {
@@ -403,6 +407,7 @@ async function refreshDeviceList(container) {
   try {
     const paired = await invoke('list_paired_devices');
     list.innerHTML = deviceRows(paired?.devices || []);
+    chatStore.emit('device-list', paired?.devices || []);
     bindDeviceActions(container);
   } catch {}
 }

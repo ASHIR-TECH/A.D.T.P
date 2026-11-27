@@ -18,6 +18,9 @@ class AuditEntry(BaseModel):
     chain_hash: str = ""
     initiated_at: str = ""
     completed_at: str | None = None
+    timestamp: str = ""
+    actor: str = ""
+    ip: str = ""
 
 
 class AuditExport(BaseModel):

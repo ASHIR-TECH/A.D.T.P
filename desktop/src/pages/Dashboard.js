@@ -38,7 +38,6 @@ export async function render(container) {
           </div>
         </div>
         <div class="widget-row" id="widget-row"></div>
-        <div id="activity-widget"></div>
         <div class="toolbar-row" style="margin-top:var(--space-4)">
           <input class="search-input" id="table-search" placeholder="Search events..." />
           <div class="toolbar-actions">
@@ -48,7 +47,10 @@ export async function render(container) {
         <div id="event-table"></div>
         <div id="dashboard-banner"></div>
       </div>
-      <div id="chat-panel-container" class="dashboard-sidebar"></div>
+      <aside class="dashboard-sidebar" aria-label="Live activity and chat">
+        <div id="activity-widget"></div>
+        <div id="chat-panel-container" class="chat-panel-slot"></div>
+      </aside>
     </div>
 
     <!-- Send to Peer Modal -->
@@ -285,24 +287,59 @@ function renderActivity(container) {
   const combined = [...(transfers?.transfers || []), ...p2pTransfers]
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     .slice(0, 3);
-  const maxCount = combined.length > 0 ? Math.max(...combined.map(t => 1)) : 1;
+
+  if (combined.length === 0) {
+    el.innerHTML = `
+      <section class="activity-widget" aria-labelledby="activity-heading">
+        <header class="activity-head">
+          <h2 id="activity-heading">Top activity</h2>
+          <span class="activity-total" aria-hidden="true">00</span>
+        </header>
+        <div class="activity-empty">No transfers yet. Activity from this desktop and paired phones shows up here.</div>
+        <div class="activity-foot">Most recent transfers</div>
+      </section>`;
+    return;
+  }
 
   el.innerHTML = `
-    <div class="activity-widget">
-      <div class="activity-widget-title">Top Activity</div>
-      ${combined.length === 0 ? '<div style="color:var(--interactive-muted);font-size:13px;padding:8px 0">No recent activity</div>' :
-        combined.map((t, i) => `
-          <div class="activity-bar">
-            <span class="activity-bar-label">${t.filename || 'Transfer'}${t.transfer_type === 'p2p' ? ' [P2P]' : ''}</span>
-            <div class="activity-bar-track">
-              <div class="activity-bar-fill" style="width:${((1 / maxCount) * 100)}%"></div>
-            </div>
-            <span class="activity-bar-count">${t.status || 'pending'}</span>
-          </div>
-        `).join('')
-      }
-    </div>
+    <section class="activity-widget" aria-labelledby="activity-heading">
+      <header class="activity-head">
+        <h2 id="activity-heading">Top activity</h2>
+        <span class="activity-total" aria-label="${combined.length} recent transfers">${String(combined.length).padStart(2, '0')}</span>
+      </header>
+      <ol class="activity-list">
+        ${combined.map((t, i) => {
+          const status = String(t.status || 'pending');
+          const statusClass = ['delivered', 'failed', 'pending', 'in_progress', 'completed'].includes(status) ? status : 'pending';
+          const type = t.transfer_type === 'p2p' ? 'Peer transfer' : 'Transfer';
+          const date = t.created_at ? new Date(t.created_at) : null;
+          const validDate = date && !Number.isNaN(date.getTime());
+          const time = validDate ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+          const name = String(t.filename || 'Transfer');
+          const peer = t.peer_id ? String(t.peer_id).slice(0, 10) : '';
+          return `
+          <li class="activity-item${i === 0 ? ' activity-item-lead' : ''}">
+            <span class="activity-rank">${String(i + 1).padStart(2, '0')}</span>
+            <span class="activity-body">
+              <span class="activity-name" title="${esc(name)}">${esc(name)}</span>
+              <span class="activity-sub">${esc(type)}${peer ? ` · ${esc(peer)}` : ''}</span>
+            </span>
+            <span class="activity-side">
+              <span class="activity-status ${statusClass}"><span class="activity-dot" aria-hidden="true"></span>${esc(status)}</span>
+              <time class="activity-time" datetime="${validDate ? esc(date.toISOString()) : ''}">${esc(time)}</time>
+            </span>
+          </li>`;
+        }).join('')}
+      </ol>
+      <div class="activity-foot">Most recent transfers</div>
+    </section>
   `;
+}
+
+function esc(value) {
+  const node = document.createElement('div');
+  node.textContent = value == null ? '' : String(value);
+  return node.innerHTML;
 }
 
 function renderEvents(container, data) {
@@ -326,11 +363,11 @@ function renderEvents(container, data) {
           return `
           <div class="table-row" style="grid-template-columns:2fr 3fr 1fr 1fr 1fr 1fr${isP2p ? ';border-left:2px solid var(--gold)' : ''}">
             <span style="font-weight:700;color:var(--white)">${isP2p ? 'P2P File' : 'File Transfer'}</span>
-            <span style="color:var(--interactive-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.filename || ''} sent to ${t.peer_id || 'unknown'}">${t.filename || '—'} → ${(t.peer_id || 'unknown').slice(0,12)}</span>
-            <span><span class="status-dot ${t.status === 'delivered' ? 'connected' : t.status === 'failed' ? 'disconnected' : 'syncing'}"></span> ${t.status || 'pending'}</span>
-            <span>${renderBadge(t.status === 'delivered' ? 'verified' : t.status === 'failed' ? 'alerted' : 'pending', t.status || 'pending')}</span>
-            <span style="color:var(--interactive-muted)">${(t.peer_id || '—').slice(0,8)}</span>
-            <span style="color:var(--interactive-muted);text-align:right">${t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</span>
+            <span style="color:var(--interactive-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.filename || '')} sent to ${esc(t.peer_id || 'unknown')}">${esc(t.filename || '—')} → ${esc(String(t.peer_id || 'unknown').slice(0,12))}</span>
+            <span><span class="status-dot ${t.status === 'delivered' ? 'connected' : t.status === 'failed' ? 'disconnected' : 'syncing'}"></span> ${esc(t.status || 'pending')}</span>
+            <span>${renderBadge(t.status === 'delivered' ? 'verified' : t.status === 'failed' ? 'alerted' : 'pending', esc(t.status || 'pending'))}</span>
+            <span style="color:var(--interactive-muted)">${esc(String(t.peer_id || '—').slice(0,8))}</span>
+            <span style="color:var(--interactive-muted);text-align:right">${t.created_at ? esc(new Date(t.created_at).toLocaleString()) : '—'}</span>
           </div>
         `}).join('')
       }
