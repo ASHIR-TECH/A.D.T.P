@@ -434,6 +434,25 @@ async def open_file(
     return record, path
 
 
+async def find_staged_file(
+    db: aiosqlite.Connection, file_id: str
+) -> tuple[DeviceFile, Path] | None:
+    """Locate a desktop → phone inbox file by its capability id.
+
+    Used by the header-free media route when the shared blob relay is not
+    configured, so a plain staged file can still render as a chat media card.
+    """
+    rows = await db.execute_fetchall(
+        "SELECT device_id FROM device_files WHERE id = ?", [file_id]
+    )
+    if not rows:
+        return None
+    try:
+        return await open_file(db, rows[0]["device_id"], file_id)
+    except DeviceNotFoundError:
+        return None
+
+
 async def queue_message(
     db: aiosqlite.Connection, device_id: str, text: str, media: dict | None = None
 ) -> DeviceMessage:
