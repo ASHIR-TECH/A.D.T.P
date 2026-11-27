@@ -1,6 +1,6 @@
 [package]
 name = "adtp-client"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "ADTP client daemon — runs on user machine"
 license = "MIT"

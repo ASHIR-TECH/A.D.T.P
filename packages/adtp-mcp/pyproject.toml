@@ -1,6 +1,6 @@
 [project]
 name = "adtp-mcp"
-version = "1.0.0"
+version = "1.0.1"
 description = "ADTP MCP server bridge for Rust daemons — Phase 3 Intelligence Layer"
 readme = "README.md"
 requires-python = ">=3.12"

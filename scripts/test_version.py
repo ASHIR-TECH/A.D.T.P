@@ -203,6 +203,21 @@ class SyncTests(unittest.TestCase):
         after = {rel: (self.root / rel).read_text(encoding="utf-8") for rel in before}
         self.assertEqual(before, after)
 
+    def test_commit_flag_rejects_dry_run(self) -> None:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = vt.main([
+                "--root", str(self.root), "bump", "patch", "--dry-run", "--commit"
+            ])
+        self.assertEqual(code, 1)
+        self.assertIn("cannot be used together", err.getvalue())
+
+    def test_version_paths_cover_every_mirror(self) -> None:
+        paths = {p.relative_to(self.root).as_posix() for p in vt.version_paths(self.root)}
+        self.assertIn(vt.VERSION_FILE, paths)
+        for rule in vt.build_rules():
+            self.assertIn(rule.path, paths)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
