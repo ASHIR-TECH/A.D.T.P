@@ -10,6 +10,8 @@ Both redirect to a freshly signed relay URL, so the bucket stays private.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from urllib.parse import quote
 
 import aiosqlite
@@ -122,4 +124,23 @@ async def public_media_file(
                 media_type=record.mime_type or "application/octet-stream",
                 headers={"Cache-Control": "no-store"},
             )
+        # Files the phone uploaded to the desktop are identified by their
+        # transfer_audit id; their intake path lives in the audit context.
+        rows = await db.execute_fetchall(
+            "SELECT filename, mime_type, context FROM transfer_audit WHERE id = ?",
+            [media_id],
+        )
+        if rows:
+            try:
+                context = json.loads(rows[0]["context"] or "{}")
+                path = Path(str(context.get("path", "")))
+            except (ValueError, TypeError):
+                path = Path()
+            if path.is_file():
+                return FileResponse(
+                    path=str(path),
+                    filename=rows[0]["filename"] or path.name,
+                    media_type=rows[0]["mime_type"] or "application/octet-stream",
+                    headers={"Cache-Control": "no-store"},
+                )
     return _relay_redirect(media_id, kind, download)

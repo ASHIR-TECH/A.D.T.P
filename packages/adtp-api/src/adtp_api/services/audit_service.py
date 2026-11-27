@@ -31,12 +31,24 @@ TRANSFER_AUDIT_SCHEMA = """CREATE TABLE IF NOT EXISTS transfer_audit (
     receiver_peer_id TEXT NOT NULL DEFAULT '',
     context TEXT,
     timestamp TEXT NOT NULL DEFAULT '',
+    actor TEXT NOT NULL DEFAULT '',
+    ip TEXT NOT NULL DEFAULT '',
     agent_action TEXT NOT NULL DEFAULT ''
 )"""
 
 
 async def ensure_transfer_audit_table(db: aiosqlite.Connection) -> None:
     await db.execute(TRANSFER_AUDIT_SCHEMA)
+    # Existing installs predate the actor/ip columns.
+    for column, definition in (
+        ("timestamp", "TEXT NOT NULL DEFAULT ''"),
+        ("actor", "TEXT NOT NULL DEFAULT ''"),
+        ("ip", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        try:
+            await db.execute(f"ALTER TABLE transfer_audit ADD COLUMN {column} {definition}")
+        except aiosqlite.OperationalError:
+            pass
     await db.commit()
 
 
@@ -62,8 +74,8 @@ async def append_transfer_audit(db: aiosqlite.Connection, row: dict) -> None:
         "INSERT INTO transfer_audit (id, session_id, transfer_type, filename, "
         "mime_type, file_size, status, integrity_verified, signature, "
         "chain_hash, initiated_at, completed_at, sender_peer_id, "
-        "receiver_peer_id, context, timestamp, agent_action) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "receiver_peer_id, context, timestamp, actor, ip, agent_action) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             transfer_id,
             row.get("session_id", ""),
@@ -81,6 +93,8 @@ async def append_transfer_audit(db: aiosqlite.Connection, row: dict) -> None:
             row.get("receiver_peer_id", ""),
             row.get("context"),
             row.get("timestamp", row.get("initiated_at", "")),
+            row.get("actor") or row.get("sender_peer_id", ""),
+            row.get("ip", ""),
             row.get("agent_action", "received"),
         ),
     )
@@ -234,4 +248,12 @@ def _row_to_audit_entry(row) -> AuditEntry:
         completed_at=str(row["completed_at"])
         if "completed_at" in row.keys() and row["completed_at"]
         else None,
+        timestamp=str(
+            row["timestamp"] if "timestamp" in row.keys() else row["initiated_at"]
+        ) if "initiated_at" in row.keys() else "",
+        actor=str(
+            row["actor"] if "actor" in row.keys() and row["actor"]
+            else row["sender_peer_id"] if "sender_peer_id" in row.keys() else ""
+        ),
+        ip=str(row["ip"] if "ip" in row.keys() else ""),
     )
