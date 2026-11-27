@@ -2,6 +2,7 @@
 testpaths = [
     "packages/adtp-api/tests",
     "packages/adtp-mcp/tests",
+    "scripts",
 ]
 pythonpath = [
     "packages/adtp-api/src",

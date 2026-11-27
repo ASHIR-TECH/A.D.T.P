@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from adtp_api.config import settings, default_intake_dir
+from adtp_api.version import __version__
 
 
 def resolved_intake_dir() -> Path:
@@ -201,7 +202,7 @@ async def gather(
         "uptime_seconds": _uptime_seconds(),
         "primary_ip": _primary_ip(),
         "python_version": platform.python_version(),
-        "gateway_version": "0.1.0",
+        "gateway_version": __version__,
         "port": port if port is not None else settings.api_port,
         "intake_dir": str(resolved_intake_dir()),
         "agent": {

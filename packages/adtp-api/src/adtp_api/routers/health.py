@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from adtp_api.config import settings
+from adtp_api.version import __version__
 
 router = APIRouter(prefix="/api/v1/health", tags=["health"])
 _start_time = time.time()
@@ -15,7 +16,7 @@ _start_time = time.time()
 async def health():
     return {
         "status": "ok",
-        "version": "0.1.0",
+        "version": __version__,
         "uptime_seconds": int(time.time() - _start_time),
     }
 

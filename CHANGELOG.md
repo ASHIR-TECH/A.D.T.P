@@ -6,6 +6,9 @@ All notable changes to ADTP are documented here.
 
 ### Added
 
+- SemVer-style product/code versioning: `VERSION` is the single source of
+  truth, `scripts/version.py` validates and bumps every synchronized version
+  declaration, and `docs/VERSIONING.md` documents the release procedure.
 - **Mobile companion surfaces on the REST gateway** (`packages/adtp-api`):
   - `GET /api/v1/system/info` — host telemetry (hostname, OS/arch, CPU/RAM/disk,
     uptime, primary IP, agent status). Dependency-light: uses `psutil` when the

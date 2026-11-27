@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from adtp_api.version import __version__
+
 
 class SystemAgentInfo(BaseModel):
     """Snapshot of the desktop's embedded agent (mirrors /agent/status)."""
@@ -45,7 +47,7 @@ class SystemInfo(BaseModel):
     uptime_seconds: float | None = None
     primary_ip: str | None = None
     python_version: str = ""
-    gateway_version: str = "0.1.0"
+    gateway_version: str = __version__
     port: int = 40003
     intake_dir: str = ""
     agent: SystemAgentInfo = SystemAgentInfo()

@@ -1,6 +1,6 @@
 [project]
 name = "adtp-api"
-version = "0.1.0"
+version = "1.0.0"
 description = "ADTP REST API — Phase 4"
 requires-python = ">=3.12"
 authors = [{ name = "ASHIR Tech" }]
@@ -17,7 +17,7 @@ dependencies = [
     # Sibling package in this repository. `[tool.uv.sources]` below keeps the
     # path portable; a plain `pip install` can use `--no-deps` plus PYTHONPATH
     # when the bridge is not needed.
-    "adtp-mcp>=0.2.0",
+    "adtp-mcp>=1.0.0",
 ]
 
 [tool.uv.sources]

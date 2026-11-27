@@ -1,6 +1,6 @@
 [package]
 name = "adtp-peer-core"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "ADTP peer-core — shared peer logic for the symmetric peer model"
 license = "MIT"

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from adtp_api.config import settings
 from adtp_api.errors import register_error_handlers
+from adtp_api.version import __version__
 from adtp_api.middleware.auth import register_auth_middleware
 from adtp_api.middleware.ratelimit import register_rate_limit
 from adtp_api.relay import register_relay
@@ -43,7 +44,7 @@ def create_app() -> FastAPI:
     docs_enabled = settings.api_docs
     app = FastAPI(
         title="ADTP REST API",
-        version="0.1.0",
+        version=__version__,
         docs_url="/docs" if docs_enabled else None,
         redoc_url="/redoc" if docs_enabled else None,
     )

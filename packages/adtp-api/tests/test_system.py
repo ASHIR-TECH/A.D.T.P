@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from adtp_api.main import create_app
 from adtp_api.config import Settings
+from adtp_api.version import __version__
 
 VALID_TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -62,7 +63,7 @@ async def test_system_info_reports_host_identity(client, tmp_path):
     assert data["os"]
     assert data["arch"]
     assert data["cpu_count"] and data["cpu_count"] >= 1
-    assert data["gateway_version"] == "0.1.0"
+    assert data["gateway_version"] == __version__
     assert data["intake_dir"] == str(tmp_path / "intake")
     # Agent block always present; inactive because no socket exists in tests.
     assert data["agent"]["active"] is False

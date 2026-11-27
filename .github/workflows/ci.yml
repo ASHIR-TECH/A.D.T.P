@@ -257,17 +257,18 @@ jobs:
           printf '[Desktop Entry]\nType=Application\nName=ADTP Desktop\nGenericName=File Transfer\nComment=Agent Direct Transfer Protocol - secure P2P file transfer\nExec=/usr/bin/adtp-desktop\nIcon=adtp-desktop\nTerminal=false\nCategories=Network;FileTransfer;\nKeywords=adtp;transfer;p2p;file;ashir;mars;\nStartupNotify=true\nStartupWMClass=adtp-desktop\n' > "$PKG_DIR/usr/share/applications/adtp-desktop.desktop"
 
           # Control file
-          printf 'Package: adtp-desktop\nVersion: 1.0.0\nSection: net\nPriority: optional\nArchitecture: amd64\nMaintainer: ASHIR Tech <tech@ashir.tech>\nDepends: libgtk-3-0, libwebkit2gtk-4.1-0, libglib2.0-0, librsvg2-2, libssl3\nDescription: ADTP Desktop - Agent Direct Transfer Protocol\n A secure peer-to-peer file transfer desktop application\n with encrypted QUIC transport, audit chains, and mobile companion support.\n' > "$PKG_DIR/DEBIAN/control"
+          VERSION="$(cat VERSION)"
+          printf "Package: adtp-desktop\nVersion: ${VERSION}\nSection: net\nPriority: optional\nArchitecture: amd64\nMaintainer: ASHIR Tech <tech@ashir.tech>\nDepends: libgtk-3-0, libwebkit2gtk-4.1-0, libglib2.0-0, librsvg2-2, libssl3\nDescription: ADTP Desktop - Agent Direct Transfer Protocol\n A secure peer-to-peer file transfer desktop application\n with encrypted QUIC transport, audit chains, and mobile companion support.\n" > "$PKG_DIR/DEBIAN/control"
 
           # Post-install: refresh desktop + icon caches so the app appears immediately
           printf '#!/bin/sh\nset -e\nif command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q /usr/share/applications; fi\nif command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true; fi\nexit 0\n' > "$PKG_DIR/DEBIAN/postinst"
           chmod 755 "$PKG_DIR/DEBIAN/postinst"
 
-          dpkg-deb --build "$PKG_DIR" "adtp-desktop_1.0.0_amd64.deb"
+          dpkg-deb --build "$PKG_DIR" "adtp-desktop_${VERSION}_amd64.deb"
       - uses: actions/upload-artifact@v4
         with:
           name: adtp-deb-linux
-          path: adtp-desktop_1.0.0_amd64.deb
+          path: adtp-desktop_*.deb
 
   # ── 5. Build Windows .exe ─────────────────────────────────────────────
   build-windows:
@@ -315,7 +316,7 @@ jobs:
           echo "=== Artifacts directory ==="
           find artifacts -type f 2>/dev/null || echo "No artifacts found"
           mkdir -p release
-          cp artifacts/adtp-desktop_1.0.0_amd64.deb release/ 2>/dev/null || true
+          cp artifacts/adtp-desktop_*.deb release/ 2>/dev/null || true
           cp artifacts/adtp-desktop.exe release/ 2>/dev/null || true
           # Standalone gateway binaries (also bundled inside the .deb/.exe zip).
           # Linux is an onedir tree, so publish it as a tarball.
@@ -331,19 +332,22 @@ jobs:
       - name: Create release tag for this commit
         id: tag
         run: |
-          TAG="mars-v1-${{ github.sha }}"
+          VERSION="$(cat VERSION)"
+          TAG="adtp-v${VERSION}-${{ github.sha }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"
           git push origin "$TAG"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Generate release notes
         run: |
-          printf '# Mars v1.0.0 - ADTP Desktop Release\n\n## Overview\n\nADTP (Agent Direct Transfer Protocol) Desktop - a secure peer-to-peer file transfer desktop application with encrypted QUIC transport, cryptographic audit chains, Trust-On-First-Use TLS verification, and mobile companion (MARS) pairing support.\n\nBuilt from branch **%s**.\n\n## Commit\n\n%s\n\nAuthor: %s\n\n## Installation\n\n### Linux (.deb)\n\n```bash\nsudo dpkg -i adtp-desktop_1.0.0_amd64.deb\nsudo apt-get install -f\n```\n\n### Remove ADTP Desktop (Linux)\n\n```bash\nsudo apt remove adtp-desktop\n```\n\n### Windows (.exe)\n\nDownload `adtp-desktop.exe` **and** `adtp-api.exe` into the same folder and run the desktop app. The gateway starts automatically; keep both files together.\n\n## Assets\n\n| Platform | File |\n|----------|------|\n| Linux | `adtp-desktop_1.0.0_amd64.deb` (includes `adtp-api`) |\n| Windows | `adtp-desktop.exe` + `adtp-api.exe` |\n| Gateway | `adtp-api-linux.tar.gz` / `adtp-api.exe` (standalone) |\n\n## Security\n\nAll dependencies audited with `cargo audit`.\n\n---\n\n*Automated release created by the ADTP Build & Release workflow.*\n' "${GITHUB_REF_NAME}" "${{ github.event.head_commit.message }}" "${{ github.event.head_commit.author.name }}" > notes.md
+          printf '# ADTP v__ADTP_VERSION__ - Desktop Release\n\n## Overview\n\nADTP (Agent Direct Transfer Protocol) Desktop - a secure peer-to-peer file transfer desktop application with encrypted QUIC transport, cryptographic audit chains, Trust-On-First-Use TLS verification, and mobile companion (MARS) pairing support.\n\nBuilt from branch **%s**.\n\n## Commit\n\n%s\n\nAuthor: %s\n\n## Installation\n\n### Linux (.deb)\n\n```bash\nsudo dpkg -i adtp-desktop___ADTP_VERSION___amd64.deb\nsudo apt-get install -f\n```\n\n### Remove ADTP Desktop (Linux)\n\n```bash\nsudo apt remove adtp-desktop\n```\n\n### Clear local ADTP cache (fresh launch)\n\n```bash\npkill -TERM -f "/usr/lib/adtp/adtp-api/adtp-api|/usr/bin/adtp-desktop" || true\nsleep 2\nrm -rf ~/.config/adtp ~/.local/share/adtp ~/.local/share/world.ashir.adtp-desktop\nfind /tmp -maxdepth 1 -name "adtp*" -exec rm -rf {} +\n```\n\nStop the processes first so they cannot rewrite the files while you delete them. This clears the API token, pairing, gateway PID record, logs, audit database, intake/outbox files and Tauri UI settings. The next launch starts like a fresh install.\n\n### Windows (.exe)\n\nDownload `adtp-desktop.exe` **and** `adtp-api.exe` into the same folder and run the desktop app. The gateway starts automatically; keep both files together.\n\n## Assets\n\n| Platform | File |\n|----------|------|\n| Linux | `adtp-desktop___ADTP_VERSION___amd64.deb` (includes `adtp-api`) |\n| Windows | `adtp-desktop.exe` + `adtp-api.exe` |\n| Gateway | `adtp-api-linux.tar.gz` / `adtp-api.exe` (standalone) |\n\n## Security\n\nAll dependencies audited with `cargo audit`.\n\n---\n\n*Automated release created by the ADTP Build & Release workflow.*\n' "${GITHUB_REF_NAME}" "${{ github.event.head_commit.message }}" "${{ github.event.head_commit.author.name }}" > notes.md
+          sed -i "s/__ADTP_VERSION__/${{ steps.tag.outputs.version }}/g" notes.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: Mars v1.0.0
+          name: ADTP v${{ steps.tag.outputs.version }} - Desktop Release
           body_path: notes.md
           files: release/*
           draft: false
